@@ -237,7 +237,12 @@ class Player {
 
     const scale = this.getScale(config);
     const drawY = this.y - this.jumpZ;
-    const bob = this.state === "run" ? Math.sin(performance.now() / 70 + this.x * 0.02) * 3 : 0;
+    const motionTime = performance.now();
+    const walkPhase = motionTime / 72 + this.x * 0.02;
+    const walkStep = this.state === "run" ? Math.sin(walkPhase) : 0;
+    const bob = this.state === "run" ? Math.abs(walkStep) * 3 : 0;
+    const legSwing = walkStep * 8;
+    const armSwing = walkStep * 9;
     const crouchScaleY = this.crouchTimer > 0 ? 0.78 : 1;
 
     context.save();
@@ -269,11 +274,11 @@ class Player {
 
     // 足
     context.fillStyle = "#234066";
-    context.fillRect(-18, -5 + bob, 13, 27);
-    context.fillRect(6, -5 - bob, 13, 27);
+    context.fillRect(-18, -5 + bob + legSwing * 0.28, 13, 27);
+    context.fillRect(6, -5 + bob - legSwing * 0.28, 13, 27);
     context.fillStyle = "#ffffff";
-    context.fillRect(-20, 17 + bob, 18, 5);
-    context.fillRect(5, 17 - bob, 18, 5);
+    context.fillRect(-20, 17 + bob + legSwing * 0.45, 18, 5);
+    context.fillRect(5, 17 + bob - legSwing * 0.45, 18, 5);
 
     // 体
     context.fillStyle = this.uniformColor;
@@ -289,20 +294,29 @@ class Player {
     context.lineCap = "round";
     context.beginPath();
     if (this.state === "catching") {
+      const catchProgress = Math.max(0, Math.min(1, this.catchTimer / Math.max(0.01, config.catchDuration)));
+      const close = 1 - catchProgress;
+      const upperY = -54 + close * 9;
+      const lowerY = -22 - close * 10;
       context.moveTo(-18, -35);
-      context.lineTo(this.facing * 40, -52);
+      context.lineTo(this.facing * (48 - close * 10), upperY);
       context.moveTo(18, -35);
-      context.lineTo(this.facing * 42, -24);
+      context.lineTo(this.facing * (48 - close * 12), lowerY);
     } else if (this.state === "throwing") {
+      const wind = this.throwTimer > 0.13 ? 1 : this.throwTimer / 0.13;
+      const backX = -this.facing * (30 + wind * 18);
+      const backY = -58 - wind * 22;
+      const frontX = this.facing * (30 + (1 - wind) * 22);
+      const frontY = -39 + wind * 6;
       context.moveTo(-14, -35);
-      context.lineTo(-this.facing * 34, -70);
+      context.lineTo(backX, backY);
       context.moveTo(18, -35);
-      context.lineTo(this.facing * 42, -40);
+      context.lineTo(frontX, frontY);
     } else {
       context.moveTo(-23, -32);
-      context.lineTo(-36, -13);
+      context.lineTo(-36, -13 - armSwing * 0.35);
       context.moveTo(23, -32);
-      context.lineTo(36, -13);
+      context.lineTo(36, -13 + armSwing * 0.35);
     }
     context.stroke();
 

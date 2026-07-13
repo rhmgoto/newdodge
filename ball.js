@@ -127,8 +127,8 @@ class Ball {
 
     this.vx = (dx / length) * speed + actor.vx * this.config.moveBonus;
     this.vy = (dy / length) * speed + actor.vy * this.config.moveBonus;
-    this.vz = kind === "shoot" ? 120 + actor.jumpZ * 0.3 : 160;
-    actor.markThrowing(0.18);
+    this.vz = kind === "shoot" ? 120 + actor.jumpZ * 0.3 : 420 + actor.jumpZ * 0.15;
+    actor.markThrowing(kind === "pass" ? 0.3 : 0.24);
     return true;
   }
 

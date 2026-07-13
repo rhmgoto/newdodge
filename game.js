@@ -23,7 +23,7 @@ const GAME_CONFIG = {
     radius: 18,
     damage: 20,
     shootSpeed: 760,
-    passSpeed: 610,
+    passSpeed: 540,
     moveBonus: 0.34,
     gravity: 520,
     hitBounceX: 260,
@@ -1027,16 +1027,24 @@ class DodgeballGame {
       context.stroke();
     };
 
-    drawProjectedQuad(c.x, topY, c.w, c.h - 10, "#bfc36d");
-
-    context.fillStyle = "rgba(96, 86, 38, 0.16)";
-    for (let y = topY + 8; y < bottomY; y += 13) {
-      for (let x = c.x + ((y / 13) % 2) * 8; x < c.x + c.w; x += 18) {
-        const p = project(x, y);
-        const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
-        context.fillRect(p.x, p.y, 3 + t, 2 + t * 0.8);
+    const drawDirtDots = (rect) => {
+      context.fillStyle = "rgba(96, 86, 38, 0.16)";
+      for (let y = rect.y + 8; y < rect.y + rect.h; y += 13) {
+        for (let x = rect.x + ((y / 13) % 2) * 8; x < rect.x + rect.w; x += 18) {
+          const p = project(x, y);
+          const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
+          context.fillRect(p.x, p.y, 3 + t, 2 + t * 0.8);
+        }
       }
-    }
+    };
+
+    drawProjectedQuad(c.x, topY, c.w, c.h - 10, "#bfc36d");
+    drawProjectedQuad(this.areas.leftSideOut.x, this.areas.leftSideOut.y, this.areas.leftSideOut.w, this.areas.leftSideOut.h, "#bfc36d");
+    drawProjectedQuad(this.areas.rightSideOut.x, this.areas.rightSideOut.y, this.areas.rightSideOut.w, this.areas.rightSideOut.h, "#bfc36d");
+
+    drawDirtDots({ x: c.x, y: topY, w: c.w, h: c.h - 10 });
+    drawDirtDots(this.areas.leftSideOut);
+    drawDirtDots(this.areas.rightSideOut);
 
     context.strokeStyle = "#f7f4df";
     context.lineWidth = 7;

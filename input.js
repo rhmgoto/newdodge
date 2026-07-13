@@ -16,7 +16,8 @@ class InputManager {
     this.gamepadConnected = false;
     this.pressedGamepadButtons = [];
     this.lastTap = { x: 0, y: 0, time: 0 };
-    this.dashTimer = 0;
+    this.dashHold = { active: false, axis: null, direction: 0 };
+    this.doubleTapDashPressed = false;
 
     window.addEventListener("keydown", (event) => {
       this.keys.add(event.code);
@@ -68,7 +69,7 @@ class InputManager {
       button1: keyboard.button1 || gamepad.button1,
       button2: keyboard.button2 || gamepad.button2,
       button3: keyboard.button3 || gamepad.button3,
-      dash: keyboard.dash || gamepad.dash || this.dashTimer > 0,
+      dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
       pause: keyboard.pause || gamepad.pause
     };
   }
@@ -149,7 +150,6 @@ class InputManager {
 
   updateDoubleTapDash(keyboard, gamepad) {
     const now = performance.now();
-    this.dashTimer = Math.max(0, this.dashTimer - 1 / 60);
     const moveX = this.clampAxis(keyboard.moveX || gamepad.moveX);
     const moveY = this.clampAxis(keyboard.moveY || gamepad.moveY);
     const previousX = this.previous.moveX || 0;
@@ -157,14 +157,28 @@ class InputManager {
     const axis = Math.abs(moveX) >= Math.abs(moveY) ? "x" : "y";
     const value = axis === "x" ? moveX : moveY;
     const previousValue = axis === "x" ? previousX : previousY;
+    this.doubleTapDashPressed = false;
+
+    if (this.dashHold.active) {
+      const heldValue = this.dashHold.axis === "x" ? moveX : moveY;
+      if (Math.sign(heldValue) !== this.dashHold.direction || Math.abs(heldValue) < 0.55) {
+        this.dashHold = { active: false, axis: null, direction: 0 };
+      }
+      this.doubleTapDashPressed = this.dashHold.active;
+    }
 
     if (Math.abs(value) > 0.72 && Math.abs(previousValue) <= 0.35) {
       const direction = Math.sign(value);
       if (this.lastTap.axis === axis && this.lastTap.direction === direction && now - this.lastTap.time <= 280) {
-        this.dashTimer = 0.42;
+        this.dashHold = { active: true, axis, direction };
+        this.doubleTapDashPressed = true;
       }
       this.lastTap = { axis, direction, time: now };
     }
+  }
+
+  isDoubleTapDashHeld() {
+    return this.doubleTapDashPressed;
   }
 
   getAimVector(defaultX) {
