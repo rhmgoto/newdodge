@@ -36,16 +36,29 @@ const GAME_CONFIG = {
     catchDuration: 0.25,
     catchWidth: 74,
     catchHeight: 92,
-    crouchDuration: 0.32,
+    rollDuration: 0.38,
+    rollSpeed: 650,
+    duckDuration: 0.48,
     invincibleTime: 1,
     knockbackSpeed: 410,
     downTime: 0.9,
     exitDelay: 1.5,
     cpuCatchChance: 0.3,
-    jumpVelocity: 420,
+    jumpVelocity: 630,
     jumpGravity: 920,
+    dashSpeedMultiplier: 3.2,
+    turnDuration: 0.2,
+    turnSpeedMultiplier: 0.32,
     depthTop: 140,
-    depthBottom: 720
+    depthBottom: 720,
+    stamina: {
+      shootCost: 18,
+      rollCost: 24,
+      duckCost: 14,
+      dashDrainPerSecond: 38,
+      recoveryPerSecond: 24,
+      recoveryDelay: 0.7
+    }
   }
 };
 
@@ -287,6 +300,10 @@ class DodgeballGame {
       active.jump(GAME_CONFIG.battle);
     }
 
+    if (this.input.wasPressed("avoid")) {
+      active.startDodge(this.input.current.moveX, this.input.current.moveY, GAME_CONFIG.battle);
+    }
+
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
@@ -300,11 +317,8 @@ class DodgeballGame {
         }
       }
     } else {
-      if (this.input.wasPressed("button2")) {
+      if (this.input.wasPressed("catch")) {
         active.startCatch(GAME_CONFIG.battle.catchDuration);
-      }
-      if (this.input.wasPressed("button1")) {
-        active.crouch(GAME_CONFIG.battle.crouchDuration);
       }
     }
   }
@@ -313,7 +327,7 @@ class DodgeballGame {
     for (const member of this.rightTeam) {
       const command = this.cpuController.getCommand(member);
       if (command.catch) member.startCatch(GAME_CONFIG.battle.catchDuration);
-      if (command.crouch) member.crouch(GAME_CONFIG.battle.crouchDuration);
+      if (command.crouch) member.startDodge(command.moveX, command.moveY, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.shoot && this.ball.owner === member) {
         this.launchFromAi(member, "shoot", this.leftTeam);
@@ -333,7 +347,8 @@ class DodgeballGame {
         controls = {
           moveX: this.input.current.moveX,
           moveY: this.input.current.moveY,
-          dash: this.input.current.dash
+          dash: this.input.current.dash,
+          lockFacing: this.input.current.button4
         };
       } else {
         controls = this.getSupportMove(member);
@@ -502,6 +517,10 @@ class DodgeballGame {
   queueThrow(actor, target, kind, aim) {
     if (this.pendingThrow || this.ball.owner !== actor || actor.defeated) return false;
     if (!target && kind !== "shoot") return false;
+    if (kind === "shoot" && !actor.consumeStamina(
+      GAME_CONFIG.battle.stamina.shootCost,
+      GAME_CONFIG.battle.stamina.recoveryDelay
+    )) return false;
 
     this.pendingThrow = {
       actor,

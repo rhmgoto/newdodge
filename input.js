@@ -1,11 +1,13 @@
 class InputManager {
   constructor() {
-    // ボタン割り当てはここを変更する。一般的なパッドでは 0=A, 1=B, 2=X, 9=START。
+    // ボタン割り当てはここを変更する。番号は画面右下の表示で確認できる。
     this.gamepadMap = {
-      button1: 1, // パス / しゃがみ
-      button2: 2, // シュート / キャッチ
+      button1: 7, // パス
+      button2: 5, // シュート
+      catch: 5, // キャッチ
       button3: 3, // ジャンプ
-      dash: 4,
+      button4: 4, // 向き固定
+      avoid: 1, // 回避 / 押しながら移動でダッシュ
       pause: 9
     };
 
@@ -49,7 +51,10 @@ class InputManager {
       rightY: 0,
       button1: false,
       button2: false,
+      catch: false,
       button3: false,
+      button4: false,
+      avoid: false,
       dash: false,
       pause: false
     };
@@ -68,8 +73,11 @@ class InputManager {
       rightY: this.clampAxis(gamepad.rightY),
       button1: keyboard.button1 || gamepad.button1,
       button2: keyboard.button2 || gamepad.button2,
+      catch: keyboard.catch || gamepad.catch,
       button3: keyboard.button3 || gamepad.button3,
-      dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
+      button4: keyboard.button4 || gamepad.button4,
+      avoid: keyboard.avoid || gamepad.avoid,
+      dash: keyboard.dash || gamepad.avoid || this.isDoubleTapDashHeld(),
       pause: keyboard.pause || gamepad.pause
     };
   }
@@ -87,7 +95,10 @@ class InputManager {
       rightY: 0,
       button1: this.keys.has("Space"),
       button2: this.keys.has("KeyC"),
+      catch: this.keys.has("KeyC"),
       button3: this.keys.has("KeyJ"),
+      button4: this.keys.has("KeyF"),
+      avoid: this.keys.has("KeyV"),
       dash: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"),
       pause: this.keys.has("Escape")
     };
@@ -126,8 +137,11 @@ class InputManager {
       rightY: this.clampAxis(rightY),
       button1: this.isPressed(pad.buttons[this.gamepadMap.button1]),
       button2: this.isPressed(pad.buttons[this.gamepadMap.button2]),
+      catch: this.isPressed(pad.buttons[this.gamepadMap.catch]),
       button3: this.isPressed(pad.buttons[this.gamepadMap.button3]),
-      dash: this.isPressed(pad.buttons[this.gamepadMap.dash]),
+      button4: this.isPressed(pad.buttons[this.gamepadMap.button4]),
+      avoid: this.isPressed(pad.buttons[this.gamepadMap.avoid]),
+      dash: false,
       pause: this.isPressed(pad.buttons[this.gamepadMap.pause])
     };
   }

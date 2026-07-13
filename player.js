@@ -8,6 +8,7 @@ const PLAYER_MODEL = {
   },
   skin: "#ffd1a3",
   skinShade: "#e7a977",
+  hair: "#f2c14e",
   visor: "#222a34",
   sole: "#f8f8f2"
 };
@@ -34,6 +35,9 @@ class Player {
     this.hairColor = options.hairColor || "#3d2a1f";
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
+    this.visualDirection = this.team === "left" ? "right" : "left";
+    this.turnTimer = 0;
+    this.pendingVisualDirection = null;
     this.isDamaged = false;
     this.invincibleTime = 0;
     this.state = "idle";
@@ -46,12 +50,19 @@ class Player {
     this.throwPhase = "none";
     this.throwKind = "none";
     this.throwLockTimer = 0;
-    this.crouchTimer = 0;
+    this.dodgeTimer = 0;
+    this.dodgeDuration = 0;
+    this.dodgeType = "none";
+    this.dodgeVx = 0;
+    this.dodgeVy = 0;
     this.downTimer = 0;
     this.leaveTimer = 0;
     this.jumpZ = 0;
     this.jumpVelocity = 0;
     this.isDashing = false;
+    this.maxStamina = options.maxStamina || 100;
+    this.stamina = this.maxStamina;
+    this.staminaRecoveryDelay = 0;
     this.defeated = false;
   }
 
@@ -69,7 +80,14 @@ class Player {
       this.throwKind = "none";
     }
     this.throwLockTimer = Math.max(0, this.throwLockTimer - delta);
-    this.crouchTimer = Math.max(0, this.crouchTimer - delta);
+    this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
+    this.updateTurn(delta);
+    this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
+    if (this.dodgeTimer <= 0) {
+      this.dodgeType = "none";
+      this.dodgeVx = 0;
+      this.dodgeVy = 0;
+    }
 
     if (this.defeated) {
       this.leaveTimer += delta;
@@ -92,15 +110,30 @@ class Player {
     const moveX = controls.moveX || 0;
     const moveY = controls.moveY || 0;
     const length = Math.hypot(moveX, moveY) || 1;
-    const crouchSlow = this.crouchTimer > 0 ? 0.35 : 1;
-    const speed = this.speed * (controls.dash ? 1.35 : 1) * crouchSlow;
-    this.isDashing = Boolean(controls.dash && (Math.abs(moveX) > 0.08 || Math.abs(moveY) > 0.08));
+    const moving = Math.hypot(moveX, moveY) > 0.08;
+    if (controls.lockFacing || !moving) {
+      this.cancelPendingTurn();
+    } else if (moving && this.dodgeType !== "roll") {
+      this.requestVisualDirection(moveX, moveY, config.turnDuration);
+    }
 
-    this.vx = (moveX / length) * speed;
-    this.vy = (moveY / length) * speed;
+    const wantsDash = Boolean(controls.dash && moving && this.dodgeTimer <= 0);
+    this.isDashing = wantsDash && this.stamina > 0;
+    if (this.isDashing) {
+      this.drainStamina(config.stamina.dashDrainPerSecond * delta, config.stamina.recoveryDelay);
+    } else if (this.staminaRecoveryDelay <= 0 && this.dodgeTimer <= 0) {
+      this.stamina = Math.min(this.maxStamina, this.stamina + config.stamina.recoveryPerSecond * delta);
+    }
 
-    if (Math.abs(moveX) > 0.08) {
-      this.facing = moveX > 0 ? 1 : -1;
+    if (this.dodgeType === "roll" && this.dodgeTimer > 0) {
+      this.vx = this.dodgeVx;
+      this.vy = this.dodgeVy;
+    } else {
+      const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
+      const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
+      const speed = this.speed * (this.isDashing ? config.dashSpeedMultiplier : 1) * duckSlow * turnSlow;
+      this.vx = (moveX / length) * speed;
+      this.vy = (moveY / length) * speed;
     }
 
     this.x += this.vx * delta;
@@ -121,12 +154,12 @@ class Player {
       this.state = "throwing";
     } else if (this.catchTimer > 0) {
       this.state = "catching";
-    } else if (this.crouchTimer > 0) {
-      this.state = "crouching";
-    } else if (this.hasBall) {
-      this.state = "holding";
+    } else if (this.dodgeTimer > 0) {
+      this.state = this.dodgeType === "roll" ? "rolling" : "dodging";
     } else if (Math.abs(moveX) > 0.05 || Math.abs(moveY) > 0.05) {
       this.state = "run";
+    } else if (this.hasBall) {
+      this.state = "holding";
     } else {
       this.state = "idle";
     }
@@ -155,10 +188,89 @@ class Player {
     this.state = "catching";
   }
 
-  crouch(duration) {
-    if (this.defeated || this.downTimer > 0) return;
-    this.crouchTimer = duration;
-    this.state = "crouching";
+  startDodge(moveX, moveY, config) {
+    if (this.defeated || this.downTimer > 0 || this.dodgeTimer > 0) return false;
+    const length = Math.hypot(moveX, moveY);
+    const isRoll = length >= 0.35;
+    const cost = isRoll ? config.stamina.rollCost : config.stamina.duckCost;
+    if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
+
+    this.dodgeType = isRoll ? "roll" : "duck";
+    this.dodgeDuration = isRoll ? config.rollDuration : config.duckDuration;
+    this.dodgeTimer = this.dodgeDuration;
+    if (isRoll) {
+      const nx = moveX / length;
+      const ny = moveY / length;
+      this.dodgeVx = nx * config.rollSpeed;
+      this.dodgeVy = ny * config.rollSpeed;
+      this.applyVisualDirection(this.getMoveDirection(moveX, moveY));
+      this.cancelPendingTurn();
+    }
+    this.state = isRoll ? "rolling" : "dodging";
+    return true;
+  }
+
+  getMoveDirection(moveX, moveY) {
+    if (Math.abs(moveY) > Math.abs(moveX)) return moveY < 0 ? "up" : "down";
+    return moveX < 0 ? "left" : "right";
+  }
+
+  requestVisualDirection(moveX, moveY, duration) {
+    const nextDirection = this.getMoveDirection(moveX, moveY);
+    if (nextDirection === this.visualDirection) {
+      this.cancelPendingTurn();
+      return;
+    }
+
+    const opposite = {
+      left: "right",
+      right: "left",
+      up: "down",
+      down: "up"
+    };
+    if (opposite[this.visualDirection] === nextDirection) {
+      if (this.pendingVisualDirection !== nextDirection) {
+        this.pendingVisualDirection = nextDirection;
+        this.turnTimer = duration;
+      }
+      return;
+    }
+
+    this.applyVisualDirection(nextDirection);
+    this.cancelPendingTurn();
+  }
+
+  updateTurn(delta) {
+    if (this.turnTimer <= 0) return;
+    this.turnTimer = Math.max(0, this.turnTimer - delta);
+    if (this.turnTimer <= 0 && this.pendingVisualDirection) {
+      this.applyVisualDirection(this.pendingVisualDirection);
+      this.pendingVisualDirection = null;
+    }
+  }
+
+  cancelPendingTurn() {
+    this.turnTimer = 0;
+    this.pendingVisualDirection = null;
+  }
+
+  applyVisualDirection(direction) {
+    this.visualDirection = direction;
+    if (direction === "left" || direction === "right") {
+      this.facing = direction === "right" ? 1 : -1;
+    }
+  }
+
+  consumeStamina(amount, recoveryDelay) {
+    if (this.stamina < amount) return false;
+    this.stamina = Math.max(0, this.stamina - amount);
+    this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
+    return true;
+  }
+
+  drainStamina(amount, recoveryDelay) {
+    this.stamina = Math.max(0, this.stamina - amount);
+    this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
   }
 
   markThrowing(duration, kind = "shoot") {
@@ -169,7 +281,7 @@ class Player {
   }
 
   takeDamage(amount, sourceDirection, config) {
-    if (this.defeated || this.invincibleTime > 0 || this.crouchTimer > 0) return false;
+    if (this.defeated || this.invincibleTime > 0 || this.dodgeTimer > 0) return false;
 
     this.hp = Math.max(0, this.hp - amount);
     this.isDamaged = true;
@@ -187,11 +299,11 @@ class Player {
   }
 
   getHitCircle() {
-    const crouchBonus = this.crouchTimer > 0 ? -7 : 0;
+    const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
     return {
       x: this.x,
-      y: this.y - 38 - this.jumpZ + crouchBonus,
-      r: this.radius + (this.jumpZ > 0 ? 2 : 0)
+      y: this.y - (ducking ? 18 : 38) - this.jumpZ,
+      r: ducking ? this.radius * 0.55 : this.radius + (this.jumpZ > 0 ? 2 : 0)
     };
   }
 
@@ -266,13 +378,6 @@ class Player {
     this.lastDrawScale = scale;
     const drawY = this.y - this.jumpZ;
     const motionTime = performance.now();
-    const walkPhase = motionTime / 72 + this.x * 0.02;
-    const walkStep = this.state === "run" ? Math.sin(walkPhase) : 0;
-    const bob = this.state === "run" ? Math.abs(walkStep) * 3 : 0;
-    const legSwing = walkStep * 8;
-    const armSwing = walkStep * 9;
-    const crouchScaleY = this.crouchTimer > 0 ? 0.78 : 1;
-
     context.save();
     context.translate(this.x, this.y);
     context.scale(scale, scale);
@@ -309,9 +414,7 @@ class Player {
     if (isShootTarget && !this.defeated) {
       this.drawShootMarker(context);
     }
-    if (this.role === "inner") {
-      this.drawHpBar(context);
-    }
+    this.drawStatusBars(context);
     if (debugMode) {
       this.drawDebug(context, config);
     }
@@ -319,10 +422,14 @@ class Player {
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
     const colors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
-    const runAmount = this.state === "run" ? (this.isDashing ? 1.25 : 1) : 0;
-    const stride = Math.sin(motionTime / 85 + this.x * 0.025) * runAmount;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 1 : 0;
+    const rolling = this.dodgeType === "roll" && this.dodgeTimer > 0;
+    const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !rolling && !crouch;
+    const runAmount = movingOnFoot ? (this.isDashing ? 1.45 : 1) : 0;
+    const cadence = this.isDashing ? 44 : 85;
+    const stride = Math.sin(motionTime / cadence + this.x * 0.025 + this.y * 0.012) * runAmount;
     const bob = Math.abs(stride) * 4;
-    const crouch = this.crouchTimer > 0 ? 1 : 0;
+    const verticalMotion = this.visualDirection === "up" || this.visualDirection === "down";
     const jumpPose = this.jumpZ > 0 || this.jumpVelocity > 0 ? 1 : 0;
     const damaged = this.state === "damaged" ? 1 : 0;
     const down = this.state === "down" || this.defeated;
@@ -333,11 +440,11 @@ class Player {
       ? (this.throwPhase === "windup" ? 0.25 : 1)
       : 0;
 
-    const rootY = crouch * 16 + bob - jumpPose * 4;
-    const torsoY = -63 + rootY + crouch * 10;
-    const headY = -116 + rootY + crouch * 17;
-    const hipY = -34 + rootY + crouch * 13;
-    const shoulderY = -78 + rootY + crouch * 11;
+    const rootY = crouch * 22 + bob - jumpPose * 4;
+    const torsoY = -63 + rootY + crouch * 14;
+    const headY = -116 + rootY + crouch * 28;
+    const hipY = -34 + rootY + crouch * 18;
+    const shoulderY = -78 + rootY + crouch * 18;
 
     const pose = {
       backArm: [
@@ -362,6 +469,15 @@ class Player {
       ]
     };
 
+    if (verticalMotion && movingOnFoot) {
+      pose.backLeg[1].y += stride * 6;
+      pose.backLeg[2].y += stride * 12;
+      pose.frontLeg[1].y -= stride * 6;
+      pose.frontLeg[2].y -= stride * 12;
+      pose.backArm[2].y -= stride * 7;
+      pose.frontArm[2].y += stride * 7;
+    }
+
     if (jumpPose) {
       pose.backLeg[1].y -= 10;
       pose.backLeg[2].x -= 18;
@@ -374,14 +490,14 @@ class Player {
     }
 
     if (crouch) {
-      pose.backLeg[1].x -= 10;
-      pose.backLeg[1].y += 10;
-      pose.backLeg[2].x -= 22;
-      pose.frontLeg[1].x += 10;
-      pose.frontLeg[1].y += 10;
-      pose.frontLeg[2].x += 22;
-      pose.backArm[2].y += 9;
-      pose.frontArm[2].y += 9;
+      pose.backLeg[1] = { x: -27, y: 2 };
+      pose.backLeg[2] = { x: -38, y: 16 };
+      pose.frontLeg[1] = { x: 27, y: 2 };
+      pose.frontLeg[2] = { x: 38, y: 16 };
+      pose.backArm[1] = { x: -28, y: -36 };
+      pose.backArm[2] = { x: -14, y: -12 };
+      pose.frontArm[1] = { x: 28, y: -36 };
+      pose.frontArm[2] = { x: 14, y: -12 };
     }
 
     if (catchProgress > 0) {
@@ -415,7 +531,22 @@ class Player {
 
     context.save();
     context.translate(this.x, drawY);
-    context.scale(scale * this.facing, scale);
+    const verticalView = this.visualDirection === "up" || this.visualDirection === "down";
+    context.scale(scale * (verticalView ? 1 : this.facing), scale);
+    if (verticalView) {
+      context.scale(0.9, 1);
+    }
+    if (rolling) {
+      const progress = 1 - this.dodgeTimer / Math.max(0.01, this.dodgeDuration);
+      const rotationDirection = Math.abs(this.dodgeVx) > 1 ? Math.sign(this.dodgeVx) : Math.sign(this.dodgeVy) || 1;
+      const fallProgress = Math.min(1, progress / 0.28);
+      const groundRollProgress = Math.max(0, (progress - 0.28) / 0.72);
+      const rotation = fallProgress * Math.PI * 0.5 + groundRollProgress * Math.PI * 1.5;
+      context.translate(0, 18);
+      context.rotate(rotation * rotationDirection);
+      context.translate(0, -18);
+      context.scale(0.9, 0.9);
+    }
     if (down) {
       context.rotate(-0.92);
       context.scale(1.12, 0.78);
@@ -433,7 +564,16 @@ class Player {
     this.drawModelFoot(context, pose.frontLeg[2], colors.suit);
     this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10);
 
-    this.drawModelHead(context, 0, headY, colors, damaged);
+    if (crouch) {
+      context.save();
+      context.translate(0, headY + 7);
+      context.rotate(verticalMotion ? 0 : 0.16);
+      context.scale(0.76, 0.76);
+      this.drawModelHead(context, 0, 0, colors, damaged, this.visualDirection);
+      context.restore();
+    } else {
+      this.drawModelHead(context, 0, headY, colors, damaged, this.visualDirection);
+    }
     context.restore();
   }
 
@@ -444,7 +584,7 @@ class Player {
     context.fill();
   }
 
-  drawModelHead(context, x, y, colors, damaged) {
+  drawModelHead(context, x, y, colors, damaged, direction) {
     const head = context.createRadialGradient(x - 12, y - 15, 4, x, y, 33);
     head.addColorStop(0, "#ffe3c5");
     head.addColorStop(0.62, PLAYER_MODEL.skin);
@@ -454,16 +594,35 @@ class Player {
     context.arc(x, y, 29, 0, Math.PI * 2);
     context.fill();
 
+    context.fillStyle = PLAYER_MODEL.hair;
+    context.beginPath();
+    context.arc(x, y - 9, 27, Math.PI, Math.PI * 2);
+    context.lineTo(x + 22, y - 4);
+    context.quadraticCurveTo(x, y - 15, x - 24, y - 3);
+    context.closePath();
+    context.fill();
+
+    if (direction === "up") {
+      context.fillStyle = PLAYER_MODEL.hair;
+      context.beginPath();
+      context.arc(x, y - 2, 25, Math.PI * 0.9, Math.PI * 2.1);
+      context.fill();
+      return;
+    }
+
     context.fillStyle = PLAYER_MODEL.visor;
     context.beginPath();
-    context.arc(x + 8, y - 5, 3.1, 0, Math.PI * 2);
-    context.arc(x + 20, y - 5, 3.1, 0, Math.PI * 2);
+    const frontView = direction === "down";
+    const eye1X = frontView ? x - 8 : x + 8;
+    const eye2X = frontView ? x + 8 : x + 20;
+    context.arc(eye1X, y - 4, 3.1, 0, Math.PI * 2);
+    context.arc(eye2X, y - 4, 3.1, 0, Math.PI * 2);
     context.fill();
 
     context.strokeStyle = damaged ? "#ffffff" : "#8f3b3a";
     context.lineWidth = 3;
     context.beginPath();
-    context.arc(x + 15, y + 7, damaged ? 8 : 6, 0.18, Math.PI - 0.18);
+    context.arc(frontView ? x : x + 15, y + 7, damaged ? 8 : 6, 0.18, Math.PI - 0.18);
     context.stroke();
   }
 
@@ -567,20 +726,36 @@ class Player {
     context.restore();
   }
 
-  drawHpBar(context) {
+  drawStatusBars(context) {
     const width = 58;
-    const ratio = Math.max(0, this.hp / this.maxHp);
     const y = this.getVisualTop() - 10;
-    context.fillStyle = "rgba(25,25,32,0.65)";
-    this.roundRect(context, this.x - width / 2, y, width, 8, 3);
+    let staminaY = y;
+
+    if (this.role === "inner") {
+      const hpRatio = Math.max(0, this.hp / this.maxHp);
+      context.fillStyle = "rgba(25,25,32,0.72)";
+      this.roundRect(context, this.x - width / 2, y, width, 8, 3);
+      context.fill();
+      context.fillStyle = this.team === "left" ? "#49d36e" : "#ffdf5d";
+      this.roundRect(context, this.x - width / 2 + 2, y + 2, (width - 4) * hpRatio, 4, 2);
+      context.fill();
+      staminaY += 11;
+    }
+
+    const staminaRatio = Math.max(0, this.stamina / this.maxStamina);
+    context.fillStyle = "rgba(25,25,32,0.72)";
+    this.roundRect(context, this.x - width / 2, staminaY, width, 7, 3);
     context.fill();
-    context.fillStyle = this.team === "left" ? "#49d36e" : "#ffdf5d";
-    this.roundRect(context, this.x - width / 2 + 2, y + 2, (width - 4) * ratio, 4, 2);
+    context.fillStyle = staminaRatio > 0.3 ? "#35d7e8" : "#ff765f";
+    this.roundRect(context, this.x - width / 2 + 2, staminaY + 2, (width - 4) * staminaRatio, 3, 2);
     context.fill();
   }
 
   getVisualTop() {
-    return this.y - this.jumpZ - 158 * (this.lastDrawScale || 1);
+    const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const rolling = this.dodgeType === "roll" && this.dodgeTimer > 0;
+    const visualHeight = ducking ? 105 : rolling ? 132 : 158;
+    return this.y - this.jumpZ - visualHeight * (this.lastDrawScale || 1);
   }
 
   drawDebug(context, config) {
