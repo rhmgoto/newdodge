@@ -59,6 +59,7 @@ class DodgeballGame {
     this.rightStickSwitchCooldown = 0;
     this.manualSwitchGrace = 0;
     this.lastEnemyHolderId = null;
+    this.pendingThrow = null;
     this.effects = [];
     this.message = "READY";
     this.setupMatch();
@@ -88,6 +89,7 @@ class DodgeballGame {
     this.rightStickSwitchCooldown = 0;
     this.manualSwitchGrace = 0;
     this.lastEnemyHolderId = null;
+    this.pendingThrow = null;
   }
 
   createAreas() {
@@ -261,6 +263,7 @@ class DodgeballGame {
     this.updateControlSwitching(delta);
     this.handlePlayerButtons();
     this.handleCpuButtons();
+    this.updatePendingThrow(delta);
     this.updatePlayers(delta);
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
@@ -460,9 +463,7 @@ class DodgeballGame {
   launchFromInput(actor, kind, candidates) {
     const aim = this.input.getAimVector(actor.team === "left" ? 1 : -1);
     const target = this.findDirectionalTarget(actor, candidates, aim, kind);
-    if (this.ball.launch(actor, target, kind, aim)) {
-      this.spawnEffect(actor.x + actor.facing * 40, actor.y - 48, kind === "shoot" ? "#ffe46a" : "#ffffff", kind);
-    }
+    this.queueThrow(actor, target, kind, aim);
   }
 
   launchPassFromInput(actor) {
@@ -470,11 +471,10 @@ class DodgeballGame {
     const aim = target
       ? this.normalizedVector(target.x - actor.x, target.y - actor.y)
       : this.input.getAimVector(actor.team === "left" ? 1 : -1);
-    if (this.ball.launch(actor, target, "pass", aim)) {
+    if (this.queueThrow(actor, target, "pass", aim)) {
       if (target && target.team === "left") {
         this.controlledPlayerId = target.id;
       }
-      this.spawnEffect(actor.x + actor.facing * 40, actor.y - 48, "#ffffff", "pass");
     }
   }
 
@@ -483,13 +483,50 @@ class DodgeballGame {
     const target = kind === "pass"
       ? this.getNearestPassTarget(actor)
       : this.findDirectionalTarget(actor, candidates, { x: preferred, y: 0 }, kind);
-    if (this.ball.launch(actor, target, kind, { x: preferred, y: 0 })) {
-      if (kind === "shoot" && target && target.team === "left") {
-        this.controlledPlayerId = target.id;
-        this.autoSwitchCooldown = 0.35;
-        this.spawnEffect(target.x, target.y - 72, "#ffffff", "catch");
-      }
-      this.spawnEffect(actor.x + actor.facing * 40, actor.y - 48, kind === "shoot" ? "#ffe46a" : "#ffffff", kind);
+    this.queueThrow(actor, target, kind, { x: preferred, y: 0 });
+  }
+
+  queueThrow(actor, target, kind, aim) {
+    if (this.pendingThrow || !target || this.ball.owner !== actor || actor.defeated) return false;
+
+    this.pendingThrow = {
+      actor,
+      target,
+      kind,
+      aim: { x: aim.x, y: aim.y },
+      timer: 0.2
+    };
+    actor.markThrowing(0.4);
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.4);
+
+    if (kind === "shoot" && target.team === "left" && actor.team === "right") {
+      this.controlledPlayerId = target.id;
+      this.autoSwitchCooldown = 0.4;
+      this.spawnEffect(target.x, target.y - 72, "#ffffff", "catch");
+    }
+    return true;
+  }
+
+  updatePendingThrow(delta) {
+    if (!this.pendingThrow) return;
+
+    const pending = this.pendingThrow;
+    if (pending.actor.defeated || this.ball.owner !== pending.actor) {
+      this.pendingThrow = null;
+      return;
+    }
+
+    pending.timer -= delta;
+    if (pending.timer > 0) return;
+
+    this.pendingThrow = null;
+    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim)) {
+      this.spawnEffect(
+        pending.actor.x + pending.actor.facing * 40,
+        pending.actor.y - 48,
+        pending.kind === "shoot" ? "#ffe46a" : "#ffffff",
+        pending.kind
+      );
     }
   }
 

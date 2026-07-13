@@ -1,3 +1,31 @@
+// 画像素材は足元を原点として描画する。読み込み前は従来の図形描画を使う。
+const PLAYER_SPRITES = {
+  left: new Image(),
+  right: new Image()
+};
+
+const PLAYER_CROUCH_SPRITES = {
+  left: new Image(),
+  right: new Image()
+};
+
+PLAYER_SPRITES.left.src = "assets/characters/blond-boy-spritesheet.png";
+PLAYER_SPRITES.right.src = "assets/characters/blond-boy-red-spritesheet.png";
+PLAYER_CROUCH_SPRITES.left.src = "assets/characters/blond-boy-crouch.png";
+PLAYER_CROUCH_SPRITES.right.src = "assets/characters/blond-boy-red-crouch.png";
+
+const PLAYER_SPRITE_FRAMES = [
+  { x: 140, y: 66, w: 174, h: 408 },
+  { x: 456, y: 66, w: 220, h: 410 },
+  { x: 833, y: 66, w: 228, h: 412 },
+  { x: 1137, y: 130, w: 318, h: 345 },
+  { x: 128, y: 516, w: 216, h: 326 },
+  { x: 405, y: 548, w: 321, h: 376 },
+  { x: 787, y: 548, w: 329, h: 376 },
+  { x: 1173, y: 560, w: 258, h: 365 },
+  { x: 390, y: 285, w: 480, h: 630 }
+];
+
 class Player {
   constructor(options) {
     this.id = options.id;
@@ -29,12 +57,14 @@ class Player {
     this.knockbackY = 0;
     this.catchTimer = 0;
     this.throwTimer = 0;
+    this.throwPhase = "none";
     this.throwLockTimer = 0;
     this.crouchTimer = 0;
     this.downTimer = 0;
     this.leaveTimer = 0;
     this.jumpZ = 0;
     this.jumpVelocity = 0;
+    this.isDashing = false;
     this.defeated = false;
   }
 
@@ -44,6 +74,11 @@ class Player {
     this.invincibleTime = Math.max(0, this.invincibleTime - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
     this.throwTimer = Math.max(0, this.throwTimer - delta);
+    if (this.throwTimer > 0) {
+      this.throwPhase = this.throwTimer > 0.2 ? "windup" : "release";
+    } else {
+      this.throwPhase = "none";
+    }
     this.throwLockTimer = Math.max(0, this.throwLockTimer - delta);
     this.crouchTimer = Math.max(0, this.crouchTimer - delta);
 
@@ -70,6 +105,7 @@ class Player {
     const length = Math.hypot(moveX, moveY) || 1;
     const crouchSlow = this.crouchTimer > 0 ? 0.35 : 1;
     const speed = this.speed * (controls.dash ? 1.35 : 1) * crouchSlow;
+    this.isDashing = Boolean(controls.dash && (Math.abs(moveX) > 0.08 || Math.abs(moveY) > 0.08));
 
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
@@ -138,6 +174,7 @@ class Player {
 
   markThrowing(duration) {
     this.throwTimer = duration;
+    this.throwPhase = duration > 0.2 ? "windup" : "release";
     this.state = "throwing";
   }
 
@@ -236,6 +273,7 @@ class Player {
     if (blinkOff) return;
 
     const scale = this.getScale(config);
+    this.lastDrawScale = scale;
     const drawY = this.y - this.jumpZ;
     const motionTime = performance.now();
     const walkPhase = motionTime / 72 + this.x * 0.02;
@@ -263,6 +301,33 @@ class Player {
     }
 
     context.restore();
+
+    const frameIndex = this.getSpriteFrame(motionTime);
+    const sprite = frameIndex === 8 ? PLAYER_CROUCH_SPRITES[this.team] : PLAYER_SPRITES[this.team];
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      this.drawSpriteCharacter(context, sprite, frameIndex, scale, drawY, 1);
+
+      if (this.hasBall) {
+        this.drawHeldBall(context, scale);
+      }
+      if (this.catchTimer > 0) {
+        this.drawCatchPose(context, config);
+      }
+      if (isControlled && !this.defeated) {
+        this.drawControlMarker(context);
+      }
+      if (isPassTarget && !this.defeated) {
+        this.drawPassMarker(context);
+      }
+      if (this.role === "inner") {
+        this.drawHpBar(context);
+      }
+      if (debugMode) {
+        this.drawDebug(context, config);
+      }
+      return;
+    }
+
     context.save();
     context.translate(this.x, drawY);
     context.scale(scale, scale * crouchScaleY);
@@ -365,9 +430,59 @@ class Player {
     }
   }
 
+  getSpriteFrame(motionTime) {
+    if (this.state === "throwing") {
+      return this.throwPhase === "windup" ? 5 : 6;
+    }
+    if (this.state === "catching") return 7;
+    if (this.state === "crouching") return 8;
+    if (this.jumpZ > 0 || this.jumpVelocity > 0) return 4;
+    if (this.isDashing) return 3;
+    if (Math.hypot(this.vx, this.vy) > 15) return Math.floor(motionTime / 130) % 2 === 0 ? 1 : 2;
+    return 0;
+  }
+
+  drawSpriteCharacter(context, sprite, frameIndex, scale, drawY, crouchScaleY) {
+    const frame = PLAYER_SPRITE_FRAMES[frameIndex] || PLAYER_SPRITE_FRAMES[0];
+    const baseHeight = frameIndex === 3 ? 140 : frameIndex === 8 ? 126 : 158;
+    const height = baseHeight * scale;
+    const width = height * (frame.w / frame.h);
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(this.facing, crouchScaleY);
+
+    if (this.state === "down" || this.defeated) {
+      context.rotate(this.team === "left" ? -0.82 : 0.82);
+      context.scale(1.08, 0.78);
+    } else if (this.state === "damaged") {
+      context.rotate(-this.facing * 0.12);
+    }
+
+    context.drawImage(
+      sprite,
+      frame.x,
+      frame.y,
+      frame.w,
+      frame.h,
+      -width / 2,
+      -height,
+      width,
+      height
+    );
+    context.restore();
+  }
+
   drawHeldBall(context, scale) {
-    const bx = this.x + this.facing * 34 * scale;
-    const by = this.y - this.jumpZ - 48 * scale;
+    let bx = this.x + this.facing * 34 * scale;
+    let by = this.y - this.jumpZ - 48 * scale;
+    if (this.state === "throwing" && this.throwPhase === "windup") {
+      bx = this.x - this.facing * 48 * scale;
+      by = this.y - this.jumpZ - 72 * scale;
+    } else if (this.state === "catching") {
+      bx = this.x + this.facing * 52 * scale;
+      by = this.y - this.jumpZ - 55 * scale;
+    }
     context.fillStyle = "#f06a32";
     context.beginPath();
     context.arc(bx, by, 15 * scale, 0, Math.PI * 2);
@@ -392,18 +507,19 @@ class Player {
   }
 
   drawControlMarker(context) {
+    const top = this.getVisualTop();
     context.fillStyle = "#d32f2f";
     context.beginPath();
-    context.moveTo(this.x, this.y - this.jumpZ - 128);
-    context.lineTo(this.x - 16, this.y - this.jumpZ - 154);
-    context.lineTo(this.x + 16, this.y - this.jumpZ - 154);
+    context.moveTo(this.x, top - 18);
+    context.lineTo(this.x - 16, top - 43);
+    context.lineTo(this.x + 16, top - 43);
     context.closePath();
     context.fill();
-    context.fillRect(this.x - 6, this.y - this.jumpZ - 176, 12, 24);
+    context.fillRect(this.x - 6, top - 65, 12, 24);
   }
 
   drawPassMarker(context) {
-    const y = this.y - this.jumpZ - 142;
+    const y = this.getVisualTop() - 32;
     context.save();
     context.fillStyle = "#fff4a8";
     context.strokeStyle = "#263241";
@@ -422,13 +538,17 @@ class Player {
   drawHpBar(context) {
     const width = 58;
     const ratio = Math.max(0, this.hp / this.maxHp);
-    const y = this.y - this.jumpZ - 118;
+    const y = this.getVisualTop() - 10;
     context.fillStyle = "rgba(25,25,32,0.65)";
     this.roundRect(context, this.x - width / 2, y, width, 8, 3);
     context.fill();
     context.fillStyle = this.team === "left" ? "#49d36e" : "#ffdf5d";
     this.roundRect(context, this.x - width / 2 + 2, y + 2, (width - 4) * ratio, 4, 2);
     context.fill();
+  }
+
+  getVisualTop() {
+    return this.y - this.jumpZ - 158 * (this.lastDrawScale || 1);
   }
 
   drawDebug(context, config) {
