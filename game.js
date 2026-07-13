@@ -22,8 +22,8 @@ const GAME_CONFIG = {
   ball: {
     radius: 18,
     damage: 20,
-    shootSpeed: 760,
-    passSpeed: 540,
+    shootSpeed: 1140,
+    passSpeed: 430,
     moveBonus: 0.34,
     gravity: 520,
     hitBounceX: 260,
@@ -268,6 +268,7 @@ class DodgeballGame {
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
     this.resetUnreachableOutfieldBall();
+    this.handlePassReceives();
     this.handleManualCatch(this.leftTeam);
     this.handleManualCatch(this.rightTeam);
     this.handleFriendlyMissedReceives(this.leftTeam);
@@ -291,7 +292,7 @@ class DodgeballGame {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
         if (holder.throwLockTimer <= 0) {
-          this.launchFromInput(holder, "shoot", this.rightTeam);
+          this.launchShootFromInput(holder);
         }
       }
       if (this.input.wasPressed("button1")) {
@@ -466,10 +467,18 @@ class DodgeballGame {
     this.queueThrow(actor, target, kind, aim);
   }
 
+  launchShootFromInput(actor) {
+    const selection = this.getShootSelection(actor);
+    this.queueThrow(actor, selection.target, "shoot", selection.aim);
+  }
+
   launchPassFromInput(actor) {
-    const target = this.getPassTarget(actor, this.input.current.moveX, this.input.current.moveY);
+    const moveX = this.input.current.moveX;
+    const moveY = this.input.current.moveY;
+    const target = this.getPassTarget(actor, moveX, moveY);
+    const hasDirection = Math.hypot(moveX, moveY) >= 0.35;
     const aim = target
-      ? this.normalizedVector(target.x - actor.x, target.y - actor.y)
+      ? (hasDirection ? this.normalizedVector(target.x - actor.x, target.y - actor.y) : { x: 0, y: 0 })
       : this.input.getAimVector(actor.team === "left" ? 1 : -1);
     if (this.queueThrow(actor, target, "pass", aim)) {
       if (target && target.team === "left") {
@@ -479,27 +488,34 @@ class DodgeballGame {
   }
 
   launchFromAi(actor, kind, candidates) {
-    const preferred = kind === "shoot" ? (actor.team === "left" ? 1 : -1) : (Math.random() > 0.5 ? 1 : -1);
-    const target = kind === "pass"
-      ? this.getNearestPassTarget(actor)
-      : this.findDirectionalTarget(actor, candidates, { x: preferred, y: 0 }, kind);
+    if (kind === "shoot") {
+      const aim = this.getDefaultShootAim(actor, candidates);
+      const target = this.findShootTargetInAim(actor, candidates, aim);
+      this.queueThrow(actor, target, kind, aim);
+      return;
+    }
+
+    const preferred = Math.random() > 0.5 ? 1 : -1;
+    const target = this.getNearestPassTarget(actor);
     this.queueThrow(actor, target, kind, { x: preferred, y: 0 });
   }
 
   queueThrow(actor, target, kind, aim) {
-    if (this.pendingThrow || !target || this.ball.owner !== actor || actor.defeated) return false;
+    if (this.pendingThrow || this.ball.owner !== actor || actor.defeated) return false;
+    if (!target && kind !== "shoot") return false;
 
     this.pendingThrow = {
       actor,
       target,
       kind,
       aim: { x: aim.x, y: aim.y },
-      timer: 0.2
+      timer: kind === "shoot" ? 0.38 : 0.2
     };
-    actor.markThrowing(0.4);
-    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.4);
+    const throwDuration = kind === "shoot" ? 0.68 : 0.4;
+    actor.markThrowing(throwDuration, kind);
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, throwDuration);
 
-    if (kind === "shoot" && target.team === "left" && actor.team === "right") {
+    if (kind === "shoot" && target && target.team === "left" && actor.team === "right") {
       this.controlledPlayerId = target.id;
       this.autoSwitchCooldown = 0.4;
       this.spawnEffect(target.x, target.y - 72, "#ffffff", "catch");
@@ -551,9 +567,113 @@ class DodgeballGame {
     return best || alive[0];
   }
 
+  getShootSelection(actor) {
+    const moveX = this.input.current.moveX;
+    const moveY = this.input.current.moveY;
+    const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
+    const defaultAim = this.getDefaultShootAim(actor, enemies);
+
+    if (Math.hypot(moveX, moveY) < 0.35) {
+      return {
+        target: this.findShootTargetInAim(actor, enemies, defaultAim),
+        aim: defaultAim
+      };
+    }
+
+    const aim = this.normalizedVector(moveX, moveY);
+    return {
+      target: this.findDirectionalTarget(actor, enemies, aim, "shoot"),
+      aim
+    };
+  }
+
+  getDefaultShootAim(actor, enemies) {
+    const innerEnemies = enemies.filter((p) => !p.defeated && p.role === "inner");
+    if (innerEnemies.length === 0) return { x: actor.team === "left" ? 1 : -1, y: 0 };
+    const centerX = innerEnemies.reduce((sum, p) => sum + p.x, 0) / innerEnemies.length;
+    const centerY = innerEnemies.reduce((sum, p) => sum + p.y, 0) / innerEnemies.length;
+    const dx = centerX - actor.x;
+    const dy = centerY - actor.y;
+    if (actor.role === "inner") {
+      const forward = actor.team === "left" ? 1 : -1;
+      return { x: forward, y: 0 };
+    }
+    return this.normalizedVector(dx, dy);
+  }
+
+  findShootTargetInAim(actor, candidates, aim) {
+    const alive = candidates.filter((p) => !p.defeated && p.role === "inner");
+    let best = null;
+    let bestScore = -Infinity;
+    for (const target of alive) {
+      const dx = target.x - actor.x;
+      const dy = target.y - actor.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const dot = (dx / length) * aim.x + (dy / length) * aim.y;
+      if (dot < 0.34) continue;
+
+      const distanceScore = Math.max(0, 1 - length / 1300);
+      const score = dot * 2 + distanceScore;
+      if (score > bestScore) {
+        best = target;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  findForwardShootTarget(actor, candidates, forward) {
+    const alive = candidates.filter((p) => !p.defeated && p.role === "inner");
+    let best = null;
+    let bestScore = -Infinity;
+    for (const target of alive) {
+      const dx = target.x - actor.x;
+      const dy = target.y - actor.y;
+      const inFront = dx * forward;
+      if (inFront <= 0) continue;
+      if (Math.abs(dy) > 250) continue;
+
+      const laneScore = Math.max(0, 1 - Math.abs(dy) / 260);
+      const distanceScore = Math.max(0, 1 - inFront / 1200);
+      const score = laneScore * 2 + distanceScore;
+      if (score > bestScore) {
+        best = target;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  findVerticalShootTarget(actor, candidates, forward, vertical) {
+    const alive = candidates.filter((p) => !p.defeated && p.role === "inner");
+    let best = null;
+    let bestScore = -Infinity;
+    for (const target of alive) {
+      const dx = target.x - actor.x;
+      const dy = target.y - actor.y;
+      const verticalDistance = dy * vertical;
+      if (verticalDistance <= 0) continue;
+
+      const frontBonus = dx * forward > 0 ? 0.65 : -0.2;
+      const verticalScore = Math.max(0, 1 - Math.abs(dx) / 1000);
+      const distanceScore = Math.max(0, 1 - Math.hypot(dx, dy) / 1400);
+      const score = verticalScore * 1.4 + distanceScore + frontBonus;
+      if (score > bestScore) {
+        best = target;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   getCurrentPassTarget() {
     if (!this.ball.owner || this.ball.owner.team !== "left") return null;
     return this.getPassTarget(this.ball.owner, this.input.current.moveX, this.input.current.moveY);
+  }
+
+  getCurrentShootTarget() {
+    if (!this.ball.owner || this.ball.owner.team !== "left") return null;
+    return this.getShootSelection(this.ball.owner).target;
   }
 
   getPassTarget(actor, moveX, moveY) {
@@ -628,8 +748,13 @@ class DodgeballGame {
       this.ball.drop();
       return;
     }
-    const distance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
-    if (distance < this.ball.radius + 34 && this.ball.z < target.jumpZ + 86) {
+    const catchX = target.x;
+    const catchY = target.y - target.jumpZ - 130;
+    const ballY = this.ball.y - this.ball.z;
+    const visualDistance = Math.hypot(this.ball.x - catchX, ballY - catchY);
+    const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.9;
+    if (nearEndOfArc && visualDistance < this.ball.radius + 46) {
+      target.startCatch(0.34);
       this.ball.pickUp(target);
       if (target.team === "left") this.controlledPlayerId = target.id;
       this.spawnEffect(target.x, target.y - 55, "#ffffff", "catch");
@@ -644,7 +769,7 @@ class DodgeballGame {
     if (target.defeated || target.catchTimer > 0) return;
 
     const distance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
-    if (distance < this.ball.radius + 34 && this.ball.z < target.jumpZ + 78) {
+    if (distance < this.ball.radius + 30 && this.ball.z < target.jumpZ + 58) {
       this.ball.vx = (Math.random() - 0.5) * 170;
       this.ball.vy = 120 + Math.random() * 130;
       this.ball.vz = 90;
@@ -930,6 +1055,7 @@ class DodgeballGame {
 
     const active = this.getPlayerControlledMember();
     const passTarget = this.getCurrentPassTarget();
+    const shootTarget = this.getCurrentShootTarget();
     const drawables = [...this.players, this.ball].sort((a, b) => {
       const ay = a instanceof Ball ? a.y : a.y;
       const by = b instanceof Ball ? b.y : b.y;
@@ -940,7 +1066,7 @@ class DodgeballGame {
       if (item instanceof Ball) {
         item.draw(context, DEBUG_MODE);
       } else {
-        item.draw(context, GAME_CONFIG.battle, DEBUG_MODE, item === active, item === passTarget);
+        item.draw(context, GAME_CONFIG.battle, DEBUG_MODE, item === active, item === passTarget, item === shootTarget);
       }
     }
 

@@ -22,6 +22,8 @@ class Ball {
     this.catchable = false;
     this.hasBounced = false;
     this.spin = 0;
+    this.passTime = 0;
+    this.passDuration = 0;
   }
 
   update(delta, bounds) {
@@ -32,14 +34,21 @@ class Ball {
       return;
     }
 
+    if (this.isFlying && this.kind === "pass" && this.target && !this.target.defeated) {
+      this.passTime += delta;
+      this.adjustPassTrajectory(delta);
+    }
+
     this.x += this.vx * delta;
     this.y += this.vy * delta;
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
 
     if (this.isFlying) {
-      this.vx *= Math.pow(0.994, delta * 60);
-      this.vy *= Math.pow(0.994, delta * 60);
+      if (this.kind !== "pass") {
+        this.vx *= Math.pow(0.994, delta * 60);
+        this.vy *= Math.pow(0.994, delta * 60);
+      }
       this.vz -= this.config.gravity * delta;
     } else {
       this.vx *= Math.pow(0.80, delta * 60);
@@ -98,11 +107,13 @@ class Ball {
     this.vx = 0;
     this.vy = 0;
     this.vz = 0;
+    this.passTime = 0;
+    this.passDuration = 0;
     player.hasBall = true;
   }
 
   launch(actor, target, kind, aimVector) {
-    if (!target || actor.defeated) return false;
+    if ((kind !== "shoot" && !target) || actor.defeated) return false;
 
     actor.hasBall = false;
     this.owner = null;
@@ -117,18 +128,58 @@ class Ball {
     this.x = actor.x + actor.facing * 42;
     this.y = actor.y - 42;
     this.z = actor.jumpZ + 28;
+    this.passTime = 0;
+    this.passDuration = 0;
 
-    const leadX = kind === "shoot" ? target.vx * 0.12 : 0;
-    const leadY = kind === "shoot" ? target.vy * 0.12 : 0;
-    const dx = target.x + leadX - this.x + aimVector.x * 22;
-    const dy = target.y - 34 + leadY - this.y + aimVector.y * 22;
+    if (kind === "pass") {
+      this.launchPassArc(actor, target);
+      return true;
+    }
+
+    const leadX = kind === "shoot" && target ? target.vx * 0.12 : 0;
+    const leadY = kind === "shoot" && target ? target.vy * 0.12 : 0;
+    const targetX = target ? target.x + leadX : this.x + aimVector.x * 900;
+    const targetY = target ? target.y - 34 + leadY : this.y + aimVector.y * 900;
+    const aimNudge = target ? 22 : 0;
+    const dx = targetX - this.x + aimVector.x * aimNudge;
+    const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
     const speed = kind === "shoot" ? this.config.shootSpeed : this.config.passSpeed;
+    const moveBonus = kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
-    this.vx = (dx / length) * speed + actor.vx * this.config.moveBonus;
-    this.vy = (dy / length) * speed + actor.vy * this.config.moveBonus;
-    this.vz = kind === "shoot" ? 120 + actor.jumpZ * 0.3 : 420 + actor.jumpZ * 0.15;
+    this.vx = (dx / length) * speed + actor.vx * moveBonus;
+    this.vy = (dy / length) * speed + actor.vy * moveBonus;
+    this.vz = kind === "shoot" ? 120 + actor.jumpZ * 0.3 : 650 + actor.jumpZ * 0.15;
     return true;
+  }
+
+  launchPassArc(actor, target) {
+    const catchPoint = this.getPassCatchPoint(target);
+    const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
+    this.passDuration = Math.max(0.72, Math.min(1.28, distance / Math.max(1, this.config.passSpeed)));
+    this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
+    this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
+    this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
+  }
+
+  adjustPassTrajectory(delta) {
+    const remaining = Math.max(0.08, this.passDuration - this.passTime);
+    const catchPoint = this.getPassCatchPoint(this.target);
+    const desiredVx = (catchPoint.x - this.x) / remaining;
+    const desiredVy = (catchPoint.y - this.y) / remaining;
+    const desiredVz = (catchPoint.z - this.z + 0.5 * this.config.gravity * remaining * remaining) / remaining;
+    const follow = Math.min(1, delta * 5.5);
+    this.vx += (desiredVx - this.vx) * follow;
+    this.vy += (desiredVy - this.vy) * follow;
+    this.vz += (desiredVz - this.vz) * follow;
+  }
+
+  getPassCatchPoint(target) {
+    return {
+      x: target.x,
+      y: target.y - 34,
+      z: target.jumpZ + 96
+    };
   }
 
   bounceFromHit(direction) {
@@ -143,6 +194,8 @@ class Ball {
     this.vx = direction * this.config.hitBounceX;
     this.vy = (Math.random() - 0.5) * this.config.hitBounceY;
     this.vz = 180;
+    this.passTime = 0;
+    this.passDuration = 0;
   }
 
   drop() {
@@ -155,6 +208,8 @@ class Ball {
     this.isLoose = true;
     this.catchable = false;
     this.hasBounced = true;
+    this.passTime = 0;
+    this.passDuration = 0;
   }
 
   canBePickedUpBy(player, distance) {
