@@ -11,8 +11,10 @@ const GAME_CONFIG = {
     centerX: 920
   },
   view: {
-    marginX: 230,
-    followLerp: 0.12
+    paddingX: 20,
+    paddingY: 12,
+    worldTop: 0,
+    worldBottomPadding: 32
   },
   player: {
     maxHp: 100,
@@ -54,7 +56,6 @@ class DodgeballGame {
     this.input = new InputManager();
     this.state = "title";
     this.previousTime = 0;
-    this.cameraX = 0;
     this.autoSwitchCooldown = 0;
     this.rightStickSwitchCooldown = 0;
     this.manualSwitchGrace = 0;
@@ -84,7 +85,6 @@ class DodgeballGame {
     });
     this.effects = [];
     this.message = "READY";
-    this.cameraX = this.clampCamera(court.centerX - GAME_CONFIG.width / 2);
     this.autoSwitchCooldown = 0;
     this.rightStickSwitchCooldown = 0;
     this.manualSwitchGrace = 0;
@@ -275,7 +275,6 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
     this.checkGameOver();
-    this.updateCamera();
   }
 
   handlePlayerButtons() {
@@ -847,15 +846,26 @@ class DodgeballGame {
     }
   }
 
-  updateCamera() {
-    const focus = this.ball.owner || this.ball;
-    const target = this.clampCamera(focus.x - GAME_CONFIG.width * 0.52);
-    this.cameraX += (target - this.cameraX) * GAME_CONFIG.view.followLerp;
-  }
+  getFullCourtView() {
+    const c = GAME_CONFIG.court;
+    const rects = [c, ...Object.values(this.areas)];
+    const minX = Math.min(...rects.map((rect) => rect.x)) - 24;
+    const maxX = Math.max(...rects.map((rect) => rect.x + rect.w)) + 24;
+    const minY = GAME_CONFIG.view.worldTop;
+    const maxY = Math.max(...rects.map((rect) => rect.y + rect.h)) + GAME_CONFIG.view.worldBottomPadding;
+    const worldWidth = maxX - minX;
+    const worldHeight = maxY - minY;
+    const availableWidth = GAME_CONFIG.width - GAME_CONFIG.view.paddingX * 2;
+    const availableHeight = GAME_CONFIG.height - GAME_CONFIG.view.paddingY * 2;
+    const scale = Math.min(availableWidth / worldWidth, availableHeight / worldHeight);
 
-  clampCamera(x) {
-    const maxX = Math.max(0, GAME_CONFIG.court.x + GAME_CONFIG.court.w - GAME_CONFIG.width + GAME_CONFIG.view.marginX);
-    return Math.max(0, Math.min(maxX, x));
+    return {
+      x: minX,
+      y: minY,
+      scale,
+      offsetX: (GAME_CONFIG.width - worldWidth * scale) * 0.5,
+      offsetY: (GAME_CONFIG.height - worldHeight * scale) * 0.5
+    };
   }
 
   getPlayerControlledMember() {
@@ -1048,8 +1058,14 @@ class DodgeballGame {
   draw() {
     const context = this.context;
     context.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    context.fillStyle = "#65b7f0";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+
+    const view = this.getFullCourtView();
     context.save();
-    context.translate(-this.cameraX, 0);
+    context.translate(view.offsetX, view.offsetY);
+    context.scale(view.scale, view.scale);
+    context.translate(-view.x, -view.y);
     this.drawBackground();
     this.drawCourt();
 
