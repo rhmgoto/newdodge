@@ -36,8 +36,6 @@ const GAME_CONFIG = {
     catchDuration: 0.25,
     catchWidth: 74,
     catchHeight: 92,
-    rollDuration: 0.38,
-    rollSpeed: 650,
     duckDuration: 0.48,
     invincibleTime: 1,
     knockbackSpeed: 410,
@@ -53,7 +51,6 @@ const GAME_CONFIG = {
     depthBottom: 720,
     stamina: {
       shootCost: 18,
-      rollCost: 24,
       duckCost: 14,
       dashDrainPerSecond: 38,
       recoveryPerSecond: 24,
@@ -301,7 +298,7 @@ class DodgeballGame {
     }
 
     if (this.input.wasPressed("avoid")) {
-      active.startDodge(this.input.current.moveX, this.input.current.moveY, GAME_CONFIG.battle);
+      active.startDodge(0, 0, GAME_CONFIG.battle);
     }
 
     if (selfTeamHasBall) {
@@ -327,7 +324,7 @@ class DodgeballGame {
     for (const member of this.rightTeam) {
       const command = this.cpuController.getCommand(member);
       if (command.catch) member.startCatch(GAME_CONFIG.battle.catchDuration);
-      if (command.crouch) member.startDodge(command.moveX, command.moveY, GAME_CONFIG.battle);
+      if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.shoot && this.ball.owner === member) {
         this.launchFromAi(member, "shoot", this.leftTeam);
