@@ -56,7 +56,7 @@ const GAME_CONFIG = {
       rollCost: 24,
       duckCost: 14,
       dashDrainPerSecond: 38,
-      recoveryPerSecond: 24,
+      recoveryPerSecond: 48,
       recoveryDelay: 0.7
     }
   }
@@ -281,9 +281,9 @@ class DodgeballGame {
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
     this.resetUnreachableOutfieldBall();
-    this.handlePassReceives();
     this.handleManualCatch(this.leftTeam);
     this.handleManualCatch(this.rightTeam);
+    this.handlePassReceives();
     this.handleFriendlyMissedReceives(this.leftTeam);
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
@@ -509,9 +509,11 @@ class DodgeballGame {
       return;
     }
 
-    const preferred = Math.random() > 0.5 ? 1 : -1;
-    const target = this.getNearestPassTarget(actor);
-    this.queueThrow(actor, target, kind, { x: preferred, y: 0 });
+    const target = this.getCpuPassTarget(actor);
+    const aim = target
+      ? this.normalizedVector(target.x - actor.x, target.y - actor.y)
+      : this.getDefaultShootAim(actor, actor.team === "left" ? this.rightTeam : this.leftTeam);
+    this.queueThrow(actor, target, kind, aim);
   }
 
   queueThrow(actor, target, kind, aim) {
@@ -741,6 +743,31 @@ class DodgeballGame {
     return this.getNearestFrom(actor, team.filter((p) => p !== actor && !p.defeated));
   }
 
+  getCpuPassTarget(actor) {
+    const team = actor.team === "left" ? this.leftTeam : this.rightTeam;
+    const candidates = team.filter((p) => p !== actor && !p.defeated);
+    if (candidates.length === 0) return null;
+
+    const enemyCenterX = actor.team === "left"
+      ? this.areas.rightInner.x + this.areas.rightInner.w * 0.5
+      : this.areas.leftInner.x + this.areas.leftInner.w * 0.5;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+      const distance = Math.hypot(candidate.x - actor.x, candidate.y - actor.y);
+      const closerToEnemy = -Math.abs(candidate.x - enemyCenterX);
+      const outfieldBonus = candidate.role === "out" ? 180 : 0;
+      const sameLaneBonus = Math.max(0, 180 - Math.abs(candidate.y - actor.y));
+      const score = closerToEnemy * 0.25 - distance * 0.18 + outfieldBonus + sameLaneBonus;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   getNearestFrom(actor, candidates) {
     let best = null;
     let bestDistance = Infinity;
@@ -804,6 +831,7 @@ class DodgeballGame {
       const friendly = catcher.team === this.ball.thrower.team;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
+      if (!this.canManualCatch(catcher, friendly)) continue;
 
       this.ball.pickUp(catcher);
       catcher.throwLockTimer = 0.2;
@@ -814,11 +842,45 @@ class DodgeballGame {
     }
   }
 
+  canManualCatch(catcher, friendly) {
+    if (this.ball.kind === "pass") {
+      return true;
+    }
+
+    if (this.ball.kind !== "shoot") {
+      return friendly;
+    }
+
+    const thrower = this.ball.thrower;
+    const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
+    const facingIncoming = this.isFacingIncomingBall(catcher);
+    const timing = Math.max(0, 1 - Math.abs(this.ball.x - catcher.x) / 150);
+    const distanceFactor = Math.max(0.22, Math.min(1, throwDistance / 760));
+    const facingFactor = facingIncoming ? 1 : 0.08;
+    const chance = Math.max(0.03, Math.min(0.92, (0.22 + timing * 0.58) * distanceFactor * facingFactor));
+    if (Math.random() <= chance) return true;
+
+    catcher.catchTimer = 0;
+    this.spawnEffect(catcher.x, catcher.y - 66, "#ffb09a", "pass");
+    return false;
+  }
+
+  isFacingIncomingBall(catcher) {
+    const horizontal = Math.abs(this.ball.vx) >= Math.abs(this.ball.vy);
+    if (horizontal) {
+      return catcher.facing === (this.ball.vx < 0 ? 1 : -1);
+    }
+    if (this.ball.vy < 0) return catcher.visualDirection === "down";
+    return catcher.visualDirection === "up";
+  }
+
   getCatchArea(catcher, friendly) {
     const box = catcher.getCatchBox(GAME_CONFIG.battle);
-    if (!friendly) return box;
-    const inflateX = 96;
-    const inflateY = 76;
+    const isPassCut = this.ball.kind === "pass" && this.ball.thrower && this.ball.thrower.team !== catcher.team;
+    if (!friendly && !isPassCut) return box;
+    const jumpBonus = catcher.jumpZ > 0 ? 72 : 0;
+    const inflateX = isPassCut ? 118 : 96;
+    const inflateY = (isPassCut ? 106 : 76) + jumpBonus;
     return {
       x: box.x - inflateX,
       y: box.y - inflateY,
