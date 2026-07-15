@@ -51,10 +51,7 @@ class Player {
     this.throwKind = "none";
     this.throwLockTimer = 0;
     this.dodgeTimer = 0;
-    this.dodgeDuration = 0;
     this.dodgeType = "none";
-    this.dodgeVx = 0;
-    this.dodgeVy = 0;
     this.downTimer = 0;
     this.leaveTimer = 0;
     this.jumpZ = 0;
@@ -85,8 +82,6 @@ class Player {
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
-      this.dodgeVx = 0;
-      this.dodgeVy = 0;
     }
 
     if (this.defeated) {
@@ -113,7 +108,7 @@ class Player {
     const moving = Math.hypot(moveX, moveY) > 0.08;
     if (controls.lockFacing || !moving) {
       this.cancelPendingTurn();
-    } else if (moving && this.dodgeType !== "roll") {
+    } else if (moving) {
       this.requestVisualDirection(moveX, moveY, config.turnDuration);
     }
 
@@ -125,16 +120,11 @@ class Player {
       this.stamina = Math.min(this.maxStamina, this.stamina + config.stamina.recoveryPerSecond * delta);
     }
 
-    if (this.dodgeType === "roll" && this.dodgeTimer > 0) {
-      this.vx = this.dodgeVx;
-      this.vy = this.dodgeVy;
-    } else {
-      const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
-      const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
-      const speed = this.speed * (this.isDashing ? config.dashSpeedMultiplier : 1) * duckSlow * turnSlow;
-      this.vx = (moveX / length) * speed;
-      this.vy = (moveY / length) * speed;
-    }
+    const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
+    const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
+    const speed = this.speed * (this.isDashing ? config.dashSpeedMultiplier : 1) * duckSlow * turnSlow;
+    this.vx = (moveX / length) * speed;
+    this.vy = (moveY / length) * speed;
 
     this.x += this.vx * delta;
     this.y += this.vy * delta;
@@ -155,7 +145,7 @@ class Player {
     } else if (this.catchTimer > 0) {
       this.state = "catching";
     } else if (this.dodgeTimer > 0) {
-      this.state = this.dodgeType === "roll" ? "rolling" : "dodging";
+      this.state = "dodging";
     } else if (Math.abs(moveX) > 0.05 || Math.abs(moveY) > 0.05) {
       this.state = "run";
     } else if (this.hasBall) {
@@ -190,23 +180,12 @@ class Player {
 
   startDodge(moveX, moveY, config) {
     if (this.defeated || this.downTimer > 0 || this.dodgeTimer > 0) return false;
-    const length = Math.hypot(moveX, moveY);
-    const isRoll = length >= 0.35;
-    const cost = isRoll ? config.stamina.rollCost : config.stamina.duckCost;
+    const cost = config.stamina.duckCost;
     if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
 
-    this.dodgeType = isRoll ? "roll" : "duck";
-    this.dodgeDuration = isRoll ? config.rollDuration : config.duckDuration;
-    this.dodgeTimer = this.dodgeDuration;
-    if (isRoll) {
-      const nx = moveX / length;
-      const ny = moveY / length;
-      this.dodgeVx = nx * config.rollSpeed;
-      this.dodgeVy = ny * config.rollSpeed;
-      this.applyVisualDirection(this.getMoveDirection(moveX, moveY));
-      this.cancelPendingTurn();
-    }
-    this.state = isRoll ? "rolling" : "dodging";
+    this.dodgeType = "duck";
+    this.dodgeTimer = config.duckDuration;
+    this.state = "dodging";
     return true;
   }
 
@@ -423,8 +402,7 @@ class Player {
   drawModelCharacter(context, scale, drawY, motionTime, config) {
     const colors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 1 : 0;
-    const rolling = this.dodgeType === "roll" && this.dodgeTimer > 0;
-    const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !rolling && !crouch;
+    const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !crouch;
     const runAmount = movingOnFoot ? (this.isDashing ? 1.45 : 1) : 0;
     const cadence = this.isDashing ? 44 : 85;
     const stride = Math.sin(motionTime / cadence + this.x * 0.025 + this.y * 0.012) * runAmount;
@@ -535,17 +513,6 @@ class Player {
     context.scale(scale * (verticalView ? 1 : this.facing), scale);
     if (verticalView) {
       context.scale(0.9, 1);
-    }
-    if (rolling) {
-      const progress = 1 - this.dodgeTimer / Math.max(0.01, this.dodgeDuration);
-      const rotationDirection = Math.abs(this.dodgeVx) > 1 ? Math.sign(this.dodgeVx) : Math.sign(this.dodgeVy) || 1;
-      const fallProgress = Math.min(1, progress / 0.28);
-      const groundRollProgress = Math.max(0, (progress - 0.28) / 0.72);
-      const rotation = fallProgress * Math.PI * 0.5 + groundRollProgress * Math.PI * 1.5;
-      context.translate(0, 18);
-      context.rotate(rotation * rotationDirection);
-      context.translate(0, -18);
-      context.scale(0.9, 0.9);
     }
     if (down) {
       context.rotate(-0.92);
@@ -753,8 +720,7 @@ class Player {
 
   getVisualTop() {
     const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
-    const rolling = this.dodgeType === "roll" && this.dodgeTimer > 0;
-    const visualHeight = ducking ? 105 : rolling ? 132 : 158;
+    const visualHeight = ducking ? 105 : 158;
     return this.y - this.jumpZ - visualHeight * (this.lastDrawScale || 1);
   }
 

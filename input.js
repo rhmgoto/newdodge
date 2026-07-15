@@ -2,12 +2,13 @@ class InputManager {
   constructor() {
     // ボタン割り当てはここを変更する。番号は画面右下の表示で確認できる。
     this.gamepadMap = {
-      button1: 7, // パス
-      button2: 5, // シュート
-      catch: 5, // キャッチ
+      button1: 0, // パス
+      button2: 2, // シュート
+      catch: 2, // キャッチ
       button3: 3, // ジャンプ
       button4: 4, // 向き固定
-      avoid: 1, // 回避 / 押しながら移動でダッシュ
+      avoid: 1, // しゃがみ回避
+      dash: 5, // 押しながら移動でダッシュ
       pause: 9
     };
 
@@ -77,7 +78,7 @@ class InputManager {
       button3: keyboard.button3 || gamepad.button3,
       button4: keyboard.button4 || gamepad.button4,
       avoid: keyboard.avoid || gamepad.avoid,
-      dash: keyboard.dash || gamepad.avoid || this.isDoubleTapDashHeld(),
+      dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
       pause: keyboard.pause || gamepad.pause
     };
   }
@@ -141,7 +142,7 @@ class InputManager {
       button3: this.isPressed(pad.buttons[this.gamepadMap.button3]),
       button4: this.isPressed(pad.buttons[this.gamepadMap.button4]),
       avoid: this.isPressed(pad.buttons[this.gamepadMap.avoid]),
-      dash: false,
+      dash: this.isPressed(pad.buttons[this.gamepadMap.dash]),
       pause: this.isPressed(pad.buttons[this.gamepadMap.pause])
     };
   }
