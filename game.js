@@ -690,6 +690,13 @@ class DodgeballGame {
 
   getCurrentShootTarget() {
     if (!this.ball.owner || this.ball.owner.team !== "left") return null;
+    if (
+      this.pendingThrow &&
+      this.pendingThrow.kind === "shoot" &&
+      this.pendingThrow.actor === this.ball.owner
+    ) {
+      return this.pendingThrow.target;
+    }
     return this.getShootSelection(this.ball.owner).target;
   }
 

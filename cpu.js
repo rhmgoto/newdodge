@@ -9,6 +9,7 @@ class CPUController {
     this.throwTimer = 0.35;
     this.reactionTimer = this.randomReaction();
     this.holderPlan = null;
+    this.currentHolderId = null;
   }
 
   update(delta) {
@@ -40,6 +41,13 @@ class CPUController {
   makeDecision() {
     const holder = this.ball.owner;
     const cpuHolder = holder && holder.team === "right" ? holder : null;
+    if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
+      this.currentHolderId = cpuHolder.id;
+      this.holderPlan = null;
+      this.throwTimer = Math.max(this.throwTimer, 0.85 + Math.random() * 0.45);
+    } else if (!cpuHolder) {
+      this.currentHolderId = null;
+    }
 
     for (const member of this.team) {
       const command = this.commands.get(member.id);
@@ -212,9 +220,11 @@ class CPUController {
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       if (distance > 280) continue;
 
-      if (distance < 150 && Math.random() < this.config.cpuCatchChance) {
+      const frontShot = this.isFrontShot(member);
+      const laneThreat = Math.abs(this.ball.y - member.y) < 90;
+      if (frontShot && distance < 185 && Math.random() < this.config.cpuCatchChance * 1.25) {
         command.catch = true;
-      } else if (Math.abs(this.ball.y - member.y) < 90) {
+      } else if (laneThreat) {
         command.moveY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
         command.moveX = -0.25;
         command.dash = true;
@@ -222,6 +232,15 @@ class CPUController {
     }
 
     this.reactionTimer = this.randomReaction();
+  }
+
+  isFrontShot(member) {
+    const horizontal = Math.abs(this.ball.vx) >= Math.abs(this.ball.vy);
+    if (horizontal) {
+      return member.facing === (this.ball.vx < 0 ? 1 : -1);
+    }
+    if (this.ball.vy < 0) return member.visualDirection === "down";
+    return member.visualDirection === "up";
   }
 
   reactToFriendlyBall() {
@@ -245,11 +264,15 @@ class CPUController {
 
     for (const member of this.team.filter((p) => !p.defeated)) {
       const command = this.commands.get(member.id);
-      const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
-      if (distance > 180) continue;
-      this.moveToward(command, member, this.ball.x, this.ball.y);
+      const ballY = this.ball.y - this.ball.z;
+      const handX = member.x + member.facing * 45;
+      const handY = member.y - member.jumpZ - 72;
+      const handDistance = Math.hypot(this.ball.x - handX, ballY - handY);
+      const bodyDistance = Math.hypot(this.ball.x - member.x, ballY - (member.y - 58));
+      const ballInFront = (this.ball.x - member.x) * member.facing > 0;
+      if (!ballInFront || handDistance > 78 || bodyDistance > 118) continue;
       command.catch = true;
-      if (this.ball.z > 70 && member.jumpZ <= 0 && member.jumpVelocity <= 0) command.jump = true;
+      if (this.ball.z > 82 && handDistance < 68 && member.jumpZ <= 0 && member.jumpVelocity <= 0) command.jump = true;
     }
   }
 

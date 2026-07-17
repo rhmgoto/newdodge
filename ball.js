@@ -136,16 +136,16 @@ class Ball {
       return true;
     }
 
-    const leadX = kind === "shoot" && target ? target.vx * 0.12 : 0;
-    const leadY = kind === "shoot" && target ? target.vy * 0.12 : 0;
+    const leadX = kind === "shoot" && target ? target.vx * 0.06 : 0;
+    const leadY = kind === "shoot" && target ? target.vy * 0.06 : 0;
     const targetX = target ? target.x + leadX : this.x + aimVector.x * 900;
     const targetY = target ? target.y - 34 + leadY : this.y + aimVector.y * 900;
-    const aimNudge = target ? 22 : 0;
+    const aimNudge = target && kind !== "shoot" ? 22 : 0;
     const dx = targetX - this.x + aimVector.x * aimNudge;
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
     const speed = kind === "shoot" ? this.config.shootSpeed : this.config.passSpeed;
-    const moveBonus = kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
+    const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.15 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
