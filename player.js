@@ -20,6 +20,37 @@ const DEFAULT_PLAYER_STATS = {
   technique: 5
 };
 
+const CHARACTER_TYPES = {
+  normal: {
+    label: "通常",
+    scaleX: 1,
+    scaleY: 1,
+    torsoX: 1,
+    torsoY: 1
+  },
+  power: {
+    label: "パワー",
+    scaleX: 1.16,
+    scaleY: 1.14,
+    torsoX: 1.2,
+    torsoY: 1.08
+  },
+  speed: {
+    label: "スピード",
+    scaleX: 0.86,
+    scaleY: 1.1,
+    torsoX: 0.82,
+    torsoY: 1.04
+  },
+  jump: {
+    label: "ジャンプ",
+    scaleX: 0.9,
+    scaleY: 0.88,
+    torsoX: 0.88,
+    torsoY: 0.92
+  }
+};
+
 class Player {
   constructor(options) {
     this.id = options.id;
@@ -32,6 +63,7 @@ class Player {
     this.homeX = options.x;
     this.homeY = options.y;
     this.radius = options.radius || 24;
+    this.characterType = options.characterType || "normal";
     this.stats = this.createStats(options.stats);
     this.maxHp = options.maxHp || 100;
     this.hp = this.maxHp;
@@ -447,6 +479,7 @@ class Player {
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
     const colors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
+    const body = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 1 : 0;
     const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !crouch;
     const runAmount = movingOnFoot ? (this.isDashing ? 1.45 : 1) : 0;
@@ -556,7 +589,7 @@ class Player {
     context.save();
     context.translate(this.x, drawY);
     const verticalView = this.visualDirection === "up" || this.visualDirection === "down";
-    context.scale(scale * (verticalView ? 1 : this.facing), scale);
+    context.scale(scale * body.scaleX * (verticalView ? 1 : this.facing), scale * body.scaleY);
     if (verticalView) {
       context.scale(0.9, 1);
     }
@@ -571,7 +604,7 @@ class Player {
     this.drawModelLimb(context, pose.backArm, PLAYER_MODEL.skinShade, 9);
     this.drawModelFoot(context, pose.backLeg[2], colors.suit);
 
-    this.drawModelTorso(context, 0, torsoY, colors);
+    this.drawModelTorso(context, 0, torsoY, colors, body);
 
     this.drawModelLimb(context, pose.frontLeg, colors.suit, 12);
     this.drawModelFoot(context, pose.frontLeg[2], colors.suit);
@@ -590,10 +623,10 @@ class Player {
     context.restore();
   }
 
-  drawModelTorso(context, x, y, colors) {
+  drawModelTorso(context, x, y, colors, body = CHARACTER_TYPES.normal) {
     context.fillStyle = colors.suit;
     context.beginPath();
-    context.ellipse(x, y, 27, 38, 0, 0, Math.PI * 2);
+    context.ellipse(x, y, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
   }
 
