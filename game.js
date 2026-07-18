@@ -1,5 +1,5 @@
 const DEBUG_MODE = false;
-const SHOW_HITBOXES = true;
+const SHOW_HITBOXES = false;
 
 const GAME_CONFIG = {
   width: 1280,
@@ -361,6 +361,7 @@ class DodgeballGame {
   updateTeamSelectCursor(side, playerIndex) {
     const moved = this.moveTeamSelectCursor(side, this.teamSelectionSlots[side], playerIndex, true);
     this.teamSelectionSlots[side] = moved.slot;
+    const slot = moved.slot;
 
     if (this.input.wasPressed("button2", playerIndex) && slot < 6) {
       this.changeSelectedCharacterType(side, slot, 1);
@@ -1294,14 +1295,18 @@ class DodgeballGame {
       if (!this.canManualCatch(catcher, friendly)) continue;
 
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
+      const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
       this.ball.pickUp(catcher);
       if (caughtFriendlyPassInAir) {
         catcher.aerialPassCatchTimer = 1.1;
       }
+      if (caughtEnemyShot) {
+        catcher.startCatchSuccess();
+      }
       catcher.throwLockTimer = 0.2;
       catcher.catchTimer = 0;
       if (catcher.team === "left") this.controlledPlayerId = catcher.id;
-      this.spawnEffect(catcher.x, catcher.y - 55, "#ffffff", "catch");
+      this.spawnEffect(catcher.x, catcher.y - 55, caughtEnemyShot ? "#8fffe8" : "#ffffff", caughtEnemyShot ? "catchStrong" : "catch");
       break;
     }
   }
@@ -1367,6 +1372,7 @@ class DodgeballGame {
       const damaged = target.takeDamage(this.ball.power, direction, GAME_CONFIG.battle);
       if (damaged) {
         this.spawnEffect(this.ball.x, ballY, "#ffe46a", "hit");
+        this.spawnDamageNumber(target, this.ball.power);
         this.ball.bounceFromHit(-direction, this.ball.power / 20);
       }
       break;
@@ -1599,6 +1605,18 @@ class DodgeballGame {
     this.effects.push({ x, y, color, type, life: 0.32, maxLife: 0.32 });
   }
 
+  spawnDamageNumber(target, amount) {
+    this.effects.push({
+      x: target.x + target.facing * -34,
+      y: target.y - target.jumpZ - 92,
+      color: "#ff3d2f",
+      type: "damageNumber",
+      text: `-${Math.round(amount)}`,
+      life: 0.75,
+      maxLife: 0.75
+    });
+  }
+
   updateEffects(delta) {
     this.effects = this.effects.filter((effect) => {
       effect.life -= delta;
@@ -1631,6 +1649,7 @@ class DodgeballGame {
     this.drawCourt();
 
     const active = this.getPlayerControlledMember();
+    const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
     const passTarget = this.getCurrentPassTarget();
     const shootTarget = this.getCurrentShootTarget();
     const drawables = [...this.players, this.ball].sort((a, b) => {
@@ -1648,6 +1667,7 @@ class DodgeballGame {
     }
 
     this.drawEffects();
+    this.drawChargeEffect();
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
@@ -2022,25 +2042,79 @@ class DodgeballGame {
     const context = this.context;
     for (const effect of this.effects) {
       const progress = 1 - effect.life / effect.maxLife;
+      if (effect.type === "damageNumber") {
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.textAlign = "center";
+        context.font = "bold 28px Meiryo, sans-serif";
+        context.lineWidth = 5;
+        context.strokeStyle = "rgba(38, 50, 65, 0.86)";
+        context.fillStyle = effect.color;
+        context.strokeText(effect.text, effect.x, effect.y - progress * 42);
+        context.fillText(effect.text, effect.x, effect.y - progress * 42);
+        context.restore();
+        continue;
+      }
       const radius = effect.type === "hit" ? 22 + progress * 58 : 24 + progress * 24;
       context.save();
       context.globalAlpha = 1 - progress;
       context.strokeStyle = effect.color;
-      context.lineWidth = effect.type === "hit" ? 7 : 4;
+      context.lineWidth = effect.type === "hit" || effect.type === "catchStrong" ? 7 : 4;
       context.beginPath();
       context.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
       context.stroke();
-      if (effect.type === "hit") {
-        for (let i = 0; i < 8; i += 1) {
-          const angle = (Math.PI * 2 * i) / 8;
+      if (effect.type === "hit" || effect.type === "catchStrong") {
+        const count = effect.type === "catchStrong" ? 12 : 8;
+        for (let i = 0; i < count; i += 1) {
+          const angle = (Math.PI * 2 * i) / count;
           context.beginPath();
-          context.moveTo(effect.x, effect.y);
+          const inner = effect.type === "catchStrong" ? radius * 0.55 : 0;
+          context.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
           context.lineTo(effect.x + Math.cos(angle) * radius, effect.y + Math.sin(angle) * radius);
           context.stroke();
         }
       }
       context.restore();
     }
+  }
+
+  drawChargeEffect() {
+    if (!this.chargingThrow || this.chargingThrow.kind !== "shoot") return;
+    const charged = this.chargingThrow;
+    const actor = charged.actor;
+    if (!actor || actor.defeated) return;
+
+    const context = this.context;
+    const ratio = Math.min(1, charged.chargeTime / 2);
+    const pulse = 0.5 + Math.sin(performance.now() / 75) * 0.5;
+    const x = actor.x + actor.facing * 18;
+    const y = actor.y - actor.jumpZ - 62;
+    const radius = 34 + ratio * 34 + pulse * 7;
+
+    context.save();
+    context.globalAlpha = 0.58 + ratio * 0.3;
+    context.strokeStyle = ratio > 0.85 ? "#ff563d" : "#ffe46a";
+    context.lineWidth = 4 + ratio * 4;
+    context.beginPath();
+    context.arc(x, y, radius, -Math.PI * 0.35, Math.PI * 1.35);
+    context.stroke();
+
+    context.globalAlpha = 0.34 + ratio * 0.28;
+    context.fillStyle = ratio > 0.85 ? "#ff7a42" : "#fff0a0";
+    for (let i = 0; i < 10; i += 1) {
+      const angle = performance.now() / 260 + i * Math.PI * 0.2;
+      const sparkRadius = radius * (0.72 + (i % 3) * 0.12);
+      context.beginPath();
+      context.arc(
+        x + Math.cos(angle) * sparkRadius,
+        y + Math.sin(angle) * sparkRadius * 0.66,
+        3 + ratio * 4,
+        0,
+        Math.PI * 2
+      );
+      context.fill();
+    }
+    context.restore();
   }
 
   drawOverlay(title, subtitle) {

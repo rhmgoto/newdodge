@@ -22,6 +22,9 @@ const DEFAULT_PLAYER_STATS = {
 
 const CHARACTER_TYPES = {
   normal: {
+    maxHp: 100,
+    maxStamina: 100,
+    stats: { power: 5, speed: 5, jump: 5, technique: 5 },
     label: "ノーマル",
     scaleX: 1,
     scaleY: 1,
@@ -32,6 +35,9 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   power: {
+    maxHp: 120,
+    maxStamina: 100,
+    stats: { power: 8, speed: 3, jump: 4, technique: 4 },
     label: "デーブ",
     scaleX: 1.16,
     scaleY: 1.14,
@@ -42,6 +48,9 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   speed: {
+    maxHp: 110,
+    maxStamina: 100,
+    stats: { power: 5, speed: 5, jump: 8, technique: 5 },
     label: "のっぽ",
     scaleX: 0.86,
     scaleY: 1.1,
@@ -52,6 +61,9 @@ const CHARACTER_TYPES = {
     legLength: 1.2
   },
   jump: {
+    maxHp: 90,
+    maxStamina: 100,
+    stats: { power: 3, speed: 8, jump: 7, technique: 6 },
     label: "ちび",
     scaleX: 0.9,
     scaleY: 0.88,
@@ -76,8 +88,9 @@ class Player {
     this.homeY = options.y;
     this.radius = options.radius || 24;
     this.characterType = options.characterType || "normal";
-    this.stats = this.createStats(options.stats);
-    this.maxHp = options.maxHp || 100;
+    const typeDefinition = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
+    this.stats = this.createStats(typeDefinition.stats || options.stats);
+    this.maxHp = typeDefinition.maxHp || options.maxHp || 100;
     this.hp = this.maxHp;
     this.baseSpeed = options.speed || 230;
     this.speed = this.baseSpeed * this.getStatScale("speed", 0.045);
@@ -100,6 +113,7 @@ class Player {
     this.knockbackX = 0;
     this.knockbackY = 0;
     this.catchTimer = 0;
+    this.catchSuccessTimer = 0;
     this.throwTimer = 0;
     this.throwPhase = "none";
     this.throwKind = "none";
@@ -115,7 +129,7 @@ class Player {
     this.runupDirX = this.facing;
     this.runupDirY = 0;
     this.aerialPassCatchTimer = 0;
-    this.maxStamina = options.maxStamina || 100;
+    this.maxStamina = typeDefinition.maxStamina || options.maxStamina || 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
     this.defeated = false;
@@ -143,6 +157,7 @@ class Player {
     const startedInsideArea = this.isInsideArea(area);
     this.invincibleTime = Math.max(0, this.invincibleTime - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
+    this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
     this.throwTimer = Math.max(0, this.throwTimer - delta);
     if (this.throwTimer > 0) {
       const releaseWindow = this.throwKind === "shoot" ? 0.26 : 0.2;
@@ -270,6 +285,12 @@ class Player {
     this.state = "catching";
   }
 
+  startCatchSuccess() {
+    if (this.defeated || this.downTimer > 0) return;
+    this.catchSuccessTimer = 0.28;
+    this.state = "catching";
+  }
+
   startDodge(moveX, moveY, config) {
     if (this.defeated || this.downTimer > 0 || this.dodgeTimer > 0) return false;
     const cost = config.stamina.duckCost;
@@ -358,8 +379,10 @@ class Player {
     this.isDamaged = true;
     this.invincibleTime = config.invincibleTime;
     const damageRatio = Math.max(0.65, Math.min(2.1, amount / 20));
-    this.knockbackX = sourceDirection * config.knockbackSpeed * damageRatio;
-    this.knockbackY = (-90 + Math.random() * 180) * damageRatio;
+    const isDefeatHit = this.hp <= 0;
+    const knockbackMultiplier = isDefeatHit ? 4 : 2;
+    this.knockbackX = sourceDirection * config.knockbackSpeed * damageRatio * knockbackMultiplier;
+    this.knockbackY = (-90 + Math.random() * 180) * damageRatio * knockbackMultiplier;
 
     if (this.hp <= 0) {
       this.hasBall = false;
@@ -457,7 +480,9 @@ class Player {
   draw(context, config, debugMode, isControlled, isPassTarget, isShootTarget, showHitbox = false) {
     if (this.defeated && this.leaveTimer > config.exitDelay) return;
 
-    const blinkOff = this.invincibleTime > 0 && Math.floor(this.invincibleTime * 18) % 2 === 0;
+    const blinkOff = this.defeated
+      ? Math.floor(this.leaveTimer * 16) % 2 === 0
+      : this.invincibleTime > 0 && Math.floor(this.invincibleTime * 18) % 2 === 0;
     if (blinkOff) return;
 
     const scale = this.getScale(config);
@@ -526,6 +551,7 @@ class Player {
     const catchProgress = this.catchTimer > 0
       ? 1 - Math.max(0, Math.min(1, this.catchTimer / Math.max(0.01, config.catchDuration)))
       : 0;
+    const catchSuccess = this.catchSuccessTimer > 0 ? 1 : 0;
     const throwProgress = this.state === "throwing"
       ? (this.throwPhase === "windup" ? 0.25 : 1)
       : 0;
@@ -595,6 +621,15 @@ class Player {
       pose.backArm[2] = { x: -14, y: -137 + rootY + catchProgress * 4 };
       pose.frontArm[1] = { x: 24, y: -108 + rootY };
       pose.frontArm[2] = { x: 14, y: -137 + rootY + catchProgress * 4 };
+    }
+
+    if (catchSuccess > 0) {
+      pose.backArm[1] = { x: -20, y: -100 + rootY };
+      pose.backArm[2] = { x: -6, y: -112 + rootY };
+      pose.frontArm[1] = { x: 20, y: -100 + rootY };
+      pose.frontArm[2] = { x: 6, y: -112 + rootY };
+      pose.backLeg[1].x -= 8;
+      pose.frontLeg[1].x += 8;
     }
 
     if (throwProgress > 0) {
@@ -754,9 +789,9 @@ class Player {
     if (this.state === "throwing" && this.throwPhase === "windup") {
       bx = this.x - this.facing * (this.throwKind === "shoot" ? 62 : 44) * scale;
       by = this.y - this.jumpZ - (this.throwKind === "shoot" ? 126 : 92) * scale;
-    } else if (this.state === "catching") {
+    } else if (this.state === "catching" || this.catchSuccessTimer > 0) {
       bx = this.x;
-      by = this.y - this.jumpZ - 130 * scale;
+      by = this.y - this.jumpZ - (this.catchSuccessTimer > 0 ? 108 : 130) * scale;
     }
     context.fillStyle = "#f06a32";
     context.beginPath();
@@ -772,13 +807,7 @@ class Player {
   }
 
   drawCatchPose(context, config) {
-    const box = this.getCatchBox(config);
-    context.fillStyle = "rgba(255,255,255,0.18)";
-    context.strokeStyle = "rgba(255,255,255,0.7)";
-    context.lineWidth = 3;
-    this.roundRect(context, box.x, box.y, box.w, box.h, 12);
-    context.fill();
-    context.stroke();
+    // Catch area is still used for gameplay, but no longer shown during play.
   }
 
   drawControlMarker(context) {
