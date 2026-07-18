@@ -24,7 +24,7 @@ const CHARACTER_TYPES = {
   normal: {
     maxHp: 100,
     maxStamina: 100,
-    stats: { power: 5, speed: 5, jump: 5, technique: 5 },
+    stats: { power: 6, speed: 6, jump: 6, technique: 6 },
     label: "ノーマル",
     scaleX: 1,
     scaleY: 1,
@@ -35,9 +35,9 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   power: {
-    maxHp: 120,
+    maxHp: 100,
     maxStamina: 100,
-    stats: { power: 8, speed: 3, jump: 4, technique: 4 },
+    stats: { power: 8, speed: 4, jump: 3, technique: 4 },
     label: "デーブ",
     scaleX: 1.16,
     scaleY: 1.14,
@@ -48,9 +48,9 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   speed: {
-    maxHp: 110,
+    maxHp: 100,
     maxStamina: 100,
-    stats: { power: 5, speed: 5, jump: 8, technique: 5 },
+    stats: { power: 6, speed: 5, jump: 8, technique: 6 },
     label: "のっぽ",
     scaleX: 0.86,
     scaleY: 1.1,
@@ -61,9 +61,9 @@ const CHARACTER_TYPES = {
     legLength: 1.2
   },
   jump: {
-    maxHp: 90,
+    maxHp: 100,
     maxStamina: 100,
-    stats: { power: 3, speed: 8, jump: 7, technique: 6 },
+    stats: { power: 5, speed: 8, jump: 6, technique: 7 },
     label: "ちび",
     scaleX: 0.9,
     scaleY: 0.88,

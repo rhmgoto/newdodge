@@ -42,8 +42,8 @@ const GAME_CONFIG = {
   },
   battle: {
     pickupDistance: 62,
-    rollingPickupDistance: 132,
-    catchDuration: 0.25,
+    rollingPickupDistance: 168,
+    catchDuration: 0.36,
     catchWidth: 74,
     catchHeight: 92,
     duckDuration: 0.48,
@@ -144,6 +144,7 @@ class DodgeballGame {
     const topY = c.y + 10;
     const backY = c.y + 96;
     const frontY = c.y + c.h - 38;
+    const outfieldDepth = 170;
     const sideOutTop = c.y + 96;
     const sideOutBottom = c.y + c.h - 38;
     const projectedX = (x, y) => this.projectCourtX(x, y, topY, c.y + c.h);
@@ -171,25 +172,25 @@ class DodgeballGame {
         projectedX(c.centerX, frontY) + 16,
         projectedX(c.x + c.w, frontY) - 16
       ),
-      leftTopOut: { x: c.x + 22, y: c.y + 8, w: halfW - 44, h: backY - c.y - 8 },
-      leftBottomOut: { x: c.x + 22, y: frontY, w: halfW - 44, h: c.y + c.h - frontY },
+      leftTopOut: { x: c.x + 22, y: backY - outfieldDepth, w: halfW - 44, h: outfieldDepth },
+      leftBottomOut: { x: c.x + 22, y: frontY, w: halfW - 44, h: outfieldDepth },
       leftSideOut: trapezoid(
         sideOutTop,
         sideOutBottom,
-        projectedX(c.x, sideOutTop) - 148,
+        projectedX(c.x, sideOutTop) - 300,
         projectedX(c.x, sideOutTop) - 10,
-        projectedX(c.x, sideOutBottom) - 148,
+        projectedX(c.x, sideOutBottom) - 300,
         projectedX(c.x, sideOutBottom) - 10
       ),
-      rightTopOut: { x: c.centerX + 22, y: c.y + 8, w: halfW - 44, h: backY - c.y - 8 },
-      rightBottomOut: { x: c.centerX + 22, y: frontY, w: halfW - 44, h: c.y + c.h - frontY },
+      rightTopOut: { x: c.centerX + 22, y: backY - outfieldDepth, w: halfW - 44, h: outfieldDepth },
+      rightBottomOut: { x: c.centerX + 22, y: frontY, w: halfW - 44, h: outfieldDepth },
       rightSideOut: trapezoid(
         sideOutTop,
         sideOutBottom,
         projectedX(c.x + c.w, sideOutTop) + 10,
-        projectedX(c.x + c.w, sideOutTop) + 148,
+        projectedX(c.x + c.w, sideOutTop) + 300,
         projectedX(c.x + c.w, sideOutBottom) + 10,
-        projectedX(c.x + c.w, sideOutBottom) + 148
+        projectedX(c.x + c.w, sideOutBottom) + 300
       )
     };
   }
@@ -522,6 +523,7 @@ class DodgeballGame {
     this.updatePlayers(delta);
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
+    this.autoPickupLooseBall();
     this.resetUnreachableOutfieldBall();
     this.handleManualCatch(this.leftTeam);
     this.handleManualCatch(this.rightTeam);
@@ -619,7 +621,7 @@ class DodgeballGame {
   updatePlayers(delta) {
     const active = this.getPlayerControlledMember();
     for (const member of this.leftTeam) {
-      const area = this.getMoveArea(member, member === active);
+      const area = this.getMoveArea(member, member === active || this.ball.owner === member);
       let controls = { moveX: 0, moveY: 0, dash: false };
       if (member === active && !member.defeated) {
         controls = {
@@ -650,7 +652,7 @@ class DodgeballGame {
           }
           : this.getSupportMove(member);
       }
-      const area = this.getMoveArea(member, false);
+      const area = this.getMoveArea(member, member === activeRight || this.ball.owner === member);
       const controls = this.shouldReturnToLegalArea(member, area)
         ? this.vectorTo(member, member.homeX, member.homeY, true)
         : command;
@@ -820,14 +822,25 @@ class DodgeballGame {
     const beyondSide = outfield.side === "right" ? this.ball.x > outerLimit : this.ball.x < outerLimit;
     const beyondBottom = this.ball.y > this.ballBounds.y + this.ballBounds.h - 38;
     const beyondTop = this.ball.y < this.areas.leftTopOut.y - 34;
-
-    if (!beyondSide && !beyondBottom && !beyondTop) return;
-
     const receiver = this.findNearestOutfielder(outfield.team, this.ball.x, this.ball.y);
     if (!receiver) return;
 
-    receiver.x = Math.max(this.areas[receiver.zone].x + receiver.radius, Math.min(this.areas[receiver.zone].x + this.areas[receiver.zone].w - receiver.radius, receiver.x));
-    receiver.y = Math.max(this.areas[receiver.zone].y + receiver.radius, Math.min(this.areas[receiver.zone].y + this.areas[receiver.zone].h - receiver.radius, receiver.y));
+    const nearestOutfielderDistance = Math.hypot(receiver.x - this.ball.x, receiver.y - this.ball.y);
+    const rollingFarAway = this.ball.hasBounced && Math.hypot(this.ball.vx, this.ball.vy) < 90 && nearestOutfielderDistance > 520;
+    const screenMargin = 90;
+    const outsideScreen = (
+      this.ball.x < this.ballBounds.x + screenMargin ||
+      this.ball.x > this.ballBounds.x + this.ballBounds.w - screenMargin ||
+      this.ball.y < this.ballBounds.y + screenMargin ||
+      this.ball.y > this.ballBounds.y + this.ballBounds.h - screenMargin
+    );
+
+    if (!beyondSide && !beyondBottom && !beyondTop && !rollingFarAway && !outsideScreen) return;
+
+    const area = this.areas[receiver.zone];
+    const point = this.clampPointToRect({ x: this.ball.x, y: this.ball.y }, area, receiver.radius);
+    receiver.x = point.x;
+    receiver.y = point.y;
     this.ball.pickUp(receiver);
     this.setControlledMember(receiver.team, receiver);
     this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
@@ -1527,11 +1540,12 @@ class DodgeballGame {
     const thrower = this.ball.thrower;
     const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
     const facingIncoming = this.isFacingIncomingBall(catcher);
-    const timing = Math.max(0, 1 - Math.abs(this.ball.x - catcher.x) / 190);
-    const distanceFactor = Math.max(0.35, Math.min(1, throwDistance / 680));
-    const facingFactor = facingIncoming ? 1.15 : 0.22;
-    const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.045;
-    const chance = Math.max(0.08, Math.min(0.96, (0.34 + timing * 0.58 + techniqueBonus) * distanceFactor * facingFactor));
+    const visualDistance = Math.hypot(this.ball.x - catcher.x, this.ball.y - this.ball.z - (catcher.y - catcher.jumpZ - 62));
+    const timing = Math.max(0, 1 - visualDistance / 250);
+    const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
+    const facingFactor = facingIncoming ? 1.32 : 0.2;
+    const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.06;
+    const chance = Math.max(0.1, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus) * distanceFactor * facingFactor));
     if (Math.random() <= chance) return true;
 
     catcher.catchTimer = 0;
@@ -1573,10 +1587,12 @@ class DodgeballGame {
   getCatchArea(catcher, friendly) {
     const box = catcher.getCatchBox(GAME_CONFIG.battle);
     const isPassCut = this.ball.kind === "pass" && this.ball.thrower && this.ball.thrower.team !== catcher.team;
-    if (!friendly && !isPassCut) return box;
+    const isEnemyShot = !friendly && this.ball.kind === "shoot";
     const jumpBonus = catcher.jumpZ > 0 ? 72 : 0;
-    const inflateX = isPassCut ? 72 : 96;
-    const inflateY = (isPassCut ? 64 : 76) + jumpBonus;
+    const facingBonus = isEnemyShot && this.isFacingIncomingBall(catcher) ? 34 : 0;
+    const techniqueBonus = isEnemyShot ? Math.max(0, (catcher.stats?.technique || 5) - 5) * 6 : 0;
+    const inflateX = isEnemyShot ? 52 + facingBonus + techniqueBonus : isPassCut ? 72 : 96;
+    const inflateY = (isEnemyShot ? 54 + facingBonus * 0.45 + techniqueBonus : isPassCut ? 64 : 76) + jumpBonus;
     return {
       x: box.x - inflateX,
       y: box.y - inflateY,
@@ -1611,9 +1627,17 @@ class DodgeballGame {
     const rightAlive = this.rightTeam.some((p) => p.role === "inner" && p.hp > 0);
 
     if (!rightAlive) {
+      if (!this.isEliminationAnimationFinished(this.rightTeam)) {
+        this.message = this.ball.owner ? (this.ball.owner.team === "left" ? "MY TEAM BALL" : "ENEMY BALL") : "LOOSE BALL";
+        return;
+      }
       this.state = "gameOver";
       this.message = "YOU WIN";
     } else if (!leftAlive) {
+      if (!this.isEliminationAnimationFinished(this.leftTeam)) {
+        this.message = this.ball.owner ? (this.ball.owner.team === "left" ? "MY TEAM BALL" : "ENEMY BALL") : "LOOSE BALL";
+        return;
+      }
       this.state = "gameOver";
       this.message = "YOU LOSE";
     } else if (this.ball.owner) {
@@ -1621,6 +1645,12 @@ class DodgeballGame {
     } else {
       this.message = "LOOSE BALL";
     }
+  }
+
+  isEliminationAnimationFinished(team) {
+    const pending = team.filter((p) => p.role === "inner" && p.hp <= 0);
+    if (pending.length === 0) return true;
+    return pending.every((p) => p.defeated && p.leaveTimer > GAME_CONFIG.battle.exitDelay);
   }
 
   getFullCourtView() {
@@ -2196,7 +2226,7 @@ class DodgeballGame {
     const c = GAME_CONFIG.court;
     const width = c.x + c.w + 260;
     context.fillStyle = "#bfc36d";
-    context.fillRect(c.x - 260, 0, width + 520, GAME_CONFIG.height);
+    context.fillRect(c.x - 320, c.y - 210, width + 640, c.h + 500);
     this.drawBench(c.centerX - 650, 32, "#3087f2");
     this.drawBench(c.centerX + 430, 32, "#f05a45");
   }

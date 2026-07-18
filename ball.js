@@ -152,7 +152,8 @@ class Ball {
     const dx = targetX - this.x + aimVector.x * aimNudge;
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
-    const speed = kind === "shoot" ? this.config.shootSpeed * throwMultiplier : this.config.passSpeed;
+    const flightMultiplier = kind === "shoot" ? Math.max(0.9, throwMultiplier) : throwMultiplier;
+    const speed = kind === "shoot" ? this.config.shootSpeed * flightMultiplier : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
@@ -161,11 +162,11 @@ class Ball {
       const flightTime = Math.max(0.22, length / Math.max(1, speed));
       const targetZ = (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
-      const arcLift = Math.max(0, throwMultiplier - 0.7) * 45;
-      this.vz = Math.max(-260, Math.min(560, solvedVz + arcLift));
+      const arcLift = 70 + Math.max(0, throwMultiplier - 0.7) * 45;
+      this.vz = Math.max(-80, Math.min(610, solvedVz + arcLift));
     } else {
       this.vz = kind === "shoot"
-        ? 360 + Math.max(0, throwMultiplier - 0.7) * 120 + actor.jumpZ * 0.12
+        ? 430 + Math.max(0, throwMultiplier - 0.7) * 120 + actor.jumpZ * 0.12
         : 650 + actor.jumpZ * 0.15;
     }
     return true;
@@ -237,9 +238,10 @@ class Ball {
   }
 
   canBePickedUpBy(player, distance) {
-    if (!this.isLoose || this.owner || this.z >= 62) return false;
-    const rollingBonus = !this.isFlying || this.hasBounced ? 62 : 0;
-    return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + 22;
+    if (!this.isLoose || this.owner || this.z >= 78) return false;
+    const rollingBonus = !this.isFlying || this.hasBounced ? 78 : 0;
+    const catchBonus = player.catchTimer > 0 ? 72 : 0;
+    return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + catchBonus + 26;
   }
 
   draw(context, debugMode) {

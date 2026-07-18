@@ -296,26 +296,36 @@ class CPUController {
     for (const member of this.team.filter((p) => p.role === "inner" && !p.defeated)) {
       const command = this.commands.get(member.id);
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
-      if (distance > 280) continue;
+      if (distance > 430) continue;
 
       const frontShot = this.isFrontShot(member);
-      const laneThreat = Math.abs(this.ball.y - member.y) < 90;
-      if (frontShot && distance < 220 && Math.random() < this.config.cpuCatchChance * 1.35) {
+      const laneThreat = Math.abs(this.ball.y - member.y) < 105;
+      const throwerDistance = this.ball.thrower ? Math.hypot(this.ball.thrower.x - member.x, this.ball.thrower.y - member.y) : distance;
+      const farShot = throwerDistance > 520 || distance > 260;
+      const readyToReact = frontShot && farShot;
+      const dodgeChance = readyToReact ? 0.78 : frontShot ? 0.42 : 0.16;
+      const catchChance = readyToReact ? this.config.cpuCatchChance * 0.45 : frontShot ? this.config.cpuCatchChance * 1.15 : this.config.cpuCatchChance * 0.18;
+
+      if (frontShot && distance < 240 && Math.random() < catchChance) {
         command.catch = true;
-      } else if (laneThreat) {
-        const dodgeRoll = Math.random();
-        if (dodgeRoll < 0.34 && member.stamina > this.config.stamina.duckCost) {
-          command.crouch = true;
-        } else if (dodgeRoll < 0.58 && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
-          command.jump = true;
-        }
-        command.moveY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
-        command.moveX = this.ball.vx > 0 ? -0.35 : 0.35;
-        command.dash = true;
+      } else if (laneThreat && Math.random() < dodgeChance) {
+        this.dodgeIncomingShot(command, member, readyToReact);
       }
     }
 
     this.reactionTimer = this.randomReaction();
+  }
+
+  dodgeIncomingShot(command, member, readyToReact) {
+    const dodgeRoll = Math.random();
+    if (dodgeRoll < 0.42 && member.stamina > this.config.stamina.duckCost) {
+      command.crouch = true;
+    } else if (dodgeRoll < 0.78 && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
+      command.jump = true;
+    }
+    command.moveY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
+    command.moveX = this.ball.vx > 0 ? -0.42 : 0.42;
+    command.dash = readyToReact;
   }
 
   isFrontShot(member) {
