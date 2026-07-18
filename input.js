@@ -16,6 +16,8 @@ class InputManager {
     this.keys = new Set();
     this.previous = this.createEmptyState();
     this.current = this.createEmptyState();
+    this.previousP2 = this.createEmptyState();
+    this.currentP2 = this.createEmptyState();
     this.gamepadName = "未接続";
     this.gamepadConnected = false;
     this.pressedGamepadButtons = [];
@@ -65,7 +67,8 @@ class InputManager {
   update() {
     this.previous = { ...this.current };
     const keyboard = this.readKeyboard();
-    const gamepad = this.readGamepad();
+    const gamepad = this.readGamepad(0);
+    const gamepadP2 = this.readGamepad(1);
     this.updateDoubleTapDash(keyboard, gamepad);
 
     this.current = {
@@ -82,6 +85,8 @@ class InputManager {
       dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
       pause: keyboard.pause || gamepad.pause
     };
+    this.previousP2 = { ...this.currentP2 };
+    this.currentP2 = { ...gamepadP2 };
   }
 
   readKeyboard() {
@@ -106,22 +111,27 @@ class InputManager {
     };
   }
 
-  readGamepad() {
+  readGamepad(playerIndex = 0) {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const pad = Array.from(pads).find(Boolean);
+    const connectedPads = Array.from(pads).filter(Boolean);
+    const pad = connectedPads[playerIndex] || null;
 
     if (!pad) {
-      this.gamepadName = "未接続";
-      this.gamepadConnected = false;
-      this.pressedGamepadButtons = [];
+      if (playerIndex === 0) {
+        this.gamepadName = "未接続";
+        this.gamepadConnected = false;
+        this.pressedGamepadButtons = [];
+      }
       return this.createEmptyState();
     }
 
-    this.gamepadName = pad.id || "ゲームパッド";
-    this.gamepadConnected = true;
-    this.pressedGamepadButtons = pad.buttons
-      .map((button, index) => (this.isPressed(button) ? index : null))
-      .filter((index) => index !== null);
+    if (playerIndex === 0) {
+      this.gamepadName = pad.id || "ゲームパッド";
+      this.gamepadConnected = true;
+      this.pressedGamepadButtons = pad.buttons
+        .map((button, index) => (this.isPressed(button) ? index : null))
+        .filter((index) => index !== null);
+    }
 
     const leftX = this.deadZone(pad.axes[0] || 0);
     const leftY = this.deadZone(pad.axes[1] || 0);
@@ -148,8 +158,24 @@ class InputManager {
     };
   }
 
-  wasPressed(name) {
-    return this.current[name] && !this.previous[name];
+  getCurrent(playerIndex = 1) {
+    return playerIndex === 2 ? this.currentP2 : this.current;
+  }
+
+  getPrevious(playerIndex = 1) {
+    return playerIndex === 2 ? this.previousP2 : this.previous;
+  }
+
+  wasPressed(name, playerIndex = 1) {
+    const current = this.getCurrent(playerIndex);
+    const previous = this.getPrevious(playerIndex);
+    return current[name] && !previous[name];
+  }
+
+  wasReleased(name, playerIndex = 1) {
+    const current = this.getCurrent(playerIndex);
+    const previous = this.getPrevious(playerIndex);
+    return !current[name] && previous[name];
   }
 
   isPressed(button) {
@@ -197,9 +223,10 @@ class InputManager {
     return this.doubleTapDashPressed;
   }
 
-  getAimVector(defaultX) {
-    const x = Math.abs(this.current.moveX) > 0.15 ? this.current.moveX : defaultX;
-    const y = Math.abs(this.current.moveY) > 0.15 ? this.current.moveY : 0;
+  getAimVector(defaultX, playerIndex = 1) {
+    const current = this.getCurrent(playerIndex);
+    const x = Math.abs(current.moveX) > 0.15 ? current.moveX : defaultX;
+    const y = Math.abs(current.moveY) > 0.15 ? current.moveY : 0;
     const length = Math.hypot(x, y) || 1;
     return { x: x / length, y: y / length };
   }

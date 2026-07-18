@@ -22,32 +22,44 @@ const DEFAULT_PLAYER_STATS = {
 
 const CHARACTER_TYPES = {
   normal: {
-    label: "通常",
+    label: "ノーマル",
     scaleX: 1,
     scaleY: 1,
     torsoX: 1,
-    torsoY: 1
+    torsoY: 1,
+    armWidth: 1,
+    legWidth: 1,
+    legLength: 1
   },
   power: {
-    label: "パワー",
+    label: "デーブ",
     scaleX: 1.16,
     scaleY: 1.14,
     torsoX: 1.2,
-    torsoY: 1.08
+    torsoY: 1.08,
+    armWidth: 2,
+    legWidth: 2,
+    legLength: 1
   },
   speed: {
-    label: "スピード",
+    label: "のっぽ",
     scaleX: 0.86,
     scaleY: 1.1,
     torsoX: 0.82,
-    torsoY: 1.04
+    torsoY: 0.78,
+    armWidth: 1,
+    legWidth: 1,
+    legLength: 1.2
   },
   jump: {
-    label: "ジャンプ",
+    label: "ちび",
     scaleX: 0.9,
     scaleY: 0.88,
     torsoX: 0.88,
-    torsoY: 0.92
+    torsoY: 1.11,
+    armWidth: 1,
+    legWidth: 1,
+    legLength: 1.04
   }
 };
 
@@ -102,6 +114,7 @@ class Player {
     this.runupTime = 0;
     this.runupDirX = this.facing;
     this.runupDirY = 0;
+    this.aerialPassCatchTimer = 0;
     this.maxStamina = options.maxStamina || 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
@@ -142,6 +155,7 @@ class Player {
     this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
     this.updateTurn(delta);
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
+    this.aerialPassCatchTimer = Math.max(0, this.aerialPassCatchTimer - delta);
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
     }
@@ -343,8 +357,9 @@ class Player {
     this.hp = Math.max(0, this.hp - amount);
     this.isDamaged = true;
     this.invincibleTime = config.invincibleTime;
-    this.knockbackX = sourceDirection * config.knockbackSpeed;
-    this.knockbackY = -90 + Math.random() * 180;
+    const damageRatio = Math.max(0.65, Math.min(2.1, amount / 20));
+    this.knockbackX = sourceDirection * config.knockbackSpeed * damageRatio;
+    this.knockbackY = (-90 + Math.random() * 180) * damageRatio;
 
     if (this.hp <= 0) {
       this.hasBall = false;
@@ -359,8 +374,22 @@ class Player {
     const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
     return {
       x: this.x,
-      y: this.y - (ducking ? 18 : 38) - this.jumpZ,
-      r: ducking ? this.radius * 0.55 : this.radius + (this.jumpZ > 0 ? 2 : 0)
+      y: this.y - (ducking ? 28 : 54) - this.jumpZ,
+      r: ducking ? this.radius * 0.75 : this.radius * 1.15
+    };
+  }
+
+  getHitBox() {
+    const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const scale = this.lastDrawScale || 1;
+    const width = (ducking ? 54 : 62) * scale;
+    const top = this.y - this.jumpZ - (ducking ? 82 : 108) * scale;
+    const bottom = this.y - this.jumpZ + 18 * scale;
+    return {
+      x: this.x - width * 0.5,
+      y: top,
+      w: width,
+      h: bottom - top
     };
   }
 
@@ -425,7 +454,7 @@ class Player {
     ));
   }
 
-  draw(context, config, debugMode, isControlled, isPassTarget, isShootTarget) {
+  draw(context, config, debugMode, isControlled, isPassTarget, isShootTarget, showHitbox = false) {
     if (this.defeated && this.leaveTimer > config.exitDelay) return;
 
     const blinkOff = this.invincibleTime > 0 && Math.floor(this.invincibleTime * 18) % 2 === 0;
@@ -453,6 +482,10 @@ class Player {
     }
 
     context.restore();
+
+    if (showHitbox) {
+      this.drawHitShape(context);
+    }
 
     this.drawModelCharacter(context, scale, drawY, motionTime, config);
 
@@ -586,6 +619,9 @@ class Player {
       }
     }
 
+    this.applyLegLength(pose.backLeg, hipY, body.legLength);
+    this.applyLegLength(pose.frontLeg, hipY, body.legLength);
+
     context.save();
     context.translate(this.x, drawY);
     const verticalView = this.visualDirection === "up" || this.visualDirection === "down";
@@ -600,15 +636,15 @@ class Player {
       context.rotate(-0.12);
     }
 
-    this.drawModelLimb(context, pose.backLeg, colors.suit, 11);
-    this.drawModelLimb(context, pose.backArm, PLAYER_MODEL.skinShade, 9);
+    this.drawModelLimb(context, pose.backLeg, colors.suit, 11 * body.legWidth);
+    this.drawModelLimb(context, pose.backArm, PLAYER_MODEL.skinShade, 9 * body.armWidth);
     this.drawModelFoot(context, pose.backLeg[2], colors.suit);
 
     this.drawModelTorso(context, 0, torsoY, colors, body);
 
-    this.drawModelLimb(context, pose.frontLeg, colors.suit, 12);
+    this.drawModelLimb(context, pose.frontLeg, colors.suit, 12 * body.legWidth);
     this.drawModelFoot(context, pose.frontLeg[2], colors.suit);
-    this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10);
+    this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10 * body.armWidth);
 
     if (crouch) {
       context.save();
@@ -621,6 +657,25 @@ class Player {
       this.drawModelHead(context, 0, headY, colors, damaged, this.visualDirection);
     }
     context.restore();
+  }
+
+  drawHitShape(context) {
+    const hit = this.getHitBox();
+    context.save();
+    context.fillStyle = this.team === "left" ? "rgba(0, 87, 255, 0.16)" : "rgba(240, 24, 24, 0.16)";
+    context.strokeStyle = this.team === "left" ? "rgba(0, 87, 255, 0.42)" : "rgba(240, 24, 24, 0.42)";
+    context.lineWidth = 2;
+    this.roundRect(context, hit.x, hit.y, hit.w, hit.h, 18);
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
+
+  applyLegLength(points, hipY, scale = 1) {
+    if (scale === 1) return;
+    for (let i = 1; i < points.length; i += 1) {
+      points[i].y = hipY + (points[i].y - hipY) * scale;
+    }
   }
 
   drawModelTorso(context, x, y, colors, body = CHARACTER_TYPES.normal) {
@@ -804,12 +859,10 @@ class Player {
   }
 
   drawDebug(context, config) {
-    const hit = this.getHitCircle();
+    const hit = this.getHitBox();
     context.strokeStyle = "rgba(0,255,80,0.7)";
     context.lineWidth = 2;
-    context.beginPath();
-    context.arc(hit.x, hit.y, hit.r, 0, Math.PI * 2);
-    context.stroke();
+    context.strokeRect(hit.x, hit.y, hit.w, hit.h);
 
     const box = this.getCatchBox(config);
     context.strokeStyle = "rgba(0,180,255,0.55)";

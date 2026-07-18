@@ -1,4 +1,5 @@
 const DEBUG_MODE = false;
+const SHOW_HITBOXES = true;
 
 const GAME_CONFIG = {
   width: 1280,
@@ -77,9 +78,10 @@ class DodgeballGame {
     this.typeOrder = ["normal", "power", "speed", "jump"];
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = 0;
+    this.teamSelectionSlots = { left: 0, right: 0 };
     this.teamSelections = {
-      left: Array(3).fill("normal"),
-      right: Array(3).fill("normal")
+      left: this.createDefaultTeamSelection(),
+      right: this.createDefaultTeamSelection()
     };
     this.previousTime = 0;
     this.autoSwitchCooldown = 0;
@@ -87,10 +89,15 @@ class DodgeballGame {
     this.manualSwitchGrace = 0;
     this.lastEnemyHolderId = null;
     this.pendingThrow = null;
+    this.chargingThrow = null;
     this.effects = [];
     this.message = "READY";
     this.setupMatch();
     requestAnimationFrame((time) => this.loop(time));
+  }
+
+  createDefaultTeamSelection() {
+    return ["normal", "normal", "normal", "power", "speed", "jump"];
   }
 
   setupMatch() {
@@ -101,6 +108,7 @@ class DodgeballGame {
     this.rightTeam = this.createTeam("right");
     this.players = [...this.leftTeam, ...this.rightTeam];
     this.controlledPlayerId = "left-inner-1";
+    this.controlledRightPlayerId = "right-inner-1";
     this.ball = new Ball(GAME_CONFIG.ball);
     this.ball.x = court.centerX;
     this.ball.y = court.y + court.h * 0.55;
@@ -116,6 +124,7 @@ class DodgeballGame {
     this.manualSwitchGrace = 0;
     this.lastEnemyHolderId = null;
     this.pendingThrow = null;
+    this.chargingThrow = null;
   }
 
   createAreas() {
@@ -151,7 +160,7 @@ class DodgeballGame {
     const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
     const bottomArea = isLeft ? this.areas.rightBottomOut : this.areas.leftBottomOut;
     const prefix = isLeft ? "left" : "right";
-    const selectedTypes = this.teamSelections?.[team] || Array(3).fill("normal");
+    const selectedTypes = this.teamSelections?.[team] || Array(6).fill("normal");
     const names = isLeft ? ["ソラ", "ミナ", "タケ"] : ["ガツ", "レン", "ドウ"];
     const outNames = isLeft ? ["ハル", "ナツ", "アキ"] : ["ゴウ", "ジン", "バン"];
     const xs = isLeft
@@ -221,7 +230,7 @@ class DodgeballGame {
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + 55,
-        characterType: "normal",
+        characterType: selectedTypes[3],
         maxHp: GAME_CONFIG.player.maxHp,
         maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
@@ -238,7 +247,7 @@ class DodgeballGame {
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
         y: bottomArea.y + bottomArea.h * 0.5,
-        characterType: "normal",
+        characterType: selectedTypes[4],
         maxHp: GAME_CONFIG.player.maxHp,
         maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
@@ -255,7 +264,7 @@ class DodgeballGame {
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
         y: sideArea.y + sideArea.h * 0.52,
-        characterType: "normal",
+        characterType: selectedTypes[5],
         maxHp: GAME_CONFIG.player.maxHp,
         maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
@@ -316,61 +325,115 @@ class DodgeballGame {
       this.state = "teamSelect";
       this.teamSelectionSide = "left";
       this.teamSelectionSlot = 0;
+      this.teamSelectionSlots = { left: 0, right: 0 };
     }
   }
 
   updateTeamSelect() {
-    if (this.wasMenuDirectionPressed("left")) {
-      if (this.teamSelectionSlot > 0) {
-        this.teamSelectionSlot -= 1;
-      } else {
-        this.teamSelectionSide = this.teamSelectionSide === "left" ? "right" : "left";
-        this.teamSelectionSlot = 2;
-      }
+    if (this.gameMode === "versus") {
+      this.updateTeamSelectCursor("left", 1);
+      this.updateTeamSelectCursor("right", 2);
+    } else {
+      this.updateSingleTeamSelectCursor();
     }
-    if (this.wasMenuDirectionPressed("right")) {
-      if (this.teamSelectionSlot < 2) {
-        this.teamSelectionSlot += 1;
-      } else {
-        this.teamSelectionSide = this.teamSelectionSide === "left" ? "right" : "left";
-        this.teamSelectionSlot = 0;
-      }
-    }
-    if (this.wasMenuDirectionPressed("up")) this.changeSelectedCharacterType(1);
-    if (this.wasMenuDirectionPressed("down")) this.changeSelectedCharacterType(-1);
 
-    if (this.input.wasPressed("button1")) {
-      this.changeSelectedCharacterType(1);
-    }
-    if (this.input.wasPressed("button2")) {
-      this.setupMatch();
-      this.state = "playing";
-    }
     if (this.input.wasPressed("pause")) {
       this.state = "modeSelect";
     }
   }
 
-  wasMenuDirectionPressed(direction) {
+  updateSingleTeamSelectCursor() {
+    const moved = this.moveTeamSelectCursor(this.teamSelectionSide, this.teamSelectionSlot, 1);
+    this.teamSelectionSide = moved.side;
+    this.teamSelectionSlot = moved.slot;
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot < 6) {
+      this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
+    }
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot === 6) {
+      this.setupMatch();
+      this.state = "playing";
+    }
+    if (this.input.wasPressed("button1")) {
+      this.state = "modeSelect";
+    }
+  }
+
+  updateTeamSelectCursor(side, playerIndex) {
+    const moved = this.moveTeamSelectCursor(side, this.teamSelectionSlots[side], playerIndex, true);
+    this.teamSelectionSlots[side] = moved.slot;
+
+    if (this.input.wasPressed("button2", playerIndex) && slot < 6) {
+      this.changeSelectedCharacterType(side, slot, 1);
+    }
+    if (this.input.wasPressed("button2", playerIndex) && slot === 6) {
+      this.setupMatch();
+      this.state = "playing";
+    }
+    if (this.input.wasPressed("button1", playerIndex)) {
+      this.state = "modeSelect";
+    }
+  }
+
+  moveTeamSelectCursor(side, slot, playerIndex, lockSide = false) {
+    let nextSide = side;
+    let nextSlot = slot;
+    const left = this.wasMenuDirectionPressed("left", playerIndex);
+    const right = this.wasMenuDirectionPressed("right", playerIndex);
+    const up = this.wasMenuDirectionPressed("up", playerIndex);
+    const down = this.wasMenuDirectionPressed("down", playerIndex);
+
+    if (nextSlot === 6) {
+      if (up) nextSlot = 4;
+      if (left && !lockSide) nextSide = "left";
+      if (right && !lockSide) nextSide = "right";
+      return { side: nextSide, slot: nextSlot };
+    }
+
+    const row = Math.floor(nextSlot / 3);
+    const col = nextSlot % 3;
+    if (left) {
+      if (col > 0) {
+        nextSlot -= 1;
+      } else if (!lockSide) {
+        nextSide = nextSide === "left" ? "right" : "left";
+        nextSlot = row * 3 + 2;
+      }
+    }
+    if (right) {
+      if (col < 2) {
+        nextSlot += 1;
+      } else if (!lockSide) {
+        nextSide = nextSide === "left" ? "right" : "left";
+        nextSlot = row * 3;
+      }
+    }
+    if (up && row > 0) nextSlot -= 3;
+    if (down) nextSlot = row === 0 ? nextSlot + 3 : 6;
+    return { side: nextSide, slot: nextSlot };
+  }
+
+  wasMenuDirectionPressed(direction, playerIndex = 1) {
     const threshold = 0.55;
-    if (direction === "left") return this.input.current.moveX < -threshold && this.input.previous.moveX >= -threshold;
-    if (direction === "right") return this.input.current.moveX > threshold && this.input.previous.moveX <= threshold;
-    if (direction === "up") return this.input.current.moveY < -threshold && this.input.previous.moveY >= -threshold;
-    if (direction === "down") return this.input.current.moveY > threshold && this.input.previous.moveY <= threshold;
+    const current = this.input.getCurrent(playerIndex);
+    const previous = this.input.getPrevious(playerIndex);
+    if (direction === "left") return current.moveX < -threshold && previous.moveX >= -threshold;
+    if (direction === "right") return current.moveX > threshold && previous.moveX <= threshold;
+    if (direction === "up") return current.moveY < -threshold && previous.moveY >= -threshold;
+    if (direction === "down") return current.moveY > threshold && previous.moveY <= threshold;
     return false;
   }
 
-  changeSelectedCharacterType(direction) {
-    const selections = this.teamSelections[this.teamSelectionSide];
-    const currentType = selections[this.teamSelectionSlot];
+  changeSelectedCharacterType(side, slot, direction) {
+    const selections = this.teamSelections[side];
+    const currentType = selections[slot];
     let index = this.typeOrder.indexOf(currentType);
     if (index < 0) index = 0;
 
     for (let step = 0; step < this.typeOrder.length; step += 1) {
       index = (index + direction + this.typeOrder.length) % this.typeOrder.length;
       const nextType = this.typeOrder[index];
-      if (this.canUseCharacterType(this.teamSelectionSide, this.teamSelectionSlot, nextType)) {
-        selections[this.teamSelectionSlot] = nextType;
+      if (this.canUseCharacterType(side, slot, nextType)) {
+        selections[slot] = nextType;
         return;
       }
     }
@@ -386,11 +449,14 @@ class DodgeballGame {
 
   updatePlaying(delta) {
     this.updateEffects(delta);
-    this.cpuController.update(delta);
+    if (this.gameMode !== "versus") {
+      this.cpuController.update(delta);
+    }
     this.autoSwitchToIncomingShotTarget();
     this.updateControlSwitching(delta);
     this.handlePlayerButtons();
     this.handleCpuButtons();
+    this.updateChargingThrow(delta);
     this.updatePendingThrow(delta);
     this.updatePlayers(delta);
     this.autoPickupLooseBall();
@@ -409,24 +475,31 @@ class DodgeballGame {
   handlePlayerButtons() {
     const holder = this.ball.owner;
     const selfTeamHasBall = holder && holder.team === "left";
+    const rightTeamHasBall = holder && holder.team === "right";
 
     const active = this.getPlayerControlledMember();
+    const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
 
     if (this.input.wasPressed("button3")) {
       active.jump(GAME_CONFIG.battle);
+    }
+    if (this.gameMode === "versus" && activeRight && this.input.wasPressed("button3", 2)) {
+      activeRight.jump(GAME_CONFIG.battle);
     }
 
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        if (holder.throwLockTimer <= 0) {
-          this.launchShootFromInput(holder);
-        }
+        this.startChargedThrow(holder, "shoot");
       }
       if (this.input.wasPressed("button1")) {
-        if (holder.throwLockTimer <= 0) {
-          this.launchPassFromInput(holder);
-        }
+        this.startChargedThrow(holder, "pass");
+      }
+      if (this.input.wasReleased("button2")) {
+        this.releaseChargedThrow(holder, "shoot");
+      }
+      if (this.input.wasReleased("button1")) {
+        this.releaseChargedThrow(holder, "pass");
       }
     } else {
       if (this.input.wasPressed("avoid")) {
@@ -436,9 +509,35 @@ class DodgeballGame {
         active.startCatch(GAME_CONFIG.battle.catchDuration);
       }
     }
+
+    if (this.gameMode === "versus") {
+      if (rightTeamHasBall) {
+        this.controlledRightPlayerId = holder.id;
+        if (this.input.wasPressed("button2", 2)) {
+          this.startChargedThrow(holder, "shoot", 2);
+        }
+        if (this.input.wasPressed("button1", 2)) {
+          this.startChargedThrow(holder, "pass", 2);
+        }
+        if (this.input.wasReleased("button2", 2)) {
+          this.releaseChargedThrow(holder, "shoot", 2);
+        }
+        if (this.input.wasReleased("button1", 2)) {
+          this.releaseChargedThrow(holder, "pass", 2);
+        }
+      } else if (activeRight && !activeRight.defeated) {
+        if (this.input.wasPressed("avoid", 2)) {
+          activeRight.startDodge(0, 0, GAME_CONFIG.battle);
+        }
+        if (this.input.wasPressed("catch", 2)) {
+          activeRight.startCatch(GAME_CONFIG.battle.catchDuration);
+        }
+      }
+    }
   }
 
   handleCpuButtons() {
+    if (this.gameMode === "versus") return;
     for (const member of this.rightTeam) {
       const command = this.cpuController.getCommand(member);
       if (command.catch) member.startCatch(GAME_CONFIG.battle.catchDuration);
@@ -474,8 +573,19 @@ class DodgeballGame {
       member.update(delta, controls, area, GAME_CONFIG.battle);
     }
 
+    const activeRight = this.getRightControlledMember();
     for (const member of this.rightTeam) {
-      const command = this.cpuController.getCommand(member);
+      let command = this.cpuController.getCommand(member);
+      if (this.gameMode === "versus") {
+        command = member === activeRight && !member.defeated
+          ? {
+            moveX: this.input.currentP2.moveX,
+            moveY: this.input.currentP2.moveY,
+            dash: this.input.currentP2.dash,
+            lockFacing: this.input.currentP2.button4
+          }
+          : this.getSupportMove(member);
+      }
       const area = this.getMoveArea(member, false);
       const controls = this.shouldReturnToLegalArea(member, area)
         ? this.vectorTo(member, member.homeX, member.homeY, true)
@@ -719,6 +829,67 @@ class DodgeballGame {
     }
   }
 
+  startChargedThrow(actor, kind, playerIndex = 1) {
+    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
+    const selection = kind === "shoot" ? this.getShootSelection(actor, playerIndex) : this.getPassSelection(actor, playerIndex);
+    if (kind !== "shoot" && !selection.target) return false;
+    this.chargingThrow = {
+      actor,
+      kind,
+      target: selection.target,
+      aim: selection.aim,
+      playerIndex,
+      chargeTime: 0,
+      aerialCombo: kind === "shoot" && actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
+    };
+    actor.markThrowing(0.5, kind);
+    return true;
+  }
+
+  releaseChargedThrow(actor, kind, playerIndex = 1) {
+    if (!this.chargingThrow || this.chargingThrow.actor !== actor || this.chargingThrow.kind !== kind) return false;
+    const charged = this.chargingThrow;
+    this.chargingThrow = null;
+    if (this.ball.owner !== actor || actor.defeated) return false;
+    const selection = kind === "shoot" ? this.getShootSelection(actor, playerIndex) : this.getPassSelection(actor, playerIndex);
+    charged.target = selection.target || charged.target;
+    charged.aim = selection.aim || charged.aim;
+    const chargeRatio = Math.min(1, charged.chargeTime / 2);
+    const multiplier = kind === "shoot"
+      ? this.getShotMultiplier(actor, charged.aim, chargeRatio, charged.aerialCombo)
+      : 1 + chargeRatio * 0.85;
+    if (kind === "shoot" && !actor.consumeStamina(
+      GAME_CONFIG.battle.stamina.shootCost,
+      GAME_CONFIG.battle.stamina.recoveryDelay
+    )) return false;
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, kind === "shoot" ? 0.3 : 0.18);
+    actor.markThrowing(kind === "shoot" ? 0.32 : 0.22, kind);
+    if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, charged.aerialCombo)) {
+      this.spawnEffect(
+        actor.x + actor.facing * 40,
+        actor.y - 48 - actor.jumpZ,
+        charged.aerialCombo ? "#66f6ff" : kind === "shoot" ? "#ffe46a" : "#ffffff",
+        charged.aerialCombo ? "special" : kind
+      );
+      if (kind === "pass" && charged.target && charged.target.team === "left") {
+        this.controlledPlayerId = charged.target.id;
+      }
+    }
+    return true;
+  }
+
+  getPassSelection(actor, playerIndex = 1) {
+    const input = this.input.getCurrent(playerIndex);
+    const moveX = input.moveX;
+    const moveY = input.moveY;
+    const target = this.getPassTarget(actor, moveX, moveY);
+    const hasDirection = Math.hypot(moveX, moveY) >= 0.35;
+    const aim = target
+      ? (hasDirection ? this.normalizedVector(target.x - actor.x, target.y - actor.y) : { x: 0, y: 0 })
+      : this.input.getAimVector(actor.team === "left" ? 1 : -1, playerIndex);
+    return { target, aim };
+  }
+
   launchFromAi(actor, kind, candidates) {
     if (kind === "shoot") {
       const aim = this.getDefaultShootAim(actor, candidates);
@@ -785,6 +956,31 @@ class DodgeballGame {
     }
   }
 
+  updateChargingThrow(delta) {
+    if (!this.chargingThrow) return;
+
+    const charged = this.chargingThrow;
+    if (charged.actor.defeated || this.ball.owner !== charged.actor) {
+      this.chargingThrow = null;
+      return;
+    }
+
+    charged.chargeTime = Math.min(2, charged.chargeTime + delta);
+    if (charged.kind === "shoot") {
+      const selection = this.getShootSelection(charged.actor, charged.playerIndex);
+      charged.target = selection.target;
+      charged.aim = selection.aim;
+      charged.aerialCombo = charged.aerialCombo || (charged.actor.jumpZ > 0 && charged.actor.aerialPassCatchTimer > 0);
+    } else {
+      const selection = this.getPassSelection(charged.actor, charged.playerIndex);
+      charged.target = selection.target;
+      charged.aim = selection.aim;
+    }
+
+    charged.actor.markThrowing(0.42, charged.kind);
+    charged.actor.throwLockTimer = Math.max(charged.actor.throwLockTimer, 0.08);
+  }
+
   findDirectionalTarget(actor, candidates, aim, kind) {
     const alive = candidates.filter((p) => !p.defeated && p !== actor && (kind === "pass" || p.role === "inner"));
     if (alive.length === 0) return null;
@@ -806,9 +1002,10 @@ class DodgeballGame {
     return best || alive[0];
   }
 
-  getShootSelection(actor) {
-    const moveX = this.input.current.moveX;
-    const moveY = this.input.current.moveY;
+  getShootSelection(actor, playerIndex = 1) {
+    const input = this.input.getCurrent(playerIndex);
+    const moveX = input.moveX;
+    const moveY = input.moveY;
     const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
     const defaultAim = this.getDefaultShootAim(actor, enemies);
 
@@ -906,12 +1103,20 @@ class DodgeballGame {
   }
 
   getCurrentPassTarget() {
-    if (!this.ball.owner || this.ball.owner.team !== "left") return null;
-    return this.getPassTarget(this.ball.owner, this.input.current.moveX, this.input.current.moveY);
+    if (!this.ball.owner) return null;
+    if (this.ball.owner.team === "left") {
+      return this.getPassTarget(this.ball.owner, this.input.current.moveX, this.input.current.moveY);
+    }
+    if (this.gameMode === "versus" && this.ball.owner.team === "right") {
+      return this.getPassTarget(this.ball.owner, this.input.currentP2.moveX, this.input.currentP2.moveY);
+    }
+    return null;
   }
 
   getCurrentShootTarget() {
-    if (!this.ball.owner || this.ball.owner.team !== "left") return null;
+    if (!this.ball.owner) return null;
+    const playerIndex = this.ball.owner.team === "right" ? 2 : 1;
+    if (this.ball.owner.team === "right" && this.gameMode !== "versus") return null;
     if (
       this.pendingThrow &&
       this.pendingThrow.kind === "shoot" &&
@@ -919,17 +1124,22 @@ class DodgeballGame {
     ) {
       return this.pendingThrow.target;
     }
-    return this.getShootSelection(this.ball.owner).target;
+    return this.getShootSelection(this.ball.owner, playerIndex).target;
   }
 
-  getShotMultiplier(actor, aim) {
+  getShotMultiplier(actor, aim, chargeRatio = 0, aerialCombo = false) {
     const runupDot = Math.max(0, actor.runupDirX * aim.x + actor.runupDirY * aim.y);
     const runupRatio = Math.min(1, actor.runupTime / 2);
     const directionMatch = runupDot < 0.55 ? 0 : runupDot;
     const runBonus = 0.38 * runupRatio * directionMatch;
     const movingTowardThrow = actor.vx * aim.x + actor.vy * aim.y > actor.speed * 0.35;
     const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 : 0;
-    return Math.max(0.7, Math.min(1.3, 0.7 + runBonus + dashBonus));
+    const powerBonus = ((actor.stats?.power || 5) - 5) * 0.04;
+    const speedBonus = ((actor.stats?.speed || 5) - 5) * 0.025;
+    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.35, actor.jumpZ / 260) : 0;
+    const chargeBonus = chargeRatio * 0.55;
+    const aerialBonus = aerialCombo ? 0.5 : 0;
+    return Math.max(0.7, Math.min(2.15, 0.7 + runBonus + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
   }
 
   getPassTarget(actor, moveX, moveY) {
@@ -1034,7 +1244,7 @@ class DodgeballGame {
       this.ball.passDuration > 0 &&
       this.ball.passTime >= this.ball.passDuration * 0.45 &&
       horizontalDistance < 180 &&
-      this.ball.z > target.jumpZ + 104 &&
+      this.ball.z > target.jumpZ + 155 &&
       target.jumpZ <= 0 &&
       target.jumpVelocity <= 0
     ) {
@@ -1046,6 +1256,9 @@ class DodgeballGame {
     const visualDistance = Math.hypot(this.ball.x - catchX, ballY - catchY);
     const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.9;
     if (nearEndOfArc && visualDistance < this.ball.radius + 46) {
+      if (target.jumpZ > 18) {
+        target.aerialPassCatchTimer = 1.1;
+      }
       target.startCatch(0.34);
       this.ball.pickUp(target);
       if (target.team === "left") this.controlledPlayerId = target.id;
@@ -1080,7 +1293,11 @@ class DodgeballGame {
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
       if (!this.canManualCatch(catcher, friendly)) continue;
 
+      const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
       this.ball.pickUp(catcher);
+      if (caughtFriendlyPassInAir) {
+        catcher.aerialPassCatchTimer = 1.1;
+      }
       catcher.throwLockTimer = 0.2;
       catcher.catchTimer = 0;
       if (catcher.team === "left") this.controlledPlayerId = catcher.id;
@@ -1142,16 +1359,15 @@ class DodgeballGame {
 
     for (const target of targets) {
       if (target.defeated || target.role !== "inner") continue;
-      const hit = target.getHitCircle();
+      const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
-      const distance = Math.hypot(this.ball.x - hit.x, ballY - hit.y);
-      if (distance > this.ball.radius + hit.r) continue;
+      if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) continue;
 
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const damaged = target.takeDamage(this.ball.power, direction, GAME_CONFIG.battle);
       if (damaged) {
         this.spawnEffect(this.ball.x, ballY, "#ffe46a", "hit");
-        this.ball.bounceFromHit(-direction);
+        this.ball.bounceFromHit(-direction, this.ball.power / 20);
       }
       break;
     }
@@ -1201,6 +1417,13 @@ class DodgeballGame {
     if (holder) return holder;
     const found = this.leftTeam.find((p) => p.id === this.controlledPlayerId && !p.defeated);
     return found || this.getControllableLeftMembers()[0] || this.leftTeam[0];
+  }
+
+  getRightControlledMember() {
+    const holder = this.ball.owner && this.ball.owner.team === "right" ? this.ball.owner : null;
+    if (holder) return holder;
+    const found = this.rightTeam.find((p) => p.id === this.controlledRightPlayerId && !p.defeated);
+    return found || this.rightTeam.find((p) => !p.defeated) || this.rightTeam[0];
   }
 
   getControllableLeftMembers() {
@@ -1420,7 +1643,7 @@ class DodgeballGame {
       if (item instanceof Ball) {
         item.draw(context, DEBUG_MODE);
       } else {
-        item.draw(context, GAME_CONFIG.battle, DEBUG_MODE, item === active, item === passTarget, item === shootTarget);
+        item.draw(context, GAME_CONFIG.battle, DEBUG_MODE, item === active || item === activeRight, item === passTarget, item === shootTarget, SHOW_HITBOXES);
       }
     }
 
@@ -1488,12 +1711,13 @@ class DodgeballGame {
     context.strokeText("チーム編成", 640, 84);
     context.fillText("チーム編成", 640, 84);
 
-    this.drawTeamSelectSide("left", 150, "#0057ff");
-    this.drawTeamSelectSide("right", 710, "#f01818");
+    this.drawTeamSelectSide("left", 120, "#0057ff");
+    this.drawTeamSelectSide("right", 700, "#f01818");
+    this.drawMatchStartButton();
 
     context.fillStyle = "#fff7df";
     context.font = "18px Meiryo, sans-serif";
-    context.fillText("左右で選手選択 / 上下・ボタン1でタイプ変更 / ボタン2でゲーム開始", 640, 674);
+    context.fillText("左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る", 640, 688);
     context.restore();
   }
 
@@ -1506,29 +1730,61 @@ class DodgeballGame {
     context.font = "bold 28px Meiryo, sans-serif";
     context.fillText(title, x, 142);
 
-    for (let i = 0; i < 3; i += 1) {
-      const row = 0;
-      const col = i;
-      const cardX = x + col * 170;
-      const cardY = 235 + row * 205;
-      const selected = this.teamSelectionSide === side && this.teamSelectionSlot === i;
+    for (let i = 0; i < 6; i += 1) {
+      const row = Math.floor(i / 3);
+      const col = i % 3;
+      const cardX = x + col * 155;
+      const cardY = 165 + row * 205;
+      const selected = this.isTeamSelectSlotSelected(side, i);
       const type = this.teamSelections[side][i];
       const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
 
       context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
       context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
       context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 142, 160, 8);
+      this.roundRect(context, cardX, cardY, 132, 158, 8);
       context.fill();
       context.stroke();
 
-      this.drawCharacterPreview(cardX + 71, cardY + 110, side, type);
+      this.drawCharacterPreview(cardX + 66, cardY + 108, side, type);
       context.textAlign = "center";
       context.fillStyle = "#263241";
       context.font = "bold 18px Meiryo, sans-serif";
-      context.fillText(definition.label, cardX + 71, cardY + 32);
+      context.fillText(definition.label, cardX + 66, cardY + 32);
       context.font = "14px Meiryo, sans-serif";
-      context.fillText(`SLOT ${i + 1}`, cardX + 71, cardY + 52);
+      context.fillText(i < 3 ? `内野 ${i + 1}` : `外野 ${i - 2}`, cardX + 66, cardY + 52);
+    }
+    context.restore();
+  }
+
+  isTeamSelectSlotSelected(side, slot) {
+    if (this.gameMode === "versus") return this.teamSelectionSlots[side] === slot;
+    return this.teamSelectionSide === side && this.teamSelectionSlot === slot;
+  }
+
+  drawMatchStartButton() {
+    const context = this.context;
+    const selected = this.gameMode === "versus"
+      ? this.teamSelectionSlots.left === 6 || this.teamSelectionSlots.right === 6
+      : this.teamSelectionSlot === 6;
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.82)";
+    context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
+    context.lineWidth = selected ? 6 : 3;
+    this.roundRect(context, 440, 620, 400, 44, 8);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#263241";
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText("試合開始", 640, 650);
+    if (this.gameMode === "versus" && selected) {
+      context.font = "bold 14px Meiryo, sans-serif";
+      context.fillStyle = "#4b5360";
+      const labels = [];
+      if (this.teamSelectionSlots.left === 6) labels.push("1P");
+      if (this.teamSelectionSlots.right === 6) labels.push("2P");
+      context.fillText(labels.join(" / "), 640, 612);
     }
     context.restore();
   }
@@ -1543,17 +1799,17 @@ class DodgeballGame {
     context.strokeStyle = suit;
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.lineWidth = 11;
+    context.lineWidth = 11 * body.legWidth;
     context.beginPath();
     context.moveTo(-12, -8);
-    context.lineTo(-20, 28);
-    context.lineTo(-18, 56);
+    context.lineTo(-20, -8 + 36 * body.legLength);
+    context.lineTo(-18, -8 + 64 * body.legLength);
     context.moveTo(12, -8);
-    context.lineTo(20, 28);
-    context.lineTo(18, 56);
+    context.lineTo(20, -8 + 36 * body.legLength);
+    context.lineTo(18, -8 + 64 * body.legLength);
     context.stroke();
     context.strokeStyle = "#ffd1a3";
-    context.lineWidth = 9;
+    context.lineWidth = 9 * body.armWidth;
     context.beginPath();
     context.moveTo(-20, -54);
     context.lineTo(-34, -28);

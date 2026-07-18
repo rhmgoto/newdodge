@@ -17,6 +17,8 @@ class Ball {
     this.target = null;
     this.kind = "loose";
     this.power = this.config.damage;
+    this.shotMultiplier = 1;
+    this.specialShot = false;
     this.isFlying = false;
     this.isLoose = true;
     this.catchable = false;
@@ -109,10 +111,12 @@ class Ball {
     this.vz = 0;
     this.passTime = 0;
     this.passDuration = 0;
+    this.shotMultiplier = 1;
+    this.specialShot = false;
     player.hasBall = true;
   }
 
-  launch(actor, target, kind, aimVector, shotMultiplier = 1) {
+  launch(actor, target, kind, aimVector, throwMultiplier = 1, specialShot = false) {
     if ((kind !== "shoot" && !target) || actor.defeated) return false;
 
     actor.hasBall = false;
@@ -120,7 +124,9 @@ class Ball {
     this.thrower = actor;
     this.target = target;
     this.kind = kind;
-    const powerMultiplier = kind === "shoot" ? shotMultiplier : 1;
+    this.shotMultiplier = kind === "shoot" ? throwMultiplier : 1;
+    this.specialShot = kind === "shoot" && specialShot;
+    const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
     this.isLoose = false;
@@ -133,7 +139,7 @@ class Ball {
     this.passDuration = 0;
 
     if (kind === "pass") {
-      this.launchPassArc(actor, target);
+      this.launchPassArc(actor, target, throwMultiplier);
       return true;
     }
 
@@ -145,7 +151,7 @@ class Ball {
     const dx = targetX - this.x + aimVector.x * aimNudge;
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
-    const speed = kind === "shoot" ? this.config.shootSpeed * shotMultiplier : this.config.passSpeed;
+    const speed = kind === "shoot" ? this.config.shootSpeed * throwMultiplier : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
@@ -156,10 +162,11 @@ class Ball {
     return true;
   }
 
-  launchPassArc(actor, target) {
+  launchPassArc(actor, target, passMultiplier = 1) {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
-    this.passDuration = Math.max(0.84, Math.min(1.5, distance / Math.max(1, this.config.passSpeed)));
+    catchPoint.z += Math.max(0, passMultiplier - 1) * 140;
+    this.passDuration = Math.max(0.84, Math.min(1.85, distance / Math.max(1, this.config.passSpeed * (0.92 + passMultiplier * 0.16))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
@@ -185,7 +192,7 @@ class Ball {
     };
   }
 
-  bounceFromHit(direction) {
+  bounceFromHit(direction, strength = 1) {
     this.owner = null;
     this.thrower = null;
     this.target = null;
@@ -194,11 +201,14 @@ class Ball {
     this.isLoose = true;
     this.catchable = false;
     this.hasBounced = true;
-    this.vx = direction * this.config.hitBounceX;
-    this.vy = (Math.random() - 0.5) * this.config.hitBounceY;
-    this.vz = 180;
+    const bounceStrength = Math.max(0.75, Math.min(2.2, strength));
+    this.vx = direction * this.config.hitBounceX * bounceStrength;
+    this.vy = (Math.random() - 0.5) * this.config.hitBounceY * bounceStrength;
+    this.vz = 180 * bounceStrength;
     this.passTime = 0;
     this.passDuration = 0;
+    this.shotMultiplier = 1;
+    this.specialShot = false;
   }
 
   drop() {
@@ -213,6 +223,8 @@ class Ball {
     this.hasBounced = true;
     this.passTime = 0;
     this.passDuration = 0;
+    this.shotMultiplier = 1;
+    this.specialShot = false;
   }
 
   canBePickedUpBy(player, distance) {
@@ -223,13 +235,48 @@ class Ball {
     if (this.owner) return;
 
     const drawY = this.y - this.z;
+    const shotEffect = this.kind === "shoot" && this.isFlying ? Math.max(0, this.shotMultiplier - 0.92) : 0;
     context.save();
     context.fillStyle = "rgba(40, 28, 16, 0.24)";
     context.beginPath();
     context.ellipse(this.x + 3, this.y + 10, this.radius * 1.05, this.radius * 0.38, 0, 0, Math.PI * 2);
     context.fill();
 
+    if (shotEffect > 0) {
+      const velocity = Math.hypot(this.vx, this.vy) || 1;
+      const tailX = -this.vx / velocity;
+      const tailY = -this.vy / velocity;
+      const intensity = Math.min(1, shotEffect / 0.55);
+      context.save();
+      context.globalAlpha = 0.28 + intensity * 0.32;
+      context.strokeStyle = this.specialShot ? "#66f6ff" : intensity > 0.65 ? "#fff46a" : "#ffb44a";
+      context.lineWidth = 8 + intensity * 8;
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(this.x + tailX * 20, drawY + tailY * 20);
+      context.lineTo(this.x + tailX * (82 + intensity * 62), drawY + tailY * (82 + intensity * 62));
+      context.stroke();
+      context.strokeStyle = "rgba(255,255,255,0.72)";
+      context.lineWidth = 3 + intensity * 3;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 12, drawY + tailY * 12);
+      context.lineTo(this.x + tailX * (54 + intensity * 42), drawY + tailY * (54 + intensity * 42));
+      context.stroke();
+      context.restore();
+    }
+
     context.translate(this.x, drawY);
+    if (shotEffect > 0) {
+      const intensity = Math.min(1, shotEffect / 0.55);
+      context.save();
+      context.globalAlpha = 0.25 + intensity * 0.28;
+      context.strokeStyle = this.specialShot ? "#66f6ff" : intensity > 0.65 ? "#fff46a" : "#ff8f3a";
+      context.lineWidth = 4 + intensity * 5;
+      context.beginPath();
+      context.arc(0, 0, this.radius + 5 + intensity * 8, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+    }
     context.rotate(this.spin);
     context.fillStyle = "#f06a32";
     context.beginPath();
