@@ -228,7 +228,9 @@ class Ball {
   }
 
   canBePickedUpBy(player, distance) {
-    return this.isLoose && !this.owner && this.z < 32 && Math.hypot(this.x - player.x, this.y - player.y) <= distance + 22;
+    if (!this.isLoose || this.owner || this.z >= 40) return false;
+    const rollingBonus = !this.isFlying ? 34 : 0;
+    return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + 22;
   }
 
   draw(context, debugMode) {

@@ -203,6 +203,7 @@ class Player {
       this.requestVisualDirection(moveX, moveY, config.turnDuration);
     }
 
+    const airborne = this.jumpZ > 0 || this.jumpVelocity > 0;
     const wantsDash = Boolean(controls.dash && moving && this.dodgeTimer <= 0);
     this.isDashing = wantsDash && this.stamina > 0;
     if (this.isDashing) {
@@ -213,7 +214,8 @@ class Player {
 
     const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
     const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
-    const speed = this.speed * (this.isDashing ? config.dashSpeedMultiplier : 1) * duckSlow * turnSlow;
+    const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) : 1;
+    const speed = this.speed * dashMultiplier * duckSlow * turnSlow;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
     this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
@@ -451,8 +453,9 @@ class Player {
     let best = null;
     let bestDistance = Infinity;
     for (const rect of rects) {
-      const x = Math.max(rect.x + this.radius, Math.min(rect.x + rect.w - this.radius, this.x));
-      const y = Math.max(rect.y + this.radius, Math.min(rect.y + rect.h - this.radius, this.y));
+      const point = this.clampPointToAreaPart(this.x, this.y, rect);
+      const x = point.x;
+      const y = point.y;
       const distance = Math.hypot(this.x - x, this.y - y);
       if (distance < bestDistance) {
         best = { x, y };
@@ -469,15 +472,48 @@ class Player {
   isInsideArea(area) {
     if (!area) return true;
     const rects = area.rects || [area];
-    return rects.some((rect) => (
+    return rects.some((rect) => this.isInsideAreaPart(rect));
+  }
+
+  isInsideAreaPart(rect) {
+    if (rect.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(rect.trapezoid, this.y);
+      return Boolean(bounds) && this.x >= bounds.left + this.radius && this.x <= bounds.right - this.radius;
+    }
+    return (
       this.x >= rect.x + this.radius &&
       this.x <= rect.x + rect.w - this.radius &&
       this.y >= rect.y + this.radius &&
       this.y <= rect.y + rect.h - this.radius
-    ));
+    );
   }
 
-  draw(context, config, debugMode, isControlled, isPassTarget, isShootTarget, showHitbox = false) {
+  clampPointToAreaPart(x, y, rect) {
+    if (rect.trapezoid) {
+      const clampedY = Math.max(rect.trapezoid.yTop + this.radius, Math.min(rect.trapezoid.yBottom - this.radius, y));
+      const bounds = this.getTrapezoidBoundsAtY(rect.trapezoid, clampedY);
+      if (!bounds) return { x, y: clampedY };
+      return {
+        x: Math.max(bounds.left + this.radius, Math.min(bounds.right - this.radius, x)),
+        y: clampedY
+      };
+    }
+    return {
+      x: Math.max(rect.x + this.radius, Math.min(rect.x + rect.w - this.radius, x)),
+      y: Math.max(rect.y + this.radius, Math.min(rect.y + rect.h - this.radius, y))
+    };
+  }
+
+  getTrapezoidBoundsAtY(trapezoid, y) {
+    if (y < trapezoid.yTop || y > trapezoid.yBottom) return null;
+    const t = (y - trapezoid.yTop) / Math.max(1, trapezoid.yBottom - trapezoid.yTop);
+    return {
+      left: trapezoid.leftTop + (trapezoid.leftBottom - trapezoid.leftTop) * t,
+      right: trapezoid.rightTop + (trapezoid.rightBottom - trapezoid.rightTop) * t
+    };
+  }
+
+  draw(context, config, debugMode, isControlled, isPassTarget, isShootTarget, showHitbox = false, renderScaleCompensation = 1) {
     if (this.defeated && this.leaveTimer > config.exitDelay) return;
 
     const blinkOff = this.defeated
@@ -485,7 +521,7 @@ class Player {
       : this.invincibleTime > 0 && Math.floor(this.invincibleTime * 18) % 2 === 0;
     if (blinkOff) return;
 
-    const scale = this.getScale(config);
+    const scale = this.getScale(config) * renderScaleCompensation;
     this.lastDrawScale = scale;
     const drawY = this.y - this.jumpZ;
     const motionTime = performance.now();

@@ -231,9 +231,11 @@ class InputManager {
     return { x: x / length, y: y / length };
   }
 
-  wasRightStickFlicked() {
-    const currentPower = Math.hypot(this.current.rightX, this.current.rightY);
-    const previousPower = Math.hypot(this.previous.rightX, this.previous.rightY);
+  wasRightStickFlicked(playerIndex = 1) {
+    const current = this.getCurrent(playerIndex);
+    const previous = this.getPrevious(playerIndex);
+    const currentPower = Math.hypot(current.rightX, current.rightY);
+    const previousPower = Math.hypot(previous.rightX, previous.rightY);
     return currentPower > 0.65 && previousPower <= 0.35;
   }
 

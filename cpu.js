@@ -10,6 +10,9 @@ class CPUController {
     this.reactionTimer = this.randomReaction();
     this.holderPlan = null;
     this.currentHolderId = null;
+    this.evasionPlans = new Map();
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
   }
 
   update(delta) {
@@ -26,6 +29,8 @@ class CPUController {
       command.jump = false;
       command.shoot = false;
       command.pass = false;
+      command.chargeShoot = false;
+      command.chargeTime = 0;
     }
 
     if (this.decisionTimer <= 0) {
@@ -68,7 +73,7 @@ class CPUController {
       }
 
       if (this.ball.owner && this.ball.owner.team === "left" && member.role === "inner") {
-        this.evadeHolder(command, member, this.ball.owner);
+        this.controlWithoutBall(command, member, this.ball.owner);
         continue;
       }
 
@@ -78,12 +83,36 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (plan.type === "pass-chain") {
+      this.moveToHome(command, holder);
+      if (this.throwTimer <= 0) {
+        command.pass = true;
+        if (this.passChainRemaining <= 0 && !this.passChainFinisher) {
+          this.passChainRemaining = 1 + Math.floor(Math.random() * 2);
+        }
+        this.throwTimer = 0.42 + Math.random() * 0.32;
+        this.holderPlan = null;
+      }
+      return;
+    }
+
     if (plan.type === "center-shot") {
       this.moveToward(command, holder, plan.x, plan.y);
       command.dash = holder.stamina > this.config.stamina.shootCost + 14;
       if (Math.hypot(holder.x - plan.x, holder.y - plan.y) < 42 && this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.36 + Math.random() * 0.24;
+        this.holderPlan = null;
+      }
+      return;
+    }
+
+    if (plan.type === "charge-shot") {
+      this.faceNearestThreat(command, holder);
+      if (this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = plan.chargeTime;
+        this.throwTimer = plan.chargeTime + 0.55 + Math.random() * 0.25;
         this.holderPlan = null;
       }
       return;
@@ -140,18 +169,31 @@ class CPUController {
 
     const roll = Math.random();
     let type = "normal-shot";
-    if (holder.role === "out") {
-      type = roll < 0.45 ? "normal-shot" : roll < 0.8 ? "pass" : "jump-shot";
-    } else if (roll < 0.34) {
-      type = "normal-shot";
-    } else if (roll < 0.58) {
-      type = "center-shot";
-    } else if (roll < 0.76) {
-      type = "dash-shot";
-    } else if (roll < 0.9) {
-      type = "jump-shot";
+    if (this.passChainFinisher) {
+      type = Math.random() < 0.55 ? "charge-shot" : "dash-shot";
+      this.passChainFinisher = false;
+    } else if (this.passChainRemaining > 0) {
+      this.passChainRemaining -= 1;
+      type = "pass-chain";
+      if (this.passChainRemaining <= 0) {
+        this.passChainFinisher = true;
+      }
     } else {
-      type = "pass";
+      if (holder.role === "out") {
+        type = roll < 0.32 ? "normal-shot" : roll < 0.62 ? "pass-chain" : roll < 0.82 ? "charge-shot" : "jump-shot";
+      } else if (roll < 0.24) {
+        type = "normal-shot";
+      } else if (roll < 0.46) {
+        type = "center-shot";
+      } else if (roll < 0.64) {
+        type = "dash-shot";
+      } else if (roll < 0.78) {
+        type = "jump-shot";
+      } else if (roll < 0.91) {
+        type = "pass-chain";
+      } else {
+        type = "charge-shot";
+      }
     }
 
     const centerLineX = this.config.court.centerX + 82;
@@ -159,7 +201,8 @@ class CPUController {
       holderId: holder.id,
       type,
       x: holder.role === "inner" ? centerLineX : holder.homeX,
-      y: holder.y
+      y: holder.y,
+      chargeTime: 0.75 + Math.random() * 1.05
     };
     return this.holderPlan;
   }
@@ -181,11 +224,13 @@ class CPUController {
 
   evadeHolder(command, member, holder) {
     const area = this.config.areas ? this.config.areas[member.zone] : null;
+    const away = this.normalizedVector(member.x - holder.x, member.y - holder.y);
     const candidates = [
-      { x: member.homeX + 120, y: member.homeY - 110 },
-      { x: member.homeX + 160, y: member.homeY + 110 },
-      { x: member.homeX + 280, y: member.homeY },
-      { x: member.homeX + 80, y: member.homeY }
+      { x: member.x + away.x * 360, y: member.y + away.y * 240 },
+      { x: member.homeX + 260, y: member.homeY - 170 },
+      { x: member.homeX + 300, y: member.homeY + 170 },
+      { x: member.homeX + 430, y: member.homeY },
+      { x: member.homeX + 180, y: member.homeY }
     ];
 
     let best = null;
@@ -194,8 +239,8 @@ class CPUController {
       const p = this.clampPointToArea(point, area, member.radius);
       const holderDistance = Math.hypot(p.x - holder.x, p.y - holder.y);
       const teammatePenalty = this.teammateCrowding(member, p.x, p.y);
-      const homePenalty = Math.hypot(p.x - member.homeX, p.y - member.homeY) * 0.15;
-      const score = holderDistance - teammatePenalty - homePenalty;
+      const homePenalty = Math.hypot(p.x - member.homeX, p.y - member.homeY) * 0.06;
+      const score = holderDistance * 1.45 - teammatePenalty - homePenalty;
       if (score > bestScore) {
         best = p;
         bestScore = score;
@@ -206,6 +251,39 @@ class CPUController {
       this.moveToward(command, member, best.x, best.y);
       command.dash = true;
     }
+  }
+
+  controlWithoutBall(command, member, holder) {
+    const plan = this.getEvasionPlan(member, holder);
+    if (plan.type === "side-step") {
+      const area = this.config.areas ? this.config.areas[member.zone] : null;
+      const wave = Math.sin(Date.now() / plan.speed + member.x * 0.03);
+      const x = member.homeX + wave * plan.width;
+      const y = member.homeY + Math.cos(Date.now() / (plan.speed * 1.2) + member.y * 0.02) * 42;
+      const point = this.clampPointToArea({ x, y }, area, member.radius);
+      this.moveToward(command, member, point.x, point.y);
+      command.dash = false;
+      return;
+    }
+
+    this.evadeHolder(command, member, holder);
+  }
+
+  getEvasionPlan(member, holder) {
+    const key = member.id;
+    const current = this.evasionPlans.get(key);
+    const now = Date.now();
+    if (current && current.holderId === holder.id && current.expiresAt > now) return current;
+
+    const plan = {
+      holderId: holder.id,
+      type: Math.random() < 0.22 ? "side-step" : "run-away",
+      width: 80 + Math.random() * 90,
+      speed: 260 + Math.random() * 220,
+      expiresAt: now + 650 + Math.random() * 900
+    };
+    this.evasionPlans.set(key, plan);
+    return plan;
   }
 
   reactToIncomingBall(delta) {
@@ -222,11 +300,17 @@ class CPUController {
 
       const frontShot = this.isFrontShot(member);
       const laneThreat = Math.abs(this.ball.y - member.y) < 90;
-      if (frontShot && distance < 185 && Math.random() < this.config.cpuCatchChance * 1.25) {
+      if (frontShot && distance < 220 && Math.random() < this.config.cpuCatchChance * 1.35) {
         command.catch = true;
       } else if (laneThreat) {
+        const dodgeRoll = Math.random();
+        if (dodgeRoll < 0.34 && member.stamina > this.config.stamina.duckCost) {
+          command.crouch = true;
+        } else if (dodgeRoll < 0.58 && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
+          command.jump = true;
+        }
         command.moveY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
-        command.moveX = -0.25;
+        command.moveX = this.ball.vx > 0 ? -0.35 : 0.35;
         command.dash = true;
       }
     }
@@ -301,6 +385,11 @@ class CPUController {
     command.moveY = Math.abs(dy) > 8 ? dy / length : 0;
   }
 
+  normalizedVector(dx, dy) {
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: dx / length, y: dy / length };
+  }
+
   stop(command) {
     command.moveX = 0;
     command.moveY = 0;
@@ -319,9 +408,27 @@ class CPUController {
 
   clampPointToArea(point, area, radius) {
     if (!area) return point;
+    if (area.trapezoid) {
+      const y = Math.max(area.trapezoid.yTop + radius, Math.min(area.trapezoid.yBottom - radius, point.y));
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, y);
+      if (!bounds) return { x: point.x, y };
+      return {
+        x: Math.max(bounds.left + radius, Math.min(bounds.right - radius, point.x)),
+        y
+      };
+    }
     const x = Math.max(area.x + radius, Math.min(area.x + area.w - radius, point.x));
     const y = Math.max(area.y + radius, Math.min(area.y + area.h - radius, point.y));
     return { x, y };
+  }
+
+  getTrapezoidBoundsAtY(trapezoid, y) {
+    if (y < trapezoid.yTop || y > trapezoid.yBottom) return null;
+    const t = (y - trapezoid.yTop) / Math.max(1, trapezoid.yBottom - trapezoid.yTop);
+    return {
+      left: trapezoid.leftTop + (trapezoid.leftBottom - trapezoid.leftTop) * t,
+      right: trapezoid.rightTop + (trapezoid.rightBottom - trapezoid.rightTop) * t
+    };
   }
 
   nearestActiveOpponent(member) {
@@ -351,7 +458,9 @@ class CPUController {
       crouch: false,
       jump: false,
       shoot: false,
-      pass: false
+      pass: false,
+      chargeShoot: false,
+      chargeTime: 0
     };
   }
 
