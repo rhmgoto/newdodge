@@ -3,6 +3,7 @@ class InputManager {
     // ボタン割り当てはここを変更する。番号は画面右下の表示で確認できる。
     this.gamepadMap = {
       button1: 0, // パス
+      button1Alt: 1, // パッド表示が1始まりの場合のボタン1
       button2: 2, // シュート
       catch: 2, // キャッチ
       button3: 3, // ジャンプ
@@ -136,7 +137,7 @@ class InputManager {
       moveY: this.clampAxis(leftY + (dDown ? 1 : 0) - (dUp ? 1 : 0)),
       rightX: this.clampAxis(rightX),
       rightY: this.clampAxis(rightY),
-      button1: this.isPressed(pad.buttons[this.gamepadMap.button1]),
+      button1: this.isPressed(pad.buttons[this.gamepadMap.button1]) || this.isPressed(pad.buttons[this.gamepadMap.button1Alt]),
       button2: this.isPressed(pad.buttons[this.gamepadMap.button2]),
       catch: this.isPressed(pad.buttons[this.gamepadMap.catch]),
       button3: this.isPressed(pad.buttons[this.gamepadMap.button3]),

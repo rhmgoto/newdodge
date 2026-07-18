@@ -112,7 +112,7 @@ class Ball {
     player.hasBall = true;
   }
 
-  launch(actor, target, kind, aimVector) {
+  launch(actor, target, kind, aimVector, shotMultiplier = 1) {
     if ((kind !== "shoot" && !target) || actor.defeated) return false;
 
     actor.hasBall = false;
@@ -120,7 +120,8 @@ class Ball {
     this.thrower = actor;
     this.target = target;
     this.kind = kind;
-    this.power = kind === "shoot" ? actor.throwPower : 0;
+    const powerMultiplier = kind === "shoot" ? shotMultiplier : 1;
+    this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
     this.isLoose = false;
     this.catchable = true;
@@ -139,17 +140,19 @@ class Ball {
     const leadX = kind === "shoot" && target ? target.vx * 0.06 : 0;
     const leadY = kind === "shoot" && target ? target.vy * 0.06 : 0;
     const targetX = target ? target.x + leadX : this.x + aimVector.x * 900;
-    const targetY = target ? target.y - 34 + leadY : this.y + aimVector.y * 900;
+    const targetY = target ? target.y - 38 + leadY : this.y + aimVector.y * 900;
     const aimNudge = target && kind !== "shoot" ? 22 : 0;
     const dx = targetX - this.x + aimVector.x * aimNudge;
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
-    const speed = kind === "shoot" ? this.config.shootSpeed : this.config.passSpeed;
-    const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.15 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
+    const speed = kind === "shoot" ? this.config.shootSpeed * shotMultiplier : this.config.passSpeed;
+    const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
-    this.vz = kind === "shoot" ? 120 + actor.jumpZ * 0.3 : 650 + actor.jumpZ * 0.15;
+    this.vz = kind === "shoot"
+      ? (target ? Math.max(-140, 105 - actor.jumpZ * 0.55) : 120 + actor.jumpZ * 0.3)
+      : 650 + actor.jumpZ * 0.15;
     return true;
   }
 

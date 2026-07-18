@@ -284,6 +284,7 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.leftTeam);
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
+    this.ensureBallIsPlayable();
     this.checkGameOver();
   }
 
@@ -295,10 +296,6 @@ class DodgeballGame {
 
     if (this.input.wasPressed("button3")) {
       active.jump(GAME_CONFIG.battle);
-    }
-
-    if (this.input.wasPressed("avoid")) {
-      active.startDodge(0, 0, GAME_CONFIG.battle);
     }
 
     if (selfTeamHasBall) {
@@ -314,6 +311,9 @@ class DodgeballGame {
         }
       }
     } else {
+      if (this.input.wasPressed("avoid")) {
+        active.startDodge(0, 0, GAME_CONFIG.battle);
+      }
       if (this.input.wasPressed("catch")) {
         active.startCatch(GAME_CONFIG.battle.catchDuration);
       }
@@ -401,6 +401,10 @@ class DodgeballGame {
 
   getSupportMove(member) {
     if (member.defeated) return { moveX: 0, moveY: 0, dash: false };
+    const enemyHolder = this.ball.owner && this.ball.owner.team !== member.team ? this.ball.owner : null;
+    if (enemyHolder && member.role === "inner") {
+      return this.getEvadeMove(member, enemyHolder, member.team === "left" ? this.leftTeam : this.rightTeam);
+    }
     if (this.ball.isLoose && member.role === "inner" && this.ball.x < GAME_CONFIG.court.centerX) {
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       if (distance < 360) {
@@ -408,6 +412,45 @@ class DodgeballGame {
       }
     }
     return this.vectorTo(member, member.homeX, member.homeY + Math.sin(Date.now() / 600 + member.x) * 20, false);
+  }
+
+  getEvadeMove(member, holder, team) {
+    const area = this.areas[member.zone];
+    const candidates = [
+      { x: member.homeX - 140, y: member.homeY - 120 },
+      { x: member.homeX - 160, y: member.homeY + 120 },
+      { x: member.homeX - 260, y: member.homeY },
+      { x: member.homeX + 80, y: member.homeY - 80 },
+      { x: member.homeX + 80, y: member.homeY + 80 }
+    ];
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+      const point = this.clampPointToRect(candidate, area, member.radius);
+      const holderDistance = Math.hypot(point.x - holder.x, point.y - holder.y);
+      const crowdPenalty = team.reduce((sum, teammate) => {
+        if (teammate === member || teammate.defeated) return sum;
+        const distance = Math.hypot(point.x - teammate.x, point.y - teammate.y);
+        return sum + (distance < 130 ? 130 - distance : 0);
+      }, 0);
+      const homePenalty = Math.hypot(point.x - member.homeX, point.y - member.homeY) * 0.12;
+      const score = holderDistance - crowdPenalty - homePenalty;
+      if (score > bestScore) {
+        best = point;
+        bestScore = score;
+      }
+    }
+
+    return best ? this.vectorTo(member, best.x, best.y, true) : this.vectorTo(member, member.homeX, member.homeY, true);
+  }
+
+  clampPointToRect(point, rect, radius) {
+    if (!rect) return point;
+    return {
+      x: Math.max(rect.x + radius, Math.min(rect.x + rect.w - radius, point.x)),
+      y: Math.max(rect.y + radius, Math.min(rect.y + rect.h - radius, point.y))
+    };
   }
 
   autoPickupLooseBall() {
@@ -445,6 +488,66 @@ class DodgeballGame {
     this.ball.pickUp(receiver);
     if (receiver.team === "left") this.controlledPlayerId = receiver.id;
     this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
+  }
+
+  ensureBallIsPlayable() {
+    if (!this.ball) return;
+
+    if (this.ball.owner) {
+      const ownerValid = this.players.includes(this.ball.owner) && !this.ball.owner.defeated && this.ball.owner.downTimer <= 0;
+      if (ownerValid && this.ball.owner.hasBall) return;
+
+      const owner = this.ball.owner;
+      if (owner) owner.hasBall = false;
+      this.releaseBallAt(
+        Number.isFinite(owner?.x) ? owner.x : GAME_CONFIG.court.centerX,
+        Number.isFinite(owner?.y) ? owner.y : GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55,
+        "loose"
+      );
+      return;
+    }
+
+    const invalidPosition = !Number.isFinite(this.ball.x) || !Number.isFinite(this.ball.y) || !Number.isFinite(this.ball.z);
+    const invalidState = !this.ball.isFlying && !this.ball.isLoose;
+    if (invalidPosition || invalidState) {
+      this.releaseBallAt(GAME_CONFIG.court.centerX, GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55, "loose");
+      return;
+    }
+
+    if (this.ball.isLoose && !this.isPointInsideBallBounds(this.ball.x, this.ball.y)) {
+      this.releaseBallAt(GAME_CONFIG.court.centerX, GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55, "loose");
+    }
+  }
+
+  releaseBallAt(x, y, effectType) {
+    const safeX = Math.max(this.ballBounds.x + this.ball.radius, Math.min(this.ballBounds.x + this.ballBounds.w - this.ball.radius, x));
+    const safeY = Math.max(this.ballBounds.y + this.ball.radius, Math.min(this.ballBounds.y + this.ballBounds.h - this.ball.radius, y));
+    this.ball.owner = null;
+    this.ball.thrower = null;
+    this.ball.target = null;
+    this.ball.kind = "loose";
+    this.ball.isFlying = false;
+    this.ball.isLoose = true;
+    this.ball.catchable = false;
+    this.ball.hasBounced = true;
+    this.ball.x = safeX;
+    this.ball.y = safeY;
+    this.ball.z = 0;
+    this.ball.vx = 0;
+    this.ball.vy = 0;
+    this.ball.vz = 0;
+    this.ball.passTime = 0;
+    this.ball.passDuration = 0;
+    this.spawnEffect(safeX, safeY - 32, "#ffffff", effectType);
+  }
+
+  isPointInsideBallBounds(x, y) {
+    return (
+      x >= this.ballBounds.x - 4 &&
+      x <= this.ballBounds.x + this.ballBounds.w + 4 &&
+      y >= this.ballBounds.y - 4 &&
+      y <= this.ballBounds.y + this.ballBounds.h + 4
+    );
   }
 
   getOutfieldSideForBall(x, y) {
@@ -526,6 +629,7 @@ class DodgeballGame {
       target,
       kind,
       aim: { x: aim.x, y: aim.y },
+      shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, aim) : 1,
       timer: kind === "shoot" ? 0.38 : 0.2
     };
     const throwDuration = kind === "shoot" ? 0.68 : 0.4;
@@ -553,7 +657,7 @@ class DodgeballGame {
     if (pending.timer > 0) return;
 
     this.pendingThrow = null;
-    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim)) {
+    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier)) {
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
         pending.actor.y - 48,
@@ -698,6 +802,13 @@ class DodgeballGame {
       return this.pendingThrow.target;
     }
     return this.getShootSelection(this.ball.owner).target;
+  }
+
+  getShotMultiplier(actor, aim) {
+    const moveTowardThrow = Math.max(0, actor.vx * aim.x + actor.vy * aim.y);
+    const runBonus = Math.min(0.35, moveTowardThrow / Math.max(1, actor.speed * 2.2));
+    const dashBonus = actor.isDashing ? 0.25 : 0;
+    return Math.max(0.7, Math.min(1.3, 0.7 + runBonus + dashBonus));
   }
 
   getPassTarget(actor, moveX, moveY) {
