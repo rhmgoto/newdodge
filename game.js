@@ -18,8 +18,15 @@ const GAME_CONFIG = {
   },
   player: {
     maxHp: 100,
+    maxStamina: 100,
     speed: 235,
-    throwPower: 20
+    throwPower: 20,
+    stats: {
+      power: 5,
+      speed: 5,
+      jump: 5,
+      technique: 5
+    }
   },
   ball: {
     radius: 18,
@@ -151,9 +158,11 @@ class DodgeballGame {
         zone: isLeft ? "leftInner" : "rightInner",
         x: xs[0],
         y: ys[1],
-        maxHp: 100,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
         throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim
       }),
@@ -165,9 +174,11 @@ class DodgeballGame {
         zone: isLeft ? "leftInner" : "rightInner",
         x: xs[1],
         y: ys[0],
-        maxHp: 90,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
         throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim,
         hairColor: "#6d3a1d"
@@ -180,9 +191,11 @@ class DodgeballGame {
         zone: isLeft ? "leftInner" : "rightInner",
         x: xs[2],
         y: ys[2],
-        maxHp: 110,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower + 2,
+        throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim,
         hairColor: "#1f1f22"
@@ -195,9 +208,11 @@ class DodgeballGame {
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + 55,
-        maxHp: 1,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
         throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim
       }),
@@ -209,9 +224,11 @@ class DodgeballGame {
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
         y: bottomArea.y + bottomArea.h * 0.5,
-        maxHp: 1,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
         throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim
       }),
@@ -223,9 +240,11 @@ class DodgeballGame {
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
         y: sideArea.y + sideArea.h * 0.52,
-        maxHp: 1,
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
         speed: GAME_CONFIG.player.speed,
         throwPower: GAME_CONFIG.player.throwPower,
+        stats: GAME_CONFIG.player.stats,
         uniformColor: color,
         trimColor: trim
       })
@@ -805,9 +824,12 @@ class DodgeballGame {
   }
 
   getShotMultiplier(actor, aim) {
-    const moveTowardThrow = Math.max(0, actor.vx * aim.x + actor.vy * aim.y);
-    const runBonus = Math.min(0.35, moveTowardThrow / Math.max(1, actor.speed * 2.2));
-    const dashBonus = actor.isDashing ? 0.25 : 0;
+    const runupDot = Math.max(0, actor.runupDirX * aim.x + actor.runupDirY * aim.y);
+    const runupRatio = Math.min(1, actor.runupTime / 2);
+    const directionMatch = runupDot < 0.55 ? 0 : runupDot;
+    const runBonus = 0.38 * runupRatio * directionMatch;
+    const movingTowardThrow = actor.vx * aim.x + actor.vy * aim.y > actor.speed * 0.35;
+    const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 : 0;
     return Math.max(0.7, Math.min(1.3, 0.7 + runBonus + dashBonus));
   }
 
@@ -908,6 +930,17 @@ class DodgeballGame {
       this.ball.drop();
       return;
     }
+    const horizontalDistance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
+    if (
+      this.ball.passDuration > 0 &&
+      this.ball.passTime >= this.ball.passDuration * 0.45 &&
+      horizontalDistance < 180 &&
+      this.ball.z > target.jumpZ + 104 &&
+      target.jumpZ <= 0 &&
+      target.jumpVelocity <= 0
+    ) {
+      target.jump(GAME_CONFIG.battle);
+    }
     const catchX = target.x;
     const catchY = target.y - target.jumpZ - 130;
     const ballY = this.ball.y - this.ball.z;
@@ -994,8 +1027,8 @@ class DodgeballGame {
     const isPassCut = this.ball.kind === "pass" && this.ball.thrower && this.ball.thrower.team !== catcher.team;
     if (!friendly && !isPassCut) return box;
     const jumpBonus = catcher.jumpZ > 0 ? 72 : 0;
-    const inflateX = isPassCut ? 118 : 96;
-    const inflateY = (isPassCut ? 106 : 76) + jumpBonus;
+    const inflateX = isPassCut ? 72 : 96;
+    const inflateY = (isPassCut ? 64 : 76) + jumpBonus;
     return {
       x: box.x - inflateX,
       y: box.y - inflateY,

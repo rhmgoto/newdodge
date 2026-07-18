@@ -159,7 +159,7 @@ class Ball {
   launchPassArc(actor, target) {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
-    this.passDuration = Math.max(0.72, Math.min(1.28, distance / Math.max(1, this.config.passSpeed)));
+    this.passDuration = Math.max(0.84, Math.min(1.5, distance / Math.max(1, this.config.passSpeed)));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
@@ -181,7 +181,7 @@ class Ball {
     return {
       x: target.x,
       y: target.y - 34,
-      z: target.jumpZ + 96
+      z: target.jumpZ + 132
     };
   }
 

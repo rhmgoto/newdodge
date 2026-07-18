@@ -13,6 +13,13 @@ const PLAYER_MODEL = {
   sole: "#f8f8f2"
 };
 
+const DEFAULT_PLAYER_STATS = {
+  power: 5,
+  speed: 5,
+  jump: 5,
+  technique: 5
+};
+
 class Player {
   constructor(options) {
     this.id = options.id;
@@ -25,10 +32,13 @@ class Player {
     this.homeX = options.x;
     this.homeY = options.y;
     this.radius = options.radius || 24;
+    this.stats = this.createStats(options.stats);
     this.maxHp = options.maxHp || 100;
     this.hp = this.maxHp;
-    this.speed = options.speed || 230;
-    this.throwPower = options.throwPower || 20;
+    this.baseSpeed = options.speed || 230;
+    this.speed = this.baseSpeed * this.getStatScale("speed", 0.045);
+    this.baseThrowPower = options.throwPower || 20;
+    this.throwPower = this.baseThrowPower * this.getStatScale("power", 0.07);
     this.uniformColor = options.uniformColor;
     this.trimColor = options.trimColor || "#ffffff";
     this.faceColor = options.faceColor || "#ffd4a3";
@@ -57,10 +67,30 @@ class Player {
     this.jumpZ = 0;
     this.jumpVelocity = 0;
     this.isDashing = false;
+    this.runupTime = 0;
+    this.runupDirX = this.facing;
+    this.runupDirY = 0;
     this.maxStamina = options.maxStamina || 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
     this.defeated = false;
+  }
+
+  createStats(stats = {}) {
+    return {
+      power: this.clampStat(stats.power ?? DEFAULT_PLAYER_STATS.power),
+      speed: this.clampStat(stats.speed ?? DEFAULT_PLAYER_STATS.speed),
+      jump: this.clampStat(stats.jump ?? DEFAULT_PLAYER_STATS.jump),
+      technique: this.clampStat(stats.technique ?? DEFAULT_PLAYER_STATS.technique)
+    };
+  }
+
+  clampStat(value) {
+    return Math.max(1, Math.min(10, Number(value) || 5));
+  }
+
+  getStatScale(name, step) {
+    return 1 + (this.stats[name] - 5) * step;
   }
 
   update(delta, controls, area, config) {
@@ -125,6 +155,7 @@ class Player {
     const speed = this.speed * (this.isDashing ? config.dashSpeedMultiplier : 1) * duckSlow * turnSlow;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
+    this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
 
     this.x += this.vx * delta;
     this.y += this.vy * delta;
@@ -168,8 +199,23 @@ class Player {
 
   jump(config) {
     if (this.defeated || this.downTimer > 0 || this.jumpZ > 0) return;
-    this.jumpVelocity = config.jumpVelocity;
+    this.jumpVelocity = config.jumpVelocity * this.getStatScale("jump", 0.08);
     this.state = "jumping";
+  }
+
+  updateRunup(delta, canCharge, dirX, dirY) {
+    if (!canCharge) {
+      this.runupTime = Math.max(0, this.runupTime - delta * 1.4);
+      return;
+    }
+
+    const dot = dirX * this.runupDirX + dirY * this.runupDirY;
+    if (this.runupTime > 0 && dot < 0.72) {
+      this.runupTime = 0;
+    }
+    this.runupDirX = dirX;
+    this.runupDirY = dirY;
+    this.runupTime = Math.min(2, this.runupTime + delta);
   }
 
   startCatch(duration) {
