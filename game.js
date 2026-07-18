@@ -31,10 +31,10 @@ const GAME_CONFIG = {
     }
   },
   ball: {
-    radius: 18,
+    radius: 24,
     damage: 20,
     shootSpeed: 1140,
-    passSpeed: 430,
+    passSpeed: 645,
     moveBonus: 0.34,
     gravity: 520,
     hitBounceX: 260,
@@ -42,7 +42,7 @@ const GAME_CONFIG = {
   },
   battle: {
     pickupDistance: 62,
-    rollingPickupDistance: 92,
+    rollingPickupDistance: 132,
     catchDuration: 0.25,
     catchWidth: 74,
     catchHeight: 92,
@@ -996,7 +996,9 @@ class DodgeballGame {
       ? this.getCpuShootSelection(actor)
       : kind === "shoot" ? this.getShootSelection(actor, playerIndex) : this.getPassSelection(actor, playerIndex);
     charged.target = selection.target || charged.target;
-    charged.aim = selection.aim || charged.aim;
+    charged.aim = kind === "shoot"
+      ? this.getShotAim(actor, charged.target, selection.aim || charged.aim)
+      : selection.aim || charged.aim;
     const chargeRatio = Math.min(1, charged.chargeTime / 2);
     const multiplier = kind === "shoot"
       ? this.getShotMultiplier(actor, charged.aim, chargeRatio, charged.aerialCombo)
@@ -1050,12 +1052,13 @@ class DodgeballGame {
       GAME_CONFIG.battle.stamina.recoveryDelay
     )) return false;
 
+    const shotAim = kind === "shoot" ? this.getShotAim(actor, target, aim) : null;
     this.pendingThrow = {
       actor,
       target,
       kind,
-      aim: { x: aim.x, y: aim.y },
-      shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, aim) : 1,
+      aim: shotAim || { x: aim.x, y: aim.y },
+      shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
       timer: kind === "shoot" ? 0.38 : 0.2
     };
     const throwDuration = kind === "shoot" ? 0.68 : 0.4;
@@ -1112,7 +1115,7 @@ class DodgeballGame {
         ? this.getCpuShootSelection(charged.actor)
         : this.getShootSelection(charged.actor, charged.playerIndex);
       charged.target = selection.target;
-      charged.aim = selection.aim;
+      charged.aim = this.getShotAim(charged.actor, charged.target, selection.aim);
       charged.aerialCombo = charged.aerialCombo || (charged.actor.jumpZ > 0 && charged.actor.aerialPassCatchTimer > 0);
       if (charged.cpuControlled && charged.chargeTime >= charged.cpuReleaseTime) {
         this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
@@ -1296,10 +1299,29 @@ class DodgeballGame {
     const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 : 0;
     const powerBonus = ((actor.stats?.power || 5) - 5) * 0.04;
     const speedBonus = ((actor.stats?.speed || 5) - 5) * 0.025;
-    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.35, actor.jumpZ / 260) : 0;
+    const jumpStatBonus = actor.jumpZ > 0 ? ((actor.stats?.jump || 5) - 5) * 0.035 : 0;
+    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.62, actor.jumpZ / 210 + jumpStatBonus) : 0;
     const chargeBonus = chargeRatio * 0.55;
     const aerialBonus = aerialCombo ? 0.5 : 0;
     return Math.max(0.7, Math.min(2.15, 0.7 + runBonus + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
+  }
+
+  getShotAim(actor, target, fallbackAim) {
+    const baseAim = target
+      ? this.normalizedVector(target.x - actor.x, target.y - 38 - actor.y)
+      : this.normalizedVector(fallbackAim?.x || actor.facing || 1, fallbackAim?.y || 0);
+    const technique = actor.stats?.technique || 5;
+    const airborneDifficulty = actor.jumpZ > 0 ? 7 : 5;
+    const maxError = Math.max(0, airborneDifficulty - technique) * 0.012;
+    if (maxError <= 0.001) return baseAim;
+
+    const angle = (Math.random() * 2 - 1) * maxError;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return this.normalizedVector(
+      baseAim.x * cos - baseAim.y * sin,
+      baseAim.x * sin + baseAim.y * cos
+    );
   }
 
   getPassTarget(actor, moveX, moveY) {
@@ -1308,11 +1330,32 @@ class DodgeballGame {
       return this.getNearestPassTarget(actor);
     }
 
-    if (Math.abs(moveY) >= Math.abs(moveX)) {
-      return this.getPassTargetByLane(actor, moveY < 0 ? "top" : "bottom") || this.getNearestPassTarget(actor);
-    }
+    return this.getPassTargetByDirection(actor, moveX, moveY) || this.getNearestPassTarget(actor);
+  }
 
-    return this.getPassTargetByLane(actor, moveX > 0 ? "right" : "left") || this.getNearestPassTarget(actor);
+  getPassTargetByDirection(actor, moveX, moveY) {
+    const team = actor.team === "left" ? this.leftTeam : this.rightTeam;
+    const candidates = team.filter((p) => p !== actor && !p.defeated);
+    if (candidates.length === 0) return null;
+
+    const aim = this.normalizedVector(moveX, moveY);
+    let best = null;
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+      const dx = candidate.x - actor.x;
+      const dy = candidate.y - actor.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const dot = (dx / distance) * aim.x + (dy / distance) * aim.y;
+      if (dot < 0.28) continue;
+      const distanceBonus = Math.max(0, 1 - distance / 2200) * 0.18;
+      const roleBonus = candidate.role === "out" ? 0.06 : 0;
+      const score = dot * 10 + distanceBonus + roleBonus;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
   }
 
   getPassTargetByLane(actor, lane) {
@@ -1404,18 +1447,19 @@ class DodgeballGame {
       this.ball.passDuration > 0 &&
       this.ball.passTime >= this.ball.passDuration * 0.45 &&
       horizontalDistance < 180 &&
-      this.ball.z > target.jumpZ + 155 &&
+      this.ball.z > target.jumpZ + 170 &&
       target.jumpZ <= 0 &&
       target.jumpVelocity <= 0
     ) {
       target.jump(GAME_CONFIG.battle);
     }
     const catchX = target.x;
-    const catchY = target.y - target.jumpZ - 130;
+    const catchY = target.y - target.jumpZ - 132;
     const ballY = this.ball.y - this.ball.z;
     const visualDistance = Math.hypot(this.ball.x - catchX, ballY - catchY);
-    const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.9;
-    if (nearEndOfArc && visualDistance < this.ball.radius + 46) {
+    const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.78;
+    const catchReach = this.ball.radius + 82 + Math.min(1, horizontalDistance / 1400) * 30;
+    if (nearEndOfArc && visualDistance < catchReach) {
       if (target.jumpZ > 18) {
         target.aerialPassCatchTimer = 1.1;
       }
@@ -1434,7 +1478,8 @@ class DodgeballGame {
     if (target.defeated || target.catchTimer > 0) return;
 
     const distance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
-    if (distance < this.ball.radius + 30 && this.ball.z < target.jumpZ + 58) {
+    const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.98;
+    if (nearEndOfArc && distance < this.ball.radius + 18 && this.ball.z < target.jumpZ + 34) {
       this.ball.vx = (Math.random() - 0.5) * 170;
       this.ball.vy = 120 + Math.random() * 130;
       this.ball.vz = 90;
@@ -1482,15 +1527,38 @@ class DodgeballGame {
     const thrower = this.ball.thrower;
     const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
     const facingIncoming = this.isFacingIncomingBall(catcher);
-    const timing = Math.max(0, 1 - Math.abs(this.ball.x - catcher.x) / 150);
-    const distanceFactor = Math.max(0.22, Math.min(1, throwDistance / 760));
-    const facingFactor = facingIncoming ? 1 : 0.08;
-    const chance = Math.max(0.03, Math.min(0.92, (0.22 + timing * 0.58) * distanceFactor * facingFactor));
+    const timing = Math.max(0, 1 - Math.abs(this.ball.x - catcher.x) / 190);
+    const distanceFactor = Math.max(0.35, Math.min(1, throwDistance / 680));
+    const facingFactor = facingIncoming ? 1.15 : 0.22;
+    const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.045;
+    const chance = Math.max(0.08, Math.min(0.96, (0.34 + timing * 0.58 + techniqueBonus) * distanceFactor * facingFactor));
     if (Math.random() <= chance) return true;
 
     catcher.catchTimer = 0;
     this.spawnEffect(catcher.x, catcher.y - 66, "#ffb09a", "pass");
+    this.spillFailedCatchBall(catcher);
     return false;
+  }
+
+  spillFailedCatchBall(catcher) {
+    if (!this.ball || !this.ball.isFlying) return;
+    const incomingX = this.ball.vx;
+    const incomingY = this.ball.vy;
+    const speed = Math.hypot(incomingX, incomingY) || 1;
+    this.ball.owner = null;
+    this.ball.thrower = null;
+    this.ball.target = null;
+    this.ball.kind = "loose";
+    this.ball.isFlying = false;
+    this.ball.isLoose = true;
+    this.ball.catchable = false;
+    this.ball.hasBounced = true;
+    this.ball.z = 0;
+    this.ball.vx = (incomingX / speed) * 130 + (Math.random() - 0.5) * 80;
+    this.ball.vy = (incomingY / speed) * 130 + (Math.random() - 0.5) * 80;
+    this.ball.vz = 0;
+    this.ball.x = catcher.x + catcher.facing * 36;
+    this.ball.y = catcher.y - 22;
   }
 
   isFacingIncomingBall(catcher) {
@@ -2129,6 +2197,44 @@ class DodgeballGame {
     const width = c.x + c.w + 260;
     context.fillStyle = "#bfc36d";
     context.fillRect(c.x - 260, 0, width + 520, GAME_CONFIG.height);
+    this.drawBench(c.centerX - 650, 32, "#3087f2");
+    this.drawBench(c.centerX + 430, 32, "#f05a45");
+  }
+
+  drawBench(x, y, color) {
+    const context = this.context;
+    context.save();
+    context.fillStyle = "rgba(60, 55, 34, 0.18)";
+    context.beginPath();
+    context.ellipse(x + 132, y + 86, 145, 15, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#f7f0d2";
+    this.roundRect(context, x, y + 18, 264, 58, 6);
+    context.fill();
+    context.strokeStyle = "#473f31";
+    context.lineWidth = 3;
+    context.stroke();
+
+    context.fillStyle = color;
+    for (let i = 0; i < 6; i += 1) {
+      context.fillRect(x + 14 + i * 42, y + 18, 20, 58);
+    }
+
+    context.fillStyle = "#3e4b3f";
+    context.fillRect(x - 8, y + 76, 280, 8);
+    context.fillStyle = "#6b5a37";
+    for (let i = 0; i < 4; i += 1) {
+      context.fillRect(x + 16 + i * 72, y + 84, 10, 28);
+    }
+
+    context.fillStyle = "#d8d0a8";
+    this.roundRect(context, x - 6, y, 276, 22, 5);
+    context.fill();
+    context.strokeStyle = "#473f31";
+    context.lineWidth = 3;
+    context.stroke();
+    context.restore();
   }
 
   drawMountain(x, y) {

@@ -143,8 +143,9 @@ class Ball {
       return true;
     }
 
-    const leadX = kind === "shoot" && target ? target.vx * 0.06 : 0;
-    const leadY = kind === "shoot" && target ? target.vy * 0.06 : 0;
+    const leadScale = kind === "shoot" && target && actor.jumpZ <= 8 ? 0.06 : 0;
+    const leadX = target ? target.vx * leadScale : 0;
+    const leadY = target ? target.vy * leadScale : 0;
     const targetX = target ? target.x + leadX : this.x + aimVector.x * 900;
     const targetY = target ? target.y - 38 + leadY : this.y + aimVector.y * 900;
     const aimNudge = target && kind !== "shoot" ? 22 : 0;
@@ -156,17 +157,25 @@ class Ball {
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
-    this.vz = kind === "shoot"
-      ? (target ? Math.max(-140, 105 - actor.jumpZ * 0.55) : 120 + actor.jumpZ * 0.3)
-      : 650 + actor.jumpZ * 0.15;
+    if (kind === "shoot" && target) {
+      const flightTime = Math.max(0.22, length / Math.max(1, speed));
+      const targetZ = (target.jumpZ || 0) + 22;
+      const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
+      const arcLift = Math.max(0, throwMultiplier - 0.7) * 45;
+      this.vz = Math.max(-260, Math.min(560, solvedVz + arcLift));
+    } else {
+      this.vz = kind === "shoot"
+        ? 360 + Math.max(0, throwMultiplier - 0.7) * 120 + actor.jumpZ * 0.12
+        : 650 + actor.jumpZ * 0.15;
+    }
     return true;
   }
 
   launchPassArc(actor, target, passMultiplier = 1) {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
-    catchPoint.z += Math.max(0, passMultiplier - 1) * 140;
-    this.passDuration = Math.max(0.84, Math.min(1.85, distance / Math.max(1, this.config.passSpeed * (0.92 + passMultiplier * 0.16))));
+    catchPoint.z += 208 + Math.max(0, passMultiplier - 1) * 338;
+    this.passDuration = Math.max(0.78, Math.min(1.95, distance / Math.max(1, this.config.passSpeed * (0.95 + passMultiplier * 0.24))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
@@ -228,8 +237,8 @@ class Ball {
   }
 
   canBePickedUpBy(player, distance) {
-    if (!this.isLoose || this.owner || this.z >= 40) return false;
-    const rollingBonus = !this.isFlying ? 34 : 0;
+    if (!this.isLoose || this.owner || this.z >= 62) return false;
+    const rollingBonus = !this.isFlying || this.hasBounced ? 62 : 0;
     return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + 22;
   }
 

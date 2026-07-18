@@ -354,9 +354,10 @@ class CPUController {
       const handDistance = Math.hypot(this.ball.x - handX, ballY - handY);
       const bodyDistance = Math.hypot(this.ball.x - member.x, ballY - (member.y - 58));
       const ballInFront = (this.ball.x - member.x) * member.facing > 0;
-      if (!ballInFront || handDistance > 78 || bodyDistance > 118) continue;
+      const veryClose = handDistance < 46 && bodyDistance < 76;
+      if (!ballInFront || !veryClose || Math.random() > 0.28) continue;
       command.catch = true;
-      if (this.ball.z > 82 && handDistance < 68 && member.jumpZ <= 0 && member.jumpVelocity <= 0) command.jump = true;
+      if (this.ball.z > 120 && handDistance < 42 && member.jumpZ <= 0 && member.jumpVelocity <= 0 && Math.random() < 0.25) command.jump = true;
     }
   }
 

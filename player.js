@@ -831,14 +831,15 @@ class Player {
     }
     context.fillStyle = "#f06a32";
     context.beginPath();
-    context.arc(bx, by, 15 * scale, 0, Math.PI * 2);
+    const radius = 24 * scale;
+    context.arc(bx, by, radius, 0, Math.PI * 2);
     context.fill();
     context.strokeStyle = "#8e2f22";
     context.lineWidth = 3 * scale;
     context.beginPath();
-    context.arc(bx, by, 15 * scale, -0.8, 0.8);
-    context.moveTo(bx - 15 * scale, by);
-    context.lineTo(bx + 15 * scale, by);
+    context.arc(bx, by, radius, -0.8, 0.8);
+    context.moveTo(bx - radius, by);
+    context.lineTo(bx + radius, by);
     context.stroke();
   }
 
