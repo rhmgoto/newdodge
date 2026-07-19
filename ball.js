@@ -19,6 +19,14 @@ class Ball {
     this.power = this.config.damage;
     this.shotMultiplier = 1;
     this.specialShot = false;
+    this.specialShotType = null;
+    this.baseRadius = this.config.radius;
+    this.travelDistance = 0;
+    this.returning = false;
+    this.boomerangCurveSign = 1;
+    this.boomerangStartDistance = 900;
+    this.boostElapsed = 0;
+    this.hitPlayerIds = new Set();
     this.isFlying = false;
     this.isLoose = true;
     this.catchable = false;
@@ -41,8 +49,13 @@ class Ball {
       this.adjustPassTrajectory(delta);
     }
 
+    this.updateSpecialShot(delta);
+
+    const lastX = this.x;
+    const lastY = this.y;
     this.x += this.vx * delta;
     this.y += this.vy * delta;
+    this.travelDistance += Math.hypot(this.x - lastX, this.y - lastY);
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
 
@@ -113,6 +126,14 @@ class Ball {
     this.passDuration = 0;
     this.shotMultiplier = 1;
     this.specialShot = false;
+    this.specialShotType = null;
+    this.radius = this.baseRadius;
+    this.travelDistance = 0;
+    this.returning = false;
+    this.boomerangCurveSign = 1;
+    this.boomerangStartDistance = 900;
+    this.boostElapsed = 0;
+    this.hitPlayerIds.clear();
     player.hasBall = true;
   }
 
@@ -125,7 +146,8 @@ class Ball {
     this.target = target;
     this.kind = kind;
     this.shotMultiplier = kind === "shoot" ? throwMultiplier : 1;
-    this.specialShot = kind === "shoot" && specialShot;
+    this.specialShotType = kind === "shoot" && typeof specialShot === "string" ? specialShot : null;
+    this.specialShot = Boolean(this.specialShotType);
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
@@ -137,6 +159,16 @@ class Ball {
     this.z = actor.jumpZ + 28;
     this.passTime = 0;
     this.passDuration = 0;
+    this.radius = this.baseRadius;
+    if (this.specialShotType === "iron") {
+      this.radius = this.baseRadius * 1.2;
+    }
+    this.travelDistance = 0;
+    this.returning = false;
+    this.boomerangCurveSign = aimVector?.y >= 0 ? 1 : -1;
+    this.boomerangStartDistance = target ? Math.hypot(target.x - actor.x, target.y - actor.y) : 900;
+    this.boostElapsed = 0;
+    this.hitPlayerIds.clear();
 
     if (kind === "pass") {
       this.launchPassArc(actor, target, throwMultiplier);
@@ -153,23 +185,85 @@ class Ball {
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
     const flightMultiplier = kind === "shoot" ? Math.max(0.9, throwMultiplier) : throwMultiplier;
-    const speed = kind === "shoot" ? this.config.shootSpeed * flightMultiplier : this.config.passSpeed;
+    const specialSpeed = this.specialShotType === "lightning" ? 1.22 : this.specialShotType === "iron" ? 0.72 : this.specialShotType === "boost" ? 0.16 : 1;
+    const speed = kind === "shoot" ? this.config.shootSpeed * flightMultiplier * specialSpeed : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
     if (kind === "shoot" && target) {
-      const flightTime = Math.max(0.22, length / Math.max(1, speed));
+      const trajectorySpeed = this.specialShotType === "boost"
+        ? this.config.shootSpeed * flightMultiplier
+        : speed;
+      const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
       const targetZ = (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
-      const arcLift = 70 + Math.max(0, throwMultiplier - 0.7) * 45;
+      const arcLift = this.specialShotType === "boost"
+        ? 28 + Math.max(0, throwMultiplier - 0.7) * 18
+        : 70 + Math.max(0, throwMultiplier - 0.7) * 45;
       this.vz = Math.max(-80, Math.min(610, solvedVz + arcLift));
     } else {
       this.vz = kind === "shoot"
         ? 430 + Math.max(0, throwMultiplier - 0.7) * 120 + actor.jumpZ * 0.12
         : 650 + actor.jumpZ * 0.15;
+      if (this.specialShotType === "boost" && kind === "shoot") {
+        this.vz = Math.max(160, this.vz * 0.45);
+      }
     }
     return true;
+  }
+
+  updateSpecialShot(delta) {
+    if (!this.isFlying || this.kind !== "shoot" || !this.specialShotType) return;
+    if (this.specialShotType === "boost") {
+      this.boostElapsed += delta;
+      const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+      const directionX = this.vx / currentSpeed;
+      const directionY = this.vy / currentSpeed;
+      const baseSpeed = this.config.shootSpeed * Math.max(0.9, this.shotMultiplier || 1);
+      let gearMultiplier = 0.16;
+      if (this.boostElapsed >= 0.95) {
+        gearMultiplier = 1.85;
+      } else if (this.boostElapsed >= 0.68) {
+        gearMultiplier = 1.25;
+      } else if (this.boostElapsed >= 0.42) {
+        gearMultiplier = 0.72;
+      } else if (this.boostElapsed >= 0.2) {
+        gearMultiplier = 0.36;
+      }
+      const targetSpeed = baseSpeed * gearMultiplier;
+      if (Math.abs(currentSpeed - targetSpeed) > 1) {
+        this.vx = directionX * targetSpeed;
+        this.vy = directionY * targetSpeed;
+      }
+    }
+    if (this.specialShotType === "boomerang" && this.thrower && !this.thrower.defeated) {
+      const passedTarget = this.target && ((this.vx >= 0 && this.x > this.target.x + 90) || (this.vx < 0 && this.x < this.target.x - 90));
+      if (!this.returning && (passedTarget || this.travelDistance > 1000)) {
+        this.returning = true;
+        this.target = this.thrower;
+        this.hitPlayerIds.clear();
+      }
+      if (this.returning) {
+        const dx = this.thrower.x - this.x;
+        const dy = this.thrower.y - 42 - this.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const speed = Math.max(760, Math.hypot(this.vx, this.vy));
+        const arcStrength = Math.min(760, 420 + length * 0.46) * this.boomerangCurveSign;
+        const desiredX = (dx / length) * speed + (-dy / length) * arcStrength;
+        const desiredY = (dy / length) * speed + (dx / length) * arcStrength;
+        const turn = Math.min(1, delta * 4.5);
+        this.vx += (desiredX - this.vx) * turn;
+        this.vy += (desiredY - this.vy) * turn;
+        if (Math.hypot(dx, dy) < this.boomerangStartDistance * 0.48) {
+          this.drop();
+          return;
+        }
+        if (Math.hypot(dx, dy) < this.radius + 42) {
+          this.drop();
+        }
+      }
+    }
   }
 
   launchPassArc(actor, target, passMultiplier = 1) {
@@ -219,6 +313,14 @@ class Ball {
     this.passDuration = 0;
     this.shotMultiplier = 1;
     this.specialShot = false;
+    this.specialShotType = null;
+    this.radius = this.baseRadius;
+    this.travelDistance = 0;
+    this.returning = false;
+    this.boomerangCurveSign = 1;
+    this.boomerangStartDistance = 900;
+    this.boostElapsed = 0;
+    this.hitPlayerIds.clear();
   }
 
   drop() {
@@ -235,6 +337,23 @@ class Ball {
     this.passDuration = 0;
     this.shotMultiplier = 1;
     this.specialShot = false;
+    this.specialShotType = null;
+    this.radius = this.baseRadius;
+    this.travelDistance = 0;
+    this.returning = false;
+    this.boomerangCurveSign = 1;
+    this.boomerangStartDistance = 900;
+    this.boostElapsed = 0;
+    this.hitPlayerIds.clear();
+  }
+
+  getSpecialColor() {
+    if (this.specialShotType === "boost") return "#ff6b1a";
+    if (this.specialShotType === "lightning") return "#66f6ff";
+    if (this.specialShotType === "iron") return "#7e8592";
+    if (this.specialShotType === "boomerang") return "#ffe36a";
+    if (this.specialShotType === "soul") return "#bdf8ff";
+    return "#ffe46a";
   }
 
   canBePickedUpBy(player, distance) {
@@ -260,15 +379,62 @@ class Ball {
       const tailX = -this.vx / velocity;
       const tailY = -this.vy / velocity;
       const intensity = Math.min(1, shotEffect / 0.55);
+      const specialColor = this.getSpecialColor();
       context.save();
       context.globalAlpha = 0.28 + intensity * 0.32;
-      context.strokeStyle = this.specialShot ? "#66f6ff" : intensity > 0.65 ? "#fff46a" : "#ffb44a";
+      context.strokeStyle = this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ffb44a";
       context.lineWidth = 8 + intensity * 8;
       context.lineCap = "round";
       context.beginPath();
       context.moveTo(this.x + tailX * 20, drawY + tailY * 20);
       context.lineTo(this.x + tailX * (82 + intensity * 62), drawY + tailY * (82 + intensity * 62));
       context.stroke();
+      if (this.specialShotType === "boost") {
+        context.globalAlpha = 0.72;
+        context.strokeStyle = "#fff06a";
+        context.lineWidth = 4 + intensity * 5;
+        context.beginPath();
+        context.moveTo(this.x + tailX * 22, drawY + tailY * 22);
+        context.lineTo(this.x + tailX * (118 + intensity * 78), drawY + tailY * (118 + intensity * 78));
+        context.stroke();
+      }
+      if (this.specialShotType === "lightning") {
+        context.globalAlpha = 0.92;
+        context.fillStyle = "#f5e51c";
+        context.strokeStyle = "#fff9a8";
+        context.lineWidth = 5;
+        context.beginPath();
+        context.moveTo(this.x + tailX * 10, drawY + tailY * 10);
+        context.lineTo(this.x + tailX * 92 + tailY * 40, drawY + tailY * 92 - tailX * 40);
+        context.lineTo(this.x + tailX * 70 + tailY * 8, drawY + tailY * 70 - tailX * 8);
+        context.lineTo(this.x + tailX * 180 + tailY * 58, drawY + tailY * 180 - tailX * 58);
+        context.lineTo(this.x + tailX * 120 - tailY * 6, drawY + tailY * 120 + tailX * 6);
+        context.lineTo(this.x + tailX * 250 - tailY * 44, drawY + tailY * 250 + tailX * 44);
+        context.lineTo(this.x + tailX * 132 - tailY * 8, drawY + tailY * 132 + tailX * 8);
+        context.lineTo(this.x + tailX * 154 - tailY * 40, drawY + tailY * 154 + tailX * 40);
+        context.closePath();
+        context.fill();
+        context.stroke();
+      }
+      if (this.specialShotType === "soul") {
+        context.globalAlpha = 0.8;
+        context.strokeStyle = "#dffcff";
+        context.lineWidth = 5 + intensity * 5;
+        for (let i = 0; i < 3; i += 1) {
+          const offset = (i - 1) * 18;
+          context.beginPath();
+          context.moveTo(this.x + tailX * 12 + tailY * offset, drawY + tailY * 12 - tailX * offset);
+          context.bezierCurveTo(
+            this.x + tailX * 55 + tailY * (offset + 18),
+            drawY + tailY * 55 - tailX * (offset + 18),
+            this.x + tailX * 95 + tailY * (offset - 18),
+            drawY + tailY * 95 - tailX * (offset - 18),
+            this.x + tailX * 142 + tailY * offset,
+            drawY + tailY * 142 - tailX * offset
+          );
+          context.stroke();
+        }
+      }
       context.strokeStyle = "rgba(255,255,255,0.72)";
       context.lineWidth = 3 + intensity * 3;
       context.beginPath();
@@ -281,21 +447,134 @@ class Ball {
     context.translate(this.x, drawY);
     if (shotEffect > 0) {
       const intensity = Math.min(1, shotEffect / 0.55);
+      const specialColor = this.getSpecialColor();
       context.save();
       context.globalAlpha = 0.25 + intensity * 0.28;
-      context.strokeStyle = this.specialShot ? "#66f6ff" : intensity > 0.65 ? "#fff46a" : "#ff8f3a";
+      context.strokeStyle = this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ff8f3a";
       context.lineWidth = 4 + intensity * 5;
       context.beginPath();
       context.arc(0, 0, this.radius + 5 + intensity * 8, 0, Math.PI * 2);
       context.stroke();
+      if (this.specialShotType === "lightning") {
+        context.globalAlpha = 0.72;
+        context.fillStyle = "#f5e51c";
+        context.strokeStyle = "#fff9a8";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.moveTo(-this.radius * 0.45, -this.radius * 1.55);
+        context.lineTo(this.radius * 0.52, -this.radius * 0.18);
+        context.lineTo(this.radius * 0.08, -this.radius * 0.1);
+        context.lineTo(this.radius * 0.9, this.radius * 1.35);
+        context.lineTo(-this.radius * 0.12, this.radius * 0.2);
+        context.lineTo(this.radius * 0.26, this.radius * 0.1);
+        context.closePath();
+        context.fill();
+        context.stroke();
+      }
+      if (this.specialShotType === "soul") {
+        context.globalAlpha = 0.78;
+        context.strokeStyle = "#dffcff";
+        context.lineWidth = 4;
+        for (let i = 0; i < 3; i += 1) {
+          context.beginPath();
+          context.arc(0, 0, this.radius + 14 + i * 12, this.spin + i, this.spin + i + Math.PI * 1.25);
+          context.stroke();
+        }
+        context.fillStyle = "rgba(189,248,255,0.28)";
+        context.beginPath();
+        context.arc(0, 0, this.radius + 18, 0, Math.PI * 2);
+        context.fill();
+      }
       context.restore();
     }
     context.rotate(this.spin);
-    context.fillStyle = "#f06a32";
+    if (this.specialShotType === "soul") {
+      const orb = context.createRadialGradient(-this.radius * 0.35, -this.radius * 0.35, 4, 0, 0, this.radius);
+      orb.addColorStop(0, "#ffffff");
+      orb.addColorStop(0.45, "#bdf8ff");
+      orb.addColorStop(1, "#4eb7ff");
+      context.fillStyle = orb;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.08, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#eaffff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.22, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+      if (debugMode) {
+        context.strokeStyle = "rgba(255,0,0,0.7)";
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+      return;
+    }
+    if (this.specialShotType === "boomerang") {
+      context.rotate(Math.PI * 0.15);
+      context.fillStyle = "#ffd84f";
+      context.strokeStyle = "#936428";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.45, 0.2, Math.PI * 1.35, false);
+      context.arc(-this.radius * 0.1, -this.radius * 0.1, this.radius * 0.82, Math.PI * 1.35, 0.2, true);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#fff29a";
+      context.beginPath();
+      context.arc(-this.radius * 0.1, -this.radius * 0.08, this.radius * 0.62, 0.25, Math.PI * 1.25, false);
+      context.strokeStyle = "rgba(255,255,255,0.55)";
+      context.lineWidth = 3;
+      context.stroke();
+      context.restore();
+      if (debugMode) {
+        context.strokeStyle = "rgba(255,0,0,0.7)";
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+      return;
+    }
+    if (this.specialShotType === "iron") {
+      context.fillStyle = "#4d525b";
+      context.strokeStyle = "#252a31";
+      context.lineWidth = 5;
+      const spikes = 14;
+      context.beginPath();
+      for (let i = 0; i < spikes * 2; i += 1) {
+        const angle = (Math.PI * 2 * i) / (spikes * 2);
+        const r = i % 2 === 0 ? this.radius * 1.24 : this.radius * 0.96;
+        const px = Math.cos(angle) * r;
+        const py = Math.sin(angle) * r;
+        if (i === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#747b86";
+      context.beginPath();
+      context.arc(-this.radius * 0.18, -this.radius * 0.22, this.radius * 0.22, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      if (debugMode) {
+        context.strokeStyle = "rgba(255,0,0,0.7)";
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+      return;
+    }
+    context.fillStyle = this.specialShotType === "iron" ? "#555a62" : "#f06a32";
     context.beginPath();
     context.arc(0, 0, this.radius, 0, Math.PI * 2);
     context.fill();
-    context.strokeStyle = "#8e2f22";
+    context.strokeStyle = this.specialShotType === "iron" ? "#2f3339" : "#8e2f22";
     context.lineWidth = 4;
     context.beginPath();
     context.arc(0, 0, this.radius * 0.9, -1.1, 1.1);

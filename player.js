@@ -72,6 +72,21 @@ const CHARACTER_TYPES = {
     armWidth: 1,
     legWidth: 1,
     legLength: 1.04
+  },
+  mage: {
+    maxHp: 60,
+    maxStamina: 100,
+    stats: { power: 4, speed: 6, jump: 6, technique: 5 },
+    label: "メイジ",
+    scaleX: 0.94,
+    scaleY: 1,
+    headScale: 0.9,
+    torsoX: 0.72,
+    torsoY: 0.76,
+    armWidth: 0.9,
+    legWidth: 0.85,
+    legLength: 0.76,
+    mage: true
   }
 };
 
@@ -114,6 +129,7 @@ class Player {
     this.knockbackY = 0;
     this.catchTimer = 0;
     this.catchSuccessTimer = 0;
+    this.stunTimer = 0;
     this.throwTimer = 0;
     this.throwPhase = "none";
     this.throwKind = "none";
@@ -190,6 +206,15 @@ class Player {
       if (this.downTimer <= 0 && this.hp <= 0) {
         this.defeated = true;
       }
+      return;
+    }
+
+    this.stunTimer = Math.max(0, this.stunTimer - delta);
+    if (this.stunTimer > 0) {
+      this.vx = 0;
+      this.vy = 0;
+      this.state = "damaged";
+      this.updateJump(delta, config);
       return;
     }
 
@@ -293,6 +318,12 @@ class Player {
     this.state = "catching";
   }
 
+  stun(duration) {
+    if (this.defeated || this.downTimer > 0) return;
+    this.stunTimer = Math.max(this.stunTimer, duration);
+    this.state = "damaged";
+  }
+
   startDodge(moveX, moveY, config) {
     if (this.defeated || this.downTimer > 0 || this.dodgeTimer > 0) return false;
     const cost = config.stamina.duckCost;
@@ -374,7 +405,7 @@ class Player {
     this.state = "throwing";
   }
 
-  takeDamage(amount, sourceDirection, config) {
+  takeDamage(amount, sourceDirection, config, knockbackScale = 1) {
     if (this.defeated || this.invincibleTime > 0 || this.dodgeTimer > 0) return false;
 
     this.hp = Math.max(0, this.hp - amount);
@@ -382,7 +413,7 @@ class Player {
     this.invincibleTime = config.invincibleTime;
     const damageRatio = Math.max(0.65, Math.min(2.1, amount / 20));
     const isDefeatHit = this.hp <= 0;
-    const knockbackMultiplier = isDefeatHit ? 4 : 2;
+    const knockbackMultiplier = (isDefeatHit ? 4 : 2) * knockbackScale;
     this.knockbackX = sourceDirection * config.knockbackSpeed * damageRatio * knockbackMultiplier;
     this.knockbackY = (-90 + Math.random() * 180) * damageRatio * knockbackMultiplier;
 
@@ -594,7 +625,7 @@ class Player {
 
     const rootY = crouch * 22 + bob - jumpPose * 4;
     const torsoY = -63 + rootY + crouch * 14;
-    const headY = -116 + rootY + crouch * 28;
+    const headY = (body.mage ? -103 : -116) + rootY + crouch * 28;
     const hipY = -34 + rootY + crouch * 18;
     const shoulderY = -78 + rootY + crouch * 18;
 
@@ -716,16 +747,33 @@ class Player {
     this.drawModelLimb(context, pose.frontLeg, colors.suit, 12 * body.legWidth);
     this.drawModelFoot(context, pose.frontLeg[2], colors.suit);
     this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10 * body.armWidth);
+    if (body.mage) {
+      this.drawMageSkirt(context, torsoY, colors);
+    }
 
     if (crouch) {
       context.save();
       context.translate(0, headY + 7);
       context.rotate(verticalMotion ? 0 : 0.16);
-      context.scale(0.76, 0.76);
-      this.drawModelHead(context, 0, 0, colors, damaged, this.visualDirection);
+      context.scale(0.76 * (body.headScale || 1), 0.76 * (body.headScale || 1));
+      this.drawModelHead(context, 0, 0, colors, damaged, this.visualDirection, body);
+      if (body.mage) {
+        this.drawMageHat(context, 0, 0, colors);
+      }
       context.restore();
     } else {
-      this.drawModelHead(context, 0, headY, colors, damaged, this.visualDirection);
+      if (body.headScale && body.headScale !== 1) {
+        context.save();
+        context.translate(0, headY);
+        context.scale(body.headScale, body.headScale);
+        this.drawModelHead(context, 0, 0, colors, damaged, this.visualDirection, body);
+        context.restore();
+      } else {
+        this.drawModelHead(context, 0, headY, colors, damaged, this.visualDirection, body);
+      }
+      if (body.mage) {
+        this.drawMageHat(context, 0, headY, colors);
+      }
     }
     context.restore();
   }
@@ -756,7 +804,65 @@ class Player {
     context.fill();
   }
 
-  drawModelHead(context, x, y, colors, damaged, direction) {
+  drawMageSkirt(context, torsoY, colors) {
+    context.fillStyle = colors.suit;
+    context.strokeStyle = "rgba(20,26,38,0.32)";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-24, torsoY + 16);
+    context.lineTo(30, torsoY + 16);
+    context.lineTo(42, torsoY + 62);
+    context.lineTo(-38, torsoY + 62);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.fillStyle = "rgba(255,255,255,0.22)";
+    context.beginPath();
+    context.moveTo(-8, torsoY + 20);
+    context.lineTo(6, torsoY + 20);
+    context.lineTo(12, torsoY + 58);
+    context.lineTo(-16, torsoY + 58);
+    context.closePath();
+    context.fill();
+  }
+
+  drawMageHat(context, x, y, colors) {
+    context.save();
+    context.translate(x, y + 7);
+    context.scale(0.8, 0.8);
+    context.fillStyle = colors.suit;
+    context.strokeStyle = "#263241";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, -27, 38, 9, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-25, -30);
+    context.lineTo(7, -88);
+    context.lineTo(31, -29);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#d9f6ff";
+    context.beginPath();
+    context.arc(9, -55, 5, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
+  drawModelHead(context, x, y, colors, damaged, direction, body = CHARACTER_TYPES.normal) {
+    if (body.mage) {
+      context.fillStyle = "#8a4a24";
+      context.beginPath();
+      context.ellipse(x - 11, y + 10, 13, 34, -0.12, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#6f351b";
+      context.beginPath();
+      context.ellipse(x + 18, y + 10, 10, 34, 0.12, 0, Math.PI * 2);
+      context.fill();
+    }
+
     const head = context.createRadialGradient(x - 12, y - 15, 4, x, y, 33);
     head.addColorStop(0, "#ffe3c5");
     head.addColorStop(0.62, PLAYER_MODEL.skin);
@@ -766,19 +872,59 @@ class Player {
     context.arc(x, y, 29, 0, Math.PI * 2);
     context.fill();
 
-    context.fillStyle = PLAYER_MODEL.hair;
-    context.beginPath();
-    context.arc(x, y - 9, 27, Math.PI, Math.PI * 2);
-    context.lineTo(x + 22, y - 4);
-    context.quadraticCurveTo(x, y - 15, x - 24, y - 3);
-    context.closePath();
-    context.fill();
-
-    if (direction === "up") {
+    if (body.mage) {
+      context.fillStyle = "#8a4a24";
+      context.beginPath();
+      context.arc(x, y - 13, 25, Math.PI, Math.PI * 2);
+      context.lineTo(x + 21, y - 7);
+      context.quadraticCurveTo(x + 1, y - 20, x - 22, y - 7);
+      context.closePath();
+      context.fill();
+    } else if (this.characterType === "normal") {
       context.fillStyle = PLAYER_MODEL.hair;
       context.beginPath();
-      context.arc(x, y - 2, 25, Math.PI * 0.9, Math.PI * 2.1);
+      context.moveTo(x - 28, y - 4);
+      context.lineTo(x - 24, y - 25);
+      context.lineTo(x - 15, y - 13);
+      context.lineTo(x - 8, y - 32);
+      context.lineTo(x + 1, y - 14);
+      context.lineTo(x + 10, y - 31);
+      context.lineTo(x + 17, y - 12);
+      context.lineTo(x + 28, y - 24);
+      context.lineTo(x + 25, y - 3);
+      context.quadraticCurveTo(x, y - 13, x - 28, y - 4);
+      context.closePath();
       context.fill();
+    } else {
+      context.fillStyle = PLAYER_MODEL.hair;
+      context.beginPath();
+      context.arc(x, y - 9, 27, Math.PI, Math.PI * 2);
+      context.lineTo(x + 22, y - 4);
+      context.quadraticCurveTo(x, y - 15, x - 24, y - 3);
+      context.closePath();
+      context.fill();
+    }
+
+    if (direction === "up") {
+      context.fillStyle = body.mage ? "#8a4a24" : PLAYER_MODEL.hair;
+      context.beginPath();
+      if (body.mage) {
+        context.ellipse(x, y + 6, 27, 40, 0, Math.PI * 0.85, Math.PI * 2.15);
+        context.fill();
+      } else if (this.characterType === "normal") {
+        context.moveTo(x - 27, y - 1);
+        context.lineTo(x - 20, y - 22);
+        context.lineTo(x - 8, y - 8);
+        context.lineTo(x + 1, y - 26);
+        context.lineTo(x + 10, y - 8);
+        context.lineTo(x + 24, y - 20);
+        context.lineTo(x + 27, y - 1);
+        context.quadraticCurveTo(x, y + 10, x - 27, y - 1);
+        context.fill();
+      } else {
+        context.arc(x, y - 2, 25, Math.PI * 0.9, Math.PI * 2.1);
+        context.fill();
+      }
       return;
     }
 

@@ -46,6 +46,7 @@ class CPUController {
   makeDecision() {
     const holder = this.ball.owner;
     const cpuHolder = holder && holder.team === "right" ? holder : null;
+    const looseBallChaser = this.getLooseBallChaser();
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
@@ -66,7 +67,7 @@ class CPUController {
         continue;
       }
 
-      if (this.shouldChaseLooseBall(member)) {
+      if (looseBallChaser === member) {
         this.moveToward(command, member, this.ball.x, this.ball.y);
         command.dash = true;
         continue;
@@ -114,6 +115,33 @@ class CPUController {
         command.chargeTime = plan.chargeTime;
         this.throwTimer = plan.chargeTime + 0.55 + Math.random() * 0.25;
         this.holderPlan = null;
+      }
+      return;
+    }
+
+    if (plan.type === "charge-dash-shot") {
+      const target = this.nearestActiveOpponent(holder);
+      if (target) this.moveToward(command, holder, target.x, target.y);
+      command.dash = holder.stamina > this.config.stamina.shootCost + 22;
+      if (this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = plan.chargeTime;
+        this.throwTimer = plan.chargeTime + 0.7 + Math.random() * 0.25;
+      }
+      return;
+    }
+
+    if (plan.type === "charge-jump-shot") {
+      const target = this.nearestActiveOpponent(holder);
+      if (target) this.moveToward(command, holder, target.x, target.y);
+      command.dash = holder.stamina > this.config.stamina.shootCost + 24;
+      if (holder.jumpZ <= 0 && holder.jumpVelocity <= 0 && this.throwTimer <= 0.34) {
+        command.jump = true;
+      }
+      if (this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = plan.chargeTime;
+        this.throwTimer = plan.chargeTime + 0.78 + Math.random() * 0.26;
       }
       return;
     }
@@ -170,7 +198,8 @@ class CPUController {
     const roll = Math.random();
     let type = "normal-shot";
     if (this.passChainFinisher) {
-      type = Math.random() < 0.55 ? "charge-shot" : "dash-shot";
+      const finisherRoll = Math.random();
+      type = finisherRoll < 0.38 ? "charge-dash-shot" : finisherRoll < 0.68 ? "charge-jump-shot" : finisherRoll < 0.86 ? "charge-shot" : "dash-shot";
       this.passChainFinisher = false;
     } else if (this.passChainRemaining > 0) {
       this.passChainRemaining -= 1;
@@ -180,17 +209,21 @@ class CPUController {
       }
     } else {
       if (holder.role === "out") {
-        type = roll < 0.32 ? "normal-shot" : roll < 0.62 ? "pass-chain" : roll < 0.82 ? "charge-shot" : "jump-shot";
-      } else if (roll < 0.24) {
+        type = roll < 0.16 ? "normal-shot" : roll < 0.34 ? "pass-chain" : roll < 0.58 ? "charge-dash-shot" : roll < 0.78 ? "charge-jump-shot" : roll < 0.9 ? "charge-shot" : "jump-shot";
+      } else if (roll < 0.12) {
         type = "normal-shot";
-      } else if (roll < 0.46) {
+      } else if (roll < 0.26) {
         type = "center-shot";
-      } else if (roll < 0.64) {
+      } else if (roll < 0.4) {
         type = "dash-shot";
-      } else if (roll < 0.78) {
+      } else if (roll < 0.52) {
         type = "jump-shot";
-      } else if (roll < 0.91) {
+      } else if (roll < 0.66) {
         type = "pass-chain";
+      } else if (roll < 0.82) {
+        type = "charge-dash-shot";
+      } else if (roll < 0.95) {
+        type = "charge-jump-shot";
       } else {
         type = "charge-shot";
       }
@@ -202,12 +235,29 @@ class CPUController {
       type,
       x: holder.role === "inner" ? centerLineX : holder.homeX,
       y: holder.y,
-      chargeTime: 0.75 + Math.random() * 1.05
+      chargeTime: 1.05 + Math.random() * 0.45
     };
     return this.holderPlan;
   }
 
-  shouldChaseLooseBall(member) {
+  getLooseBallChaser() {
+    if (!this.ball.isLoose || this.ball.owner || this.ball.isFlying) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (const member of this.team) {
+      if (member.defeated || !this.canReachLooseBall(member)) continue;
+      const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
+      const roleBias = member.role === "out" ? -35 : 0;
+      const score = distance + roleBias;
+      if (score < bestScore) {
+        best = member;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  canReachLooseBall(member) {
     if (!this.ball.isLoose || this.ball.owner || this.ball.isFlying) return false;
     const area = this.config.areas ? this.config.areas[member.zone] : null;
     if (!area) return false;
@@ -303,13 +353,22 @@ class CPUController {
       const throwerDistance = this.ball.thrower ? Math.hypot(this.ball.thrower.x - member.x, this.ball.thrower.y - member.y) : distance;
       const farShot = throwerDistance > 520 || distance > 260;
       const readyToReact = frontShot && farShot;
-      const dodgeChance = readyToReact ? 0.78 : frontShot ? 0.42 : 0.16;
-      const catchChance = readyToReact ? this.config.cpuCatchChance * 0.45 : frontShot ? this.config.cpuCatchChance * 1.15 : this.config.cpuCatchChance * 0.18;
+      const specialShot = Boolean(this.ball.specialShotType);
+      const shotMultiplier = this.ball.shotMultiplier || 1;
+      const strongShot = specialShot || shotMultiplier >= 1.28 || this.ball.power >= 28;
+      const weakShot = !specialShot && shotMultiplier <= 1.08 && this.ball.power <= 23;
+      const dodgeChance = strongShot
+        ? readyToReact ? 0.9 : frontShot ? 0.72 : 0.3
+        : readyToReact ? 0.42 : frontShot ? 0.28 : 0.14;
+      const catchChance = weakShot
+        ? readyToReact ? this.config.cpuCatchChance * 2.7 : frontShot ? this.config.cpuCatchChance * 2.2 : this.config.cpuCatchChance * 0.35
+        : strongShot ? frontShot ? this.config.cpuCatchChance * 0.22 : this.config.cpuCatchChance * 0.06
+          : readyToReact ? this.config.cpuCatchChance * 0.9 : frontShot ? this.config.cpuCatchChance * 1.05 : this.config.cpuCatchChance * 0.16;
 
-      if (frontShot && distance < 240 && Math.random() < catchChance) {
+      if (frontShot && distance < (weakShot ? 320 : 240) && Math.random() < catchChance) {
         command.catch = true;
       } else if (laneThreat && Math.random() < dodgeChance) {
-        this.dodgeIncomingShot(command, member, readyToReact);
+        this.dodgeIncomingShot(command, member, readyToReact || strongShot);
       }
     }
 

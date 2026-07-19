@@ -3,6 +3,7 @@ const SHOW_HITBOXES = false;
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 4;
 const START_SLOT = TEAM_SELECTION_COUNT;
+const MAX_SHOT_CHARGE_TIME = 1.5;
 
 const GAME_CONFIG = {
   width: 1440,
@@ -36,7 +37,7 @@ const GAME_CONFIG = {
   ball: {
     radius: 37,
     damage: 20,
-    shootSpeed: 1140,
+    shootSpeed: 798,
     passSpeed: 645,
     moveBonus: 0.34,
     gravity: 520,
@@ -82,7 +83,7 @@ class DodgeballGame {
     this.state = "modeSelect";
     this.gameMode = "single";
     this.modeIndex = 0;
-    this.typeOrder = ["normal", "power", "speed", "jump"];
+    this.typeOrder = ["normal", "power", "speed", "jump", "mage"];
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = 0;
     this.teamSelectionSlots = { left: 0, right: 0 };
@@ -1110,7 +1111,7 @@ class DodgeballGame {
       playerIndex: 0,
       chargeTime: 0,
       cpuControlled: true,
-      cpuReleaseTime: Math.max(0.35, Math.min(2, chargeTime)),
+      cpuReleaseTime: Math.max(0.35, Math.min(MAX_SHOT_CHARGE_TIME, chargeTime)),
       aerialCombo: actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
     };
     actor.markThrowing(0.5, "shoot");
@@ -1129,19 +1130,36 @@ class DodgeballGame {
     charged.aim = kind === "shoot"
       ? this.getShotAim(actor, charged.target, selection.aim || charged.aim)
       : selection.aim || charged.aim;
-    const chargeRatio = Math.min(1, charged.chargeTime / 2);
+    const chargeRatio = Math.min(1, charged.chargeTime / MAX_SHOT_CHARGE_TIME);
     const multiplier = kind === "shoot"
       ? this.getShotMultiplier(actor, charged.aim, chargeRatio, charged.aerialCombo)
       : 1 + chargeRatio * 0.85;
     actor.throwLockTimer = Math.max(actor.throwLockTimer, kind === "shoot" ? 0.3 : 0.18);
     actor.markThrowing(kind === "shoot" ? 0.32 : 0.22, kind);
-    if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, charged.aerialCombo)) {
-      if (kind === "shoot") this.showShotMultiplier(multiplier, actor);
+    const specialType = kind === "shoot" ? this.getSpecialShotType(actor, multiplier) : null;
+    if (specialType) {
+      this.pendingThrow = {
+        actor,
+        target: charged.target,
+        kind,
+        aim: charged.aim,
+        shotMultiplier: multiplier,
+        specialType,
+        timer: 0.2,
+        anticipation: true,
+        aerialCombo: charged.aerialCombo
+      };
+      actor.markThrowing(0.38, kind);
+      actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.26);
+      return true;
+    }
+    if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
+      if (kind === "shoot") this.showShotMultiplier(multiplier, actor, specialType);
       this.spawnEffect(
         actor.x + actor.facing * 40,
         actor.y - 48 - actor.jumpZ,
-        charged.aerialCombo ? "#66f6ff" : kind === "shoot" ? "#ffe46a" : "#ffffff",
-        charged.aerialCombo ? "special" : kind
+        specialType ? "#66f6ff" : charged.aerialCombo ? "#66f6ff" : kind === "shoot" ? "#ffe46a" : "#ffffff",
+        specialType ? "special" : charged.aerialCombo ? "special" : kind
       );
       if (kind === "pass" && charged.target) this.setControlledMember(charged.target.team, charged.target);
     }
@@ -1190,8 +1208,17 @@ class DodgeballGame {
       kind,
       aim: shotAim || { x: aim.x, y: aim.y },
       shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
+      specialType: null,
+      anticipation: false,
       timer: kind === "shoot" ? 0.38 : 0.2
     };
+    if (kind === "shoot") {
+      this.pendingThrow.specialType = this.getSpecialShotType(actor, this.pendingThrow.shotMultiplier);
+      if (this.pendingThrow.specialType) {
+        this.pendingThrow.timer += 0.2;
+        this.pendingThrow.anticipation = true;
+      }
+    }
     const throwDuration = kind === "shoot" ? 0.68 : 0.4;
     actor.markThrowing(throwDuration, kind);
     actor.throwLockTimer = Math.max(actor.throwLockTimer, throwDuration);
@@ -1217,13 +1244,16 @@ class DodgeballGame {
     if (pending.timer > 0) return;
 
     this.pendingThrow = null;
-    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier)) {
-      if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor);
+    const specialType = pending.kind === "shoot"
+      ? pending.specialType || this.getSpecialShotType(pending.actor, pending.shotMultiplier)
+      : null;
+    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier, specialType)) {
+      if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
         pending.actor.y - 48,
-        pending.kind === "shoot" ? "#ffe46a" : "#ffffff",
-        pending.kind
+        specialType ? "#66f6ff" : pending.kind === "shoot" ? "#ffe46a" : "#ffffff",
+        specialType ? "special" : pending.kind
       );
     }
   }
@@ -1237,7 +1267,7 @@ class DodgeballGame {
       return;
     }
 
-    charged.chargeTime = Math.min(2, charged.chargeTime + delta);
+    charged.chargeTime = Math.min(MAX_SHOT_CHARGE_TIME, charged.chargeTime + delta);
     if (charged.kind === "shoot") {
       charged.actor.drainStamina(
         GAME_CONFIG.battle.stamina.shootChargeDrainPerSecond * delta,
@@ -1423,19 +1453,24 @@ class DodgeballGame {
   }
 
   getShotMultiplier(actor, aim, chargeRatio = 0, aerialCombo = false) {
-    const runupDot = Math.max(0, actor.runupDirX * aim.x + actor.runupDirY * aim.y);
-    const runupRatio = Math.min(1, actor.runupTime / 2);
-    const directionMatch = runupDot < 0.55 ? 0 : runupDot;
-    const runBonus = 0.38 * runupRatio * directionMatch;
     const movingTowardThrow = actor.vx * aim.x + actor.vy * aim.y > actor.speed * 0.35;
     const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 : 0;
     const powerBonus = ((actor.stats?.power || 5) - 5) * 0.04;
     const speedBonus = ((actor.stats?.speed || 5) - 5) * 0.025;
     const jumpStatBonus = actor.jumpZ > 0 ? ((actor.stats?.jump || 5) - 5) * 0.035 : 0;
-    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.62, actor.jumpZ / 210 + jumpStatBonus) : 0;
+    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.3, actor.jumpZ / 430 + jumpStatBonus * 0.55) : 0;
     const chargeBonus = chargeRatio * 0.55;
-    const aerialBonus = aerialCombo ? 0.5 : 0;
-    return Math.max(0.7, Math.min(2.15, 0.7 + runBonus + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
+    const aerialBonus = aerialCombo ? 0.2 : 0;
+    return Math.max(0.7, Math.min(2.15, 0.7 + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
+  }
+
+  getSpecialShotType(actor, multiplier) {
+    if (multiplier < 1.5) return null;
+    if (actor.characterType === "mage") return "soul";
+    if (actor.characterType === "jump") return "boost";
+    if (actor.characterType === "power") return "iron";
+    if (actor.characterType === "speed") return "boomerang";
+    return "lightning";
   }
 
   getShotAim(actor, target, fallbackAim) {
@@ -1632,12 +1667,19 @@ class DodgeballGame {
 
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
       const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
+      const caughtIronShot = caughtEnemyShot && this.ball.specialShotType === "iron";
+      const ironDirection = caughtIronShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
+      const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
       this.ball.pickUp(catcher);
       if (caughtFriendlyPassInAir) {
         catcher.aerialPassCatchTimer = 1.1;
       }
       if (caughtEnemyShot) {
         catcher.startCatchSuccess();
+        if (caughtIronShot) {
+          catcher.knockbackX += ironDirection * GAME_CONFIG.battle.knockbackSpeed * 2.2;
+          catcher.knockbackY += ironVerticalDirection * GAME_CONFIG.battle.knockbackSpeed * 0.55;
+        }
       }
       catcher.throwLockTimer = 0.2;
       catcher.catchTimer = 0;
@@ -1664,9 +1706,15 @@ class DodgeballGame {
     const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
     const facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
     const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.06;
-    const chance = Math.max(0.1, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus) * distanceFactor * facingFactor));
+    const specialCatchPenalty = this.ball.specialShotType === "iron" ? 0.34 : 1;
+    const chance = Math.max(0.06, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus) * distanceFactor * facingFactor * specialCatchPenalty));
     if (Math.random() <= chance) return true;
 
+    if (this.ball.specialShotType === "iron") {
+      const direction = this.ball.vx >= 0 ? 1 : -1;
+      catcher.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 2.4;
+      catcher.knockbackY += (this.ball.vy >= 0 ? 1 : -1) * GAME_CONFIG.battle.knockbackSpeed * 0.6;
+    }
     catcher.catchTimer = 0;
     this.spawnEffect(catcher.x, catcher.y - 66, "#ffb09a", "pass");
     this.spillFailedCatchBall(catcher);
@@ -1692,6 +1740,13 @@ class DodgeballGame {
     this.ball.vz = 0;
     this.ball.x = catcher.x + catcher.facing * 36;
     this.ball.y = catcher.y - 22;
+    this.ball.shotMultiplier = 1;
+    this.ball.specialShot = false;
+    this.ball.specialShotType = null;
+    this.ball.radius = this.ball.baseRadius;
+    this.ball.travelDistance = 0;
+    this.ball.returning = false;
+    this.ball.hitPlayerIds?.clear();
   }
 
   isFacingIncomingBall(catcher) {
@@ -1751,19 +1806,92 @@ class DodgeballGame {
 
     for (const target of targets) {
       if (target.defeated || target.role !== "inner") continue;
+      if (this.ball.hitPlayerIds?.has(target.id)) continue;
       const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
       if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) continue;
 
       const direction = this.ball.vx >= 0 ? 1 : -1;
-      const damaged = target.takeDamage(this.ball.power, direction, GAME_CONFIG.battle);
+      const specialType = this.ball.specialShotType;
+      const damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
+      const knockbackScale = specialType ? 1.5 : 1;
+      const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
-        this.spawnEffect(this.ball.x, ballY, "#ffe46a", "hit");
-        this.spawnDamageNumber(target, this.ball.power);
-        this.ball.bounceFromHit(-direction, this.ball.power / 20);
+        this.ball.hitPlayerIds?.add(target.id);
+        if (specialType === "lightning") {
+          if (target.hp > 0) {
+            target.stun(0.55 + Math.max(0, (this.ball.shotMultiplier || 1) - 1.5) * 0.25);
+          }
+          this.applyLightningSplash(target, damage);
+        }
+        if (specialType === "iron") {
+          target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 1.2;
+        }
+        if (specialType === "soul") {
+          this.healTeam(this.ball.thrower.team, 5);
+        }
+        this.spawnEffect(this.ball.x, ballY, this.getSpecialHitColor(specialType), specialType ? "special" : "hit");
+        this.spawnDamageNumber(target, damage);
+        if (specialType !== "boomerang" && specialType !== "iron") {
+          this.ball.bounceFromHit(-direction, damage / 20);
+        }
       }
       break;
     }
+  }
+
+  getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
+    if (specialType === "boost") {
+      return baseDamage * (1 + Math.min(0.55, travelDistance / 1900 * 0.55));
+    }
+    if (specialType === "iron") {
+      return baseDamage * 1.08;
+    }
+    if (specialType === "boomerang") {
+      return baseDamage * 0.86;
+    }
+    return baseDamage;
+  }
+
+  healTeam(teamName, amount) {
+    const team = teamName === "left" ? this.leftTeam : this.rightTeam;
+    for (const member of team) {
+      if (member.defeated || member.hp <= 0) continue;
+      const before = member.hp;
+      member.hp = Math.min(member.maxHp, member.hp + amount);
+      if (member.hp > before) {
+        this.spawnEffect(member.x, member.y - member.jumpZ - 88, "#bdf8ff", "heal");
+      }
+    }
+  }
+
+  applyLightningSplash(primaryTarget, baseDamage) {
+    const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
+    const splashRadius = 285;
+    const splashDamage = Math.max(1, baseDamage * 0.026);
+    for (const enemy of enemies) {
+      if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
+      const distance = Math.hypot(enemy.x - primaryTarget.x, enemy.y - primaryTarget.y);
+      if (distance > splashRadius) continue;
+      const direction = enemy.x >= primaryTarget.x ? 1 : -1;
+      if (enemy.takeDamage(splashDamage, direction, GAME_CONFIG.battle, 1.5)) {
+        enemy.stun(0.36);
+        this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 70, "#8ffcff", "special");
+        this.spawnDamageNumber(enemy, splashDamage);
+      } else if (enemy.hp > 0) {
+        enemy.stun(0.24);
+        this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 70, "#8ffcff", "special");
+      }
+    }
+  }
+
+  getSpecialHitColor(specialType) {
+    if (specialType === "boost") return "#ff7a1f";
+    if (specialType === "lightning") return "#8ffcff";
+    if (specialType === "iron") return "#aeb4bf";
+    if (specialType === "boomerang") return "#a8ff6b";
+    if (specialType === "soul") return "#bdf8ff";
+    return "#ffe46a";
   }
 
   checkGameOver() {
@@ -2104,13 +2232,23 @@ class DodgeballGame {
     });
   }
 
-  showShotMultiplier(multiplier, actor) {
+  showShotMultiplier(multiplier, actor, specialType = null) {
     this.shotMultiplierDisplay = {
       multiplier,
       team: actor.team,
+      specialType,
       life: 2.6,
       maxLife: 2.6
     };
+  }
+
+  getSpecialShotLabel(specialType) {
+    if (specialType === "boost") return "BOOST";
+    if (specialType === "lightning") return "LIGHTNING";
+    if (specialType === "iron") return "IRON";
+    if (specialType === "boomerang") return "BANANA";
+    if (specialType === "soul") return "SOUL RECOVERY";
+    return "";
   }
 
   updateEffects(delta) {
@@ -2177,6 +2315,7 @@ class DodgeballGame {
 
     this.drawEffects();
     this.drawChargeEffect();
+    this.drawSpecialAnticipationEffect();
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
@@ -2390,10 +2529,95 @@ class DodgeballGame {
     context.beginPath();
     context.ellipse(0, -42, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
+    if (body.mage) {
+      context.fillStyle = suit;
+      context.strokeStyle = "rgba(38,50,65,0.35)";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-25, -22);
+      context.lineTo(26, -22);
+      context.lineTo(38, 25);
+      context.lineTo(-36, 25);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+    if (body.mage) {
+      context.fillStyle = "#8a4a24";
+      context.beginPath();
+      context.ellipse(-12, -90, 11, 35, -0.12, 0, Math.PI * 2);
+      context.ellipse(18, -90, 9, 34, 0.12, 0, Math.PI * 2);
+      context.fill();
+    }
     context.fillStyle = "#ffd1a3";
     context.beginPath();
     context.arc(0, -100, 29, 0, Math.PI * 2);
+    if (body.headScale && body.headScale !== 1) {
+      context.restore();
+      context.save();
+      context.translate(x, y);
+      context.scale(body.scaleX * 0.48, body.scaleY * 0.48);
+      context.fillStyle = "#ffd1a3";
+      context.beginPath();
+      context.arc(0, -100, 29 * body.headScale, 0, Math.PI * 2);
+    }
     context.fill();
+    if (body.mage) {
+      context.fillStyle = "#8a4a24";
+      context.beginPath();
+      context.arc(0, -112, 25, Math.PI, Math.PI * 2);
+      context.lineTo(21, -107);
+      context.quadraticCurveTo(2, -120, -22, -107);
+      context.closePath();
+      context.fill();
+    } else if (type === "normal") {
+      context.fillStyle = "#f2c14e";
+      context.beginPath();
+      context.moveTo(-28, -104);
+      context.lineTo(-23, -126);
+      context.lineTo(-14, -111);
+      context.lineTo(-6, -132);
+      context.lineTo(2, -112);
+      context.lineTo(12, -130);
+      context.lineTo(18, -111);
+      context.lineTo(28, -125);
+      context.lineTo(25, -103);
+      context.quadraticCurveTo(0, -114, -28, -104);
+      context.closePath();
+      context.fill();
+    } else {
+      context.fillStyle = "#f2c14e";
+      context.beginPath();
+      context.arc(0, -109, 27, Math.PI, Math.PI * 2);
+      context.lineTo(22, -104);
+      context.quadraticCurveTo(0, -115, -24, -103);
+      context.closePath();
+      context.fill();
+    }
+    if (body.mage) {
+      context.fillStyle = suit;
+      context.strokeStyle = "#263241";
+      context.lineWidth = 4;
+      context.save();
+      context.translate(0, -94);
+      context.scale(0.8, 0.8);
+      context.beginPath();
+      context.ellipse(0, -32, 38, 9, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(-24, -34);
+      context.lineTo(4, -90);
+      context.lineTo(30, -34);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#d9f6ff";
+      context.beginPath();
+      context.arc(8, -60, 5, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
     context.restore();
   }
 
@@ -2601,18 +2825,20 @@ class DodgeballGame {
     const context = this.context;
     const display = this.shotMultiplierDisplay;
     const alpha = Math.max(0, Math.min(1, display.life / 0.35, 1));
+    const specialLabel = this.getSpecialShotLabel(display.specialType);
     const text = `SHOT x${display.multiplier.toFixed(2)}`;
     const teamText = display.team === "left" ? "1P" : "2P";
+    const height = specialLabel ? 72 : 50;
 
     context.save();
     context.globalAlpha = alpha;
     context.font = "bold 18px Meiryo, sans-serif";
     context.textAlign = "left";
-    const width = Math.max(134, context.measureText(text).width + 34);
+    const width = Math.max(134, context.measureText(specialLabel || text).width + 34);
     const x = 14;
     const y = 14;
     context.fillStyle = "rgba(20, 26, 36, 0.72)";
-    this.roundRect(context, x, y, width, 50, 7);
+    this.roundRect(context, x, y, width, height, 7);
     context.fill();
     context.fillStyle = display.team === "left" ? "#9fd0ff" : "#ffb0a6";
     context.font = "bold 13px Meiryo, sans-serif";
@@ -2620,6 +2846,11 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "bold 20px Meiryo, sans-serif";
     context.fillText(text, x + 14, y + 41);
+    if (specialLabel) {
+      context.fillStyle = "#8ffcff";
+      context.font = "bold 15px Meiryo, sans-serif";
+      context.fillText(specialLabel, x + 14, y + 62);
+    }
     context.restore();
   }
 
@@ -2640,16 +2871,18 @@ class DodgeballGame {
         context.restore();
         continue;
       }
-      const radius = effect.type === "hit" ? 22 + progress * 58 : 24 + progress * 24;
+      const radius = effect.type === "special"
+        ? 30 + progress * 86
+        : effect.type === "hit" ? 22 + progress * 58 : 24 + progress * 24;
       context.save();
       context.globalAlpha = 1 - progress;
       context.strokeStyle = effect.color;
-      context.lineWidth = effect.type === "hit" || effect.type === "catchStrong" ? 7 : 4;
+      context.lineWidth = effect.type === "special" ? 9 : effect.type === "hit" || effect.type === "catchStrong" ? 7 : 4;
       context.beginPath();
       context.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
       context.stroke();
-      if (effect.type === "hit" || effect.type === "catchStrong") {
-        const count = effect.type === "catchStrong" ? 12 : 8;
+      if (effect.type === "hit" || effect.type === "catchStrong" || effect.type === "special") {
+        const count = effect.type === "catchStrong" ? 12 : effect.type === "special" ? 14 : 8;
         for (let i = 0; i < count; i += 1) {
           const angle = (Math.PI * 2 * i) / count;
           context.beginPath();
@@ -2670,7 +2903,7 @@ class DodgeballGame {
     if (!actor || actor.defeated) return;
 
     const context = this.context;
-    const ratio = Math.min(1, charged.chargeTime / 2);
+    const ratio = Math.min(1, charged.chargeTime / MAX_SHOT_CHARGE_TIME);
     const pulse = 0.5 + Math.sin(performance.now() / 75) * 0.5;
     const x = actor.x + actor.facing * 18;
     const y = actor.y - actor.jumpZ - 62;
@@ -2694,6 +2927,52 @@ class DodgeballGame {
         x + Math.cos(angle) * sparkRadius,
         y + Math.sin(angle) * sparkRadius * 0.66,
         3 + ratio * 4,
+        0,
+        Math.PI * 2
+      );
+      context.fill();
+    }
+    context.restore();
+  }
+
+  drawSpecialAnticipationEffect() {
+    if (!this.pendingThrow || !this.pendingThrow.anticipation || !this.pendingThrow.specialType) return;
+    const pending = this.pendingThrow;
+    if (pending.timer > 0.2) return;
+    const actor = pending.actor;
+    if (!actor || actor.defeated || this.ball.owner !== actor) return;
+
+    const context = this.context;
+    const pulse = 0.5 + Math.sin(performance.now() / 42) * 0.5;
+    const progress = Math.max(0, Math.min(1, 1 - pending.timer / 0.2));
+    const color = this.getSpecialHitColor(pending.specialType);
+    const x = actor.x;
+    const y = actor.y - actor.jumpZ - 66;
+    const radius = 46 + progress * 36 + pulse * 10;
+
+    context.save();
+    context.globalAlpha = 0.32 + pulse * 0.34;
+    context.fillStyle = color;
+    context.beginPath();
+    context.ellipse(x, y + 12, radius * 0.7, radius * 1.08, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.globalAlpha = 0.82;
+    context.strokeStyle = "#f3ffff";
+    context.lineWidth = 5 + progress * 5;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.stroke();
+
+    context.fillStyle = "#ffffff";
+    for (let i = 0; i < 12; i += 1) {
+      const angle = performance.now() / 120 + i * Math.PI / 6;
+      const sparkRadius = radius * (0.72 + (i % 4) * 0.08);
+      context.beginPath();
+      context.arc(
+        x + Math.cos(angle) * sparkRadius,
+        y + Math.sin(angle) * sparkRadius,
+        3 + pulse * 3,
         0,
         Math.PI * 2
       );
