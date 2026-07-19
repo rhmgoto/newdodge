@@ -118,6 +118,7 @@ class Player {
     this.faceColor = options.faceColor || "#ffd4a3";
     this.hairColor = options.hairColor || "#3d2a1f";
     this.cpuProfile = options.cpuProfile || null;
+    this.specialShotType = options.specialShotType || null;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
     this.visualDirection = this.team === "left" ? "right" : "left";

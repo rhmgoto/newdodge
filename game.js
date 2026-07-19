@@ -93,6 +93,7 @@ class DodgeballGame {
       right: this.createDefaultTeamSelection()
     };
     this.cpuOpponentIndex = 0;
+    this.pauseMenuIndex = 0;
     this.previousTime = 0;
     this.autoSwitchCooldown = 0;
     this.rightStickSwitchCooldown = 0;
@@ -404,14 +405,14 @@ class DodgeballGame {
         maxStamina: cpuPlayer?.maxStamina ?? cpuTeam?.maxStamina,
         stats: cpuPlayer?.stats || cpuTeam?.stats,
         hairColor: cpuPlayer?.hairColor || cpuTeam?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
-        cpuProfile: cpuPlayer?.cpuProfile || cpuTeam?.cpuProfile
+        cpuProfile: cpuPlayer?.cpuProfile || cpuTeam?.cpuProfile,
+        specialShotType: cpuPlayer?.specialShotType
       });
     });
 
     roster.push(
       makePlayer({
         id: `${prefix}-out-top`,
-        name: `${prefix}-out-top`,
         role: "out",
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
@@ -422,7 +423,8 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(5)?.maxStamina ?? cpuTeam?.maxStamina,
         stats: getCpuPlayer(5)?.stats || cpuTeam?.stats,
         hairColor: getCpuPlayer(5)?.hairColor || cpuTeam?.hairColor,
-        cpuProfile: getCpuPlayer(5)?.cpuProfile || cpuTeam?.cpuProfile
+        cpuProfile: getCpuPlayer(5)?.cpuProfile || cpuTeam?.cpuProfile,
+        specialShotType: getCpuPlayer(5)?.specialShotType
       }),
       makePlayer({
         id: `${prefix}-out-bottom`,
@@ -436,7 +438,8 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(6)?.maxStamina ?? cpuTeam?.maxStamina,
         stats: getCpuPlayer(6)?.stats || cpuTeam?.stats,
         hairColor: getCpuPlayer(6)?.hairColor || cpuTeam?.hairColor,
-        cpuProfile: getCpuPlayer(6)?.cpuProfile || cpuTeam?.cpuProfile
+        cpuProfile: getCpuPlayer(6)?.cpuProfile || cpuTeam?.cpuProfile,
+        specialShotType: getCpuPlayer(6)?.specialShotType
       }),
       makePlayer({
         id: `${prefix}-out-side`,
@@ -450,7 +453,8 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(7)?.maxStamina ?? cpuTeam?.maxStamina,
         stats: getCpuPlayer(7)?.stats || cpuTeam?.stats,
         hairColor: getCpuPlayer(7)?.hairColor || cpuTeam?.hairColor,
-        cpuProfile: getCpuPlayer(7)?.cpuProfile || cpuTeam?.cpuProfile
+        cpuProfile: getCpuPlayer(7)?.cpuProfile || cpuTeam?.cpuProfile,
+        specialShotType: getCpuPlayer(7)?.specialShotType
       })
     );
 
@@ -464,6 +468,15 @@ class DodgeballGame {
   }
 
   getCpuOpponentTeams() {
+    const player = (name, position, characterType, maxHp, maxStamina, power, speed, jump, technique, specialShotType) => ({
+      name,
+      position,
+      characterType,
+      maxHp,
+      maxStamina,
+      stats: { power, speed, jump, technique },
+      specialShotType
+    });
     return [
       {
         id: "town-dodgies",
@@ -479,7 +492,17 @@ class DodgeballGame {
         maxHp: 50,
         maxStamina: 100,
         stats: { power: 5, speed: 5, jump: 5, technique: 5 },
-        cpuProfile: "townDodgies"
+        cpuProfile: "townDodgies",
+        players: [
+          player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "boost"),
+          player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
+          player("まさる", "inner", "normal", 50, 100, 5, 5, 5, 5, "boomerang"),
+          player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
+          player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "iron"),
+          player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
+          player("けんじ", "out", "normal", 50, 100, 5, 5, 5, 5, "boomerang"),
+          player("たかし", "out", "normal", 50, 100, 5, 5, 5, 5, "boost")
+        ]
       },
       {
         id: "bakusou-boys",
@@ -495,7 +518,17 @@ class DodgeballGame {
         maxHp: 70,
         maxStamina: 100,
         stats: { power: 6, speed: 8, jump: 7, technique: 6 },
-        cpuProfile: "bakusouBoys"
+        cpuProfile: "bakusouBoys",
+        players: [
+          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("しょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "boost"),
+          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "boost")
+        ]
       },
       {
         id: "hinomaru-bombers",
@@ -514,14 +547,14 @@ class DodgeballGame {
         stats: { power: 7, speed: 7, jump: 7, technique: 7 },
         cpuProfile: "hinomaruBombers",
         players: [
-          { name: "\u308c\u3064", characterType: "jump", maxHp: 150, maxStamina: 110, stats: { power: 6, speed: 8, jump: 7, technique: 7 } },
-          { name: "\u3080\u3055\u3057", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
-          { name: "\u3057\u3087\u3046", characterType: "speed", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 6, jump: 8, technique: 7 } },
-          { name: "\u3058\u3093", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
-          { name: "\u3060\u3044\u3061", characterType: "power", maxHp: 150, maxStamina: 110, stats: { power: 8, speed: 5, jump: 6, technique: 7 } },
-          { name: "\u306f\u3084\u3068", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
-          { name: "\u3048\u3093\u3058", characterType: "speed", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 8, technique: 6 } },
-          { name: "\u3072\u304b\u308b", characterType: "jump", maxHp: 150, maxStamina: 110, stats: { power: 6, speed: 8, jump: 7, technique: 7 } }
+          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 9, "boost"),
+          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
+          player("しょう", "inner", "speed", 150, 110, 9, 8, 11, 9, "boomerang"),
+          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
+          player("だいち", "inner", "power", 150, 110, 11, 6, 8, 7, "iron"),
+          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
+          player("えんじ", "out", "speed", 150, 110, 9, 8, 11, 9, "boomerang"),
+          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 9, "boost")
         ]
       }
     ];
@@ -567,10 +600,28 @@ class DodgeballGame {
 
     if (this.input.wasPressed("pause")) {
       this.state = this.state === "paused" ? "playing" : "paused";
+      this.pauseMenuIndex = 0;
     }
-    if (this.state === "paused") return;
+    if (this.state === "paused") {
+      this.updatePauseMenu();
+      return;
+    }
 
     this.updatePlaying(delta);
+  }
+
+  updatePauseMenu() {
+    if (this.wasMenuDirectionPressed("up") || this.wasMenuDirectionPressed("down")) {
+      this.pauseMenuIndex = this.pauseMenuIndex === 0 ? 1 : 0;
+    }
+    if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
+      if (this.pauseMenuIndex === 0) {
+        this.state = "playing";
+      } else {
+        this.state = "modeSelect";
+        this.pauseMenuIndex = 0;
+      }
+    }
   }
 
   updateModeSelect() {
@@ -612,7 +663,7 @@ class DodgeballGame {
       this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
-      this.changeCpuOpponent(1);
+      this.teamSelectionSlot = START_SLOT;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
       this.setupMatch();
@@ -656,9 +707,9 @@ class DodgeballGame {
     }
 
     if (nextSlot === CPU_OPPONENT_SLOT && !lockSide) {
-      if (up || left) nextSlot = TEAM_SELECT_COLUMNS - 1;
-      if (down) nextSlot = START_SLOT;
-      if (right) this.changeCpuOpponent(1);
+      if (left) nextSlot = TEAM_SELECT_COLUMNS - 1;
+      if (up) this.changeCpuOpponent(-1);
+      if (down) this.changeCpuOpponent(1);
       return { side: nextSide, slot: nextSlot };
     }
 
@@ -813,7 +864,7 @@ class DodgeballGame {
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
-        this.startCpuChargedShoot(member, command.chargeTime);
+        this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
       }
       if (command.shoot && this.ball.owner === member) {
         this.launchFromAi(member, "shoot", this.leftTeam);
@@ -1209,7 +1260,7 @@ class DodgeballGame {
     return true;
   }
 
-  startCpuChargedShoot(actor, chargeTime = 1) {
+  startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
     if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
     if (!actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
@@ -1227,6 +1278,7 @@ class DodgeballGame {
       chargeTime: 0,
       cpuControlled: true,
       cpuReleaseTime: Math.max(0.35, Math.min(MAX_SHOT_CHARGE_TIME, chargeTime)),
+      cpuReleaseMode: releaseMode,
       aerialCombo: actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
     };
     actor.markThrowing(0.5, "shoot");
@@ -1394,7 +1446,18 @@ class DodgeballGame {
       charged.target = selection.target;
       charged.aim = this.getShotAim(charged.actor, charged.target, selection.aim);
       charged.aerialCombo = charged.aerialCombo || (charged.actor.jumpZ > 0 && charged.actor.aerialPassCatchTimer > 0);
-      if (charged.cpuControlled && charged.chargeTime >= charged.cpuReleaseTime) {
+      const cpuApexRelease = charged.cpuControlled &&
+        charged.cpuReleaseMode === "apex" &&
+        charged.chargeTime >= 0.35 &&
+        charged.actor.jumpZ > 88 &&
+        Math.abs(charged.actor.jumpVelocity) < 150;
+      const cpuTimedRelease = charged.cpuControlled &&
+        charged.cpuReleaseMode !== "apex" &&
+        charged.chargeTime >= charged.cpuReleaseTime;
+      const cpuFallbackRelease = charged.cpuControlled &&
+        charged.cpuReleaseMode === "apex" &&
+        charged.chargeTime >= charged.cpuReleaseTime + 0.32;
+      if (cpuApexRelease || cpuTimedRelease || cpuFallbackRelease) {
         this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
         return;
       }
@@ -1581,6 +1644,7 @@ class DodgeballGame {
 
   getSpecialShotType(actor, multiplier) {
     if (multiplier < 1.5) return null;
+    if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";
     if (actor.characterType === "power") return "iron";
@@ -2443,7 +2507,7 @@ class DodgeballGame {
     this.drawShotMultiplierDebug();
 
     if (this.state === "paused") {
-      this.drawOverlay("PAUSE", "STARTまたはEscapeで再開");
+      this.drawPauseMenu();
     } else if (this.state === "gameOver") {
       this.drawOverlay(this.message, "ボタン1またはSpaceでモード選択へ");
     }
@@ -2518,6 +2582,7 @@ class DodgeballGame {
   drawCpuOpponentSelect() {
     const context = this.context;
     const teams = this.getCpuOpponentTeams();
+    const opponent = this.getSelectedCpuOpponentTeam();
     const selected = this.teamSelectionSlot === CPU_OPPONENT_SLOT;
     const x = 760;
     const y = 165;
@@ -2530,7 +2595,7 @@ class DodgeballGame {
     context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
     context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
     context.lineWidth = selected ? 5 : 2;
-    this.roundRect(context, x, y, 360, 220, 8);
+    this.roundRect(context, x, y, 238, 220, 8);
     context.fill();
     context.stroke();
 
@@ -2541,13 +2606,66 @@ class DodgeballGame {
       context.fillStyle = rowSelected ? "rgba(255,216,61,0.9)" : "rgba(255,255,255,0.72)";
       context.strokeStyle = rowSelected ? "#263241" : "rgba(38,50,65,0.25)";
       context.lineWidth = rowSelected ? 4 : 1;
-      this.roundRect(context, x + 18, rowY - 28, 324, 36, 6);
+      this.roundRect(context, x + 16, rowY - 28, 206, 36, 6);
       context.fill();
       context.stroke();
       context.fillStyle = "#263241";
-      context.fillText(teams[i].name, x + 34, rowY - 4);
+      context.fillText(teams[i].name, x + 28, rowY - 4);
     }
+    this.drawCpuOpponentDetails(opponent, 1024, y);
     context.restore();
+  }
+
+  drawCpuOpponentDetails(team, x, y) {
+    const context = this.context;
+    const players = team.players || [];
+    context.fillStyle = "rgba(255,255,255,0.82)";
+    context.strokeStyle = "rgba(38,50,65,0.36)";
+    context.lineWidth = 2;
+    this.roundRect(context, x, y, 376, 340, 8);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#263241";
+    context.font = "bold 22px Meiryo, sans-serif";
+    context.fillText(team.name, x + 18, y + 34);
+    context.font = "bold 13px Meiryo, sans-serif";
+    context.fillText("名前", x + 18, y + 64);
+    context.fillText("HP", x + 118, y + 64);
+    context.fillText("ST", x + 160, y + 64);
+    context.fillText("P", x + 206, y + 64);
+    context.fillText("S", x + 238, y + 64);
+    context.fillText("J", x + 270, y + 64);
+    context.fillText("T", x + 302, y + 64);
+    context.fillText("技", x + 330, y + 64);
+
+    context.font = "13px Meiryo, sans-serif";
+    for (let i = 0; i < players.length; i += 1) {
+      const player = players[i];
+      const rowY = y + 90 + i * 29;
+      const stats = player.stats || {};
+      const roleLabel = player.position === "out" ? "外" : "内";
+      context.fillStyle = i < 5 ? "rgba(0,87,255,0.06)" : "rgba(240,24,24,0.06)";
+      context.fillRect(x + 12, rowY - 18, 352, 24);
+      context.fillStyle = "#263241";
+      context.fillText(`${roleLabel} ${player.name}`, x + 18, rowY);
+      context.fillText(String(player.maxHp ?? team.maxHp ?? ""), x + 118, rowY);
+      context.fillText(String(player.maxStamina ?? team.maxStamina ?? ""), x + 160, rowY);
+      context.fillText(String(stats.power ?? ""), x + 210, rowY);
+      context.fillText(String(stats.speed ?? ""), x + 242, rowY);
+      context.fillText(String(stats.jump ?? ""), x + 274, rowY);
+      context.fillText(String(stats.technique ?? ""), x + 306, rowY);
+      context.fillText(this.getSpecialShotShortLabel(player.specialShotType), x + 330, rowY);
+    }
+  }
+
+  getSpecialShotShortLabel(specialType) {
+    if (specialType === "boost") return "ブ";
+    if (specialType === "lightning") return "雷";
+    if (specialType === "iron") return "鉄";
+    if (specialType === "boomerang") return "バ";
+    if (specialType === "soul") return "魂";
+    return "-";
   }
 
   drawCpuPlayerNames(context) {
@@ -3191,6 +3309,41 @@ class DodgeballGame {
     context.fillStyle = "#ffffff";
     context.font = "bold 27px Meiryo, sans-serif";
     context.fillText(subtitle, centerX, 388);
+    context.restore();
+  }
+
+  drawPauseMenu() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const items = ["再開", "タイトルへ戻る"];
+    context.save();
+    context.fillStyle = "rgba(20, 26, 36, 0.54)";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    context.textAlign = "center";
+    context.fillStyle = "#fff7d7";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 8;
+    context.font = "bold 64px Meiryo, sans-serif";
+    context.strokeText("PAUSE", centerX, 250);
+    context.fillText("PAUSE", centerX, 250);
+
+    for (let i = 0; i < items.length; i += 1) {
+      const y = 330 + i * 72;
+      const selected = i === this.pauseMenuIndex;
+      context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.5)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, centerX - 180, y - 34, 360, 54, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 26px Meiryo, sans-serif";
+      context.fillText(items[i], centerX, y + 2);
+    }
+
+    context.fillStyle = "#ffffff";
+    context.font = "18px Meiryo, sans-serif";
+    context.fillText("上下で選択 / ボタン2で決定 / ボタン9で再開", centerX, 505);
     context.restore();
   }
 
