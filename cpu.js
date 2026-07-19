@@ -4,6 +4,8 @@ class CPUController {
     this.opponents = opponents;
     this.ball = ball;
     this.config = config;
+    this.teamName = config.teamName || team[0]?.team || "right";
+    this.opponentName = config.opponentName || opponents[0]?.team || "left";
     this.commands = new Map();
     this.decisionTimer = 0;
     this.throwTimer = 0.35;
@@ -46,7 +48,7 @@ class CPUController {
 
   makeDecision() {
     const holder = this.ball.owner;
-    const cpuHolder = holder && holder.team === "right" ? holder : null;
+    const cpuHolder = holder && holder.team === this.teamName ? holder : null;
     const looseBallChaser = this.getLooseBallChaser();
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
@@ -56,6 +58,7 @@ class CPUController {
         : Math.max(this.throwTimer, 0.85 + Math.random() * 0.45);
     } else if (!cpuHolder) {
       this.currentHolderId = null;
+      this.holderPlan = null;
     }
 
     for (const member of this.team) {
@@ -76,7 +79,7 @@ class CPUController {
         continue;
       }
 
-      if (this.ball.owner && this.ball.owner.team === "left" && member.role === "inner") {
+      if (this.ball.owner && this.ball.owner.team === this.opponentName && member.role === "inner") {
         this.controlWithoutBall(command, member, this.ball.owner);
         continue;
       }
@@ -102,7 +105,7 @@ class CPUController {
 
     if (plan.type === "center-shot") {
       this.moveToward(command, holder, plan.x, plan.y);
-      command.dash = holder.stamina > this.config.stamina.shootCost + 14;
+      command.dash = true;
       if (Math.hypot(holder.x - plan.x, holder.y - plan.y) < 42 && this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.36 + Math.random() * 0.24;
@@ -125,7 +128,7 @@ class CPUController {
     if (plan.type === "dash-strong-shot" || plan.type === "charge-dash-shot") {
       const target = this.nearestActiveOpponent(holder);
       if (target) this.moveToward(command, holder, target.x, target.y);
-      command.dash = holder.stamina > this.config.stamina.shootCost + 22;
+      command.dash = true;
       if (this.throwTimer <= 0) {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
@@ -138,6 +141,10 @@ class CPUController {
     if (plan.type === "jump-strong-shot" || plan.type === "charge-jump-shot") {
       const target = this.nearestActiveOpponent(holder);
       if (target) this.facePoint(command, holder, target.x, target.y);
+      if (this.hasStaleApexChargePlan(plan)) {
+        this.resetHolderPlanSoon();
+        return;
+      }
       if (!plan.chargeStarted && this.throwTimer <= 0) {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
@@ -160,7 +167,11 @@ class CPUController {
     if (plan.type === "dash-jump-strong-shot") {
       const target = this.nearestActiveOpponent(holder);
       if (target) this.moveToward(command, holder, target.x, target.y);
-      command.dash = holder.stamina > this.config.stamina.shootCost + 24;
+      command.dash = true;
+      if (this.hasStaleApexChargePlan(plan)) {
+        this.resetHolderPlanSoon();
+        return;
+      }
       if (!plan.chargeStarted && this.throwTimer <= 0) {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
@@ -183,7 +194,7 @@ class CPUController {
     if (plan.type === "dash-shot") {
       const target = this.nearestActiveOpponent(holder);
       if (target) this.moveToward(command, holder, target.x, target.y);
-      command.dash = holder.stamina > this.config.stamina.shootCost + 20;
+      command.dash = true;
       if (this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.42 + Math.random() * 0.22;
@@ -227,11 +238,7 @@ class CPUController {
 
     this.faceNearestThreat(command, holder);
     if (this.throwTimer <= 0) {
-      if (holder.stamina >= this.config.stamina.shootCost) {
-        command.shoot = true;
-      } else {
-        command.pass = true;
-      }
+      command.shoot = true;
       this.throwTimer = 0.38 + Math.random() * 0.28;
       this.holderPlan = null;
     }
@@ -337,22 +344,38 @@ class CPUController {
 
   getHinomaruBombersHolderPlan(holder) {
     const roll = Math.random();
-    let type = "dash-jump-strong-shot";
-    if (holder.role === "inner") {
-      type = roll < 0.32 ? "dash-jump-strong-shot"
-        : roll < 0.56 ? "dash-strong-shot"
-          : roll < 0.78 ? "pass-chain"
-            : roll < 0.9 ? "jump-strong-shot"
-              : "jump-shot";
+    let type = "pass-chain";
+    if (this.passChainFinisher) {
+      const finisherRoll = Math.random();
+      type = finisherRoll < 0.16 ? "dash-jump-strong-shot"
+        : finisherRoll < 0.3 ? "dash-strong-shot"
+          : finisherRoll < 0.42 ? "jump-strong-shot"
+            : finisherRoll < 0.7 ? "jump-shot"
+              : "dash-shot";
+      this.passChainFinisher = false;
+    } else if (this.passChainRemaining > 0) {
+      this.passChainRemaining -= 1;
+      type = "pass-chain";
+      if (this.passChainRemaining <= 0) {
+        this.passChainFinisher = true;
+      }
+    } else if (holder.role === "inner") {
+      type = roll < 0.5 ? "pass-chain"
+        : roll < 0.62 ? "dash-jump-strong-shot"
+          : roll < 0.78 ? "dash-strong-shot"
+            : roll < 0.8 ? "jump-strong-shot"
+              : roll < 0.9 ? "jump-shot"
+                : "dash-shot";
     } else {
-      type = roll < 0.3 ? "pass-chain"
-        : roll < 0.54 ? "dash-jump-strong-shot"
-          : roll < 0.74 ? "dash-strong-shot"
-            : roll < 0.9 ? "jump-strong-shot"
-              : "jump-shot";
+      type = roll < 0.56 ? "pass-chain"
+        : roll < 0.66 ? "dash-jump-strong-shot"
+          : roll < 0.82 ? "dash-strong-shot"
+            : roll < 0.86 ? "jump-strong-shot"
+              : roll < 0.94 ? "jump-shot"
+                : "dash-shot";
     }
 
-    return this.createHolderPlan(holder, type, 1.18 + Math.random() * 0.32);
+    return this.createHolderPlan(holder, type, 1.02 + Math.random() * 0.28);
   }
 
   createHolderPlan(holder, type, chargeTime) {
@@ -452,6 +475,17 @@ class CPUController {
     return member.jumpZ > 88 && Math.abs(member.jumpVelocity) < 145;
   }
 
+  hasStaleApexChargePlan(plan) {
+    if (!plan.chargeStarted || !plan.startedAt) return false;
+    const elapsed = Date.now() - plan.startedAt;
+    return elapsed > (plan.chargeTime + 1.45) * 1000;
+  }
+
+  resetHolderPlanSoon() {
+    this.holderPlan = null;
+    this.throwTimer = 0.16 + Math.random() * 0.16;
+  }
+
   facePoint(command, member, x, y) {
     const dx = x - member.x;
     const dy = y - member.y;
@@ -478,7 +512,7 @@ class CPUController {
   }
 
   reactToIncomingBall(delta) {
-    const ballComing = this.ball.isFlying && this.ball.kind === "shoot" && this.ball.thrower && this.ball.thrower.team === "left";
+    const ballComing = this.ball.isFlying && this.ball.kind === "shoot" && this.ball.thrower && this.ball.thrower.team === this.opponentName;
     if (!ballComing) return;
 
     this.reactionTimer -= delta;
@@ -531,7 +565,7 @@ class CPUController {
 
   dodgeIncomingShot(command, member, readyToReact) {
     const dodgeRoll = Math.random();
-    if (dodgeRoll < 0.42 && member.stamina > this.config.stamina.duckCost) {
+    if (dodgeRoll < 0.42) {
       command.crouch = true;
     } else if (dodgeRoll < 0.78 && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
       command.jump = true;
@@ -551,8 +585,8 @@ class CPUController {
   }
 
   reactToFriendlyBall() {
-    if (!this.ball.isFlying || !this.ball.thrower || this.ball.thrower.team !== "right") return;
-    if (!this.ball.target || this.ball.target.team !== "right") return;
+    if (!this.ball.isFlying || !this.ball.thrower || this.ball.thrower.team !== this.teamName) return;
+    if (!this.ball.target || this.ball.target.team !== this.teamName) return;
 
     const receiver = this.ball.target;
     if (receiver.defeated || receiver === this.ball.thrower) return;
@@ -567,7 +601,7 @@ class CPUController {
   }
 
   reactToEnemyPass() {
-    if (!this.ball.isFlying || this.ball.kind !== "pass" || !this.ball.thrower || this.ball.thrower.team !== "left") return;
+    if (!this.ball.isFlying || this.ball.kind !== "pass" || !this.ball.thrower || this.ball.thrower.team !== this.opponentName) return;
 
     for (const member of this.team.filter((p) => !p.defeated)) {
       const command = this.commands.get(member.id);

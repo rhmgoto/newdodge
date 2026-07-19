@@ -118,6 +118,7 @@ class Player {
     this.faceColor = options.faceColor || "#ffd4a3";
     this.hairColor = options.hairColor || "#3d2a1f";
     this.cpuProfile = options.cpuProfile || null;
+    this.cpuControlled = Boolean(options.cpuControlled);
     this.specialShotType = options.specialShotType || null;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -234,8 +235,8 @@ class Player {
 
     const airborne = this.jumpZ > 0 || this.jumpVelocity > 0;
     const wantsDash = Boolean(controls.dash && moving && this.dodgeTimer <= 0);
-    this.isDashing = wantsDash && this.stamina > 0;
-    if (this.isDashing) {
+    this.isDashing = wantsDash && (this.cpuControlled || this.stamina > 0);
+    if (this.isDashing && !this.cpuControlled) {
       this.drainStamina(config.stamina.dashDrainPerSecond * delta, config.stamina.recoveryDelay);
     } else if (this.staminaRecoveryDelay <= 0 && this.dodgeTimer <= 0) {
       this.stamina = Math.min(this.maxStamina, this.stamina + config.stamina.recoveryPerSecond * delta);
@@ -391,6 +392,7 @@ class Player {
   }
 
   consumeStamina(amount, recoveryDelay) {
+    if (this.cpuControlled) return true;
     if (this.stamina < amount) return false;
     this.stamina = Math.max(0, this.stamina - amount);
     this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
@@ -398,6 +400,7 @@ class Player {
   }
 
   drainStamina(amount, recoveryDelay) {
+    if (this.cpuControlled) return;
     this.stamina = Math.max(0, this.stamina - amount);
     this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
   }
@@ -1064,13 +1067,15 @@ class Player {
       staminaY += 11;
     }
 
-    const staminaRatio = Math.max(0, this.stamina / this.maxStamina);
-    context.fillStyle = "rgba(25,25,32,0.72)";
-    this.roundRect(context, this.x - width / 2, staminaY, width, 7, 3);
-    context.fill();
-    context.fillStyle = staminaRatio > 0.3 ? "#35d7e8" : "#ff765f";
-    this.roundRect(context, this.x - width / 2 + 2, staminaY + 2, (width - 4) * staminaRatio, 3, 2);
-    context.fill();
+    if (!this.cpuControlled) {
+      const staminaRatio = Math.max(0, this.stamina / this.maxStamina);
+      context.fillStyle = "rgba(25,25,32,0.72)";
+      this.roundRect(context, this.x - width / 2, staminaY, width, 7, 3);
+      context.fill();
+      context.fillStyle = staminaRatio > 0.3 ? "#35d7e8" : "#ff765f";
+      this.roundRect(context, this.x - width / 2 + 2, staminaY + 2, (width - 4) * staminaRatio, 3, 2);
+      context.fill();
+    }
   }
 
   getVisualTop() {

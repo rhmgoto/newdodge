@@ -93,6 +93,9 @@ class DodgeballGame {
       right: this.createDefaultTeamSelection()
     };
     this.cpuOpponentIndex = 0;
+    this.watchCpuLeftIndex = 0;
+    this.watchCpuRightIndex = 1;
+    this.watchSelectionSlot = 0;
     this.pauseMenuIndex = 0;
     this.previousTime = 0;
     this.autoSwitchCooldown = 0;
@@ -106,6 +109,8 @@ class DodgeballGame {
     this.pendingThrow = null;
     this.chargingThrow = null;
     this.shotMultiplierDisplay = null;
+    this.lastRuntimeError = null;
+    this.runtimeErrorCount = 0;
     this.effects = [];
     this.message = "READY";
     this.setupMatch();
@@ -128,11 +133,24 @@ class DodgeballGame {
     this.ball = new Ball(GAME_CONFIG.ball);
     this.ball.x = court.centerX;
     this.ball.y = court.y + court.h * 0.55;
-    this.cpuController = new CPUController(this.rightTeam, this.leftTeam, this.ball, {
-      ...GAME_CONFIG.battle,
-      court,
-      areas: this.areas
-    });
+    this.cpuControllerLeft = this.gameMode === "watch"
+      ? new CPUController(this.leftTeam, this.rightTeam, this.ball, {
+        ...GAME_CONFIG.battle,
+        court,
+        areas: this.areas,
+        teamName: "left",
+        opponentName: "right"
+      })
+      : null;
+    this.cpuController = this.gameMode !== "versus"
+      ? new CPUController(this.rightTeam, this.leftTeam, this.ball, {
+        ...GAME_CONFIG.battle,
+        court,
+        areas: this.areas,
+        teamName: "right",
+        opponentName: "left"
+      })
+      : null;
     this.effects = [];
     this.message = "READY";
     this.autoSwitchCooldown = 0;
@@ -224,7 +242,7 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const cpuTeam = !isLeft && this.gameMode === "single" ? this.getSelectedCpuOpponentTeam() : null;
+    const cpuTeam = this.getCpuTeamForSide(team);
     const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
     const pantsColor = cpuTeam?.pantsColor || color;
     const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
@@ -359,7 +377,7 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const cpuTeam = !isLeft && this.gameMode === "single" ? this.getSelectedCpuOpponentTeam() : null;
+    const cpuTeam = this.getCpuTeamForSide(team);
     const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
     const pantsColor = cpuTeam?.pantsColor || color;
     const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
@@ -380,6 +398,7 @@ class DodgeballGame {
       pantsColor,
       uniformEmblem: cpuTeam?.uniformEmblem,
       trimColor: trim,
+      cpuControlled: Boolean(cpuTeam),
       ...options
     });
     const innerPositions = [
@@ -565,6 +584,23 @@ class DodgeballGame {
     return teams[this.cpuOpponentIndex] || teams[0];
   }
 
+  getCpuOpponentTeamByIndex(index) {
+    const teams = this.getCpuOpponentTeams();
+    return teams[((index % teams.length) + teams.length) % teams.length] || teams[0];
+  }
+
+  getCpuTeamForSide(team) {
+    if (this.gameMode === "watch") {
+      return team === "left"
+        ? this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex)
+        : this.getCpuOpponentTeamByIndex(this.watchCpuRightIndex);
+    }
+    if (this.gameMode === "single" && team === "right") {
+      return this.getSelectedCpuOpponentTeam();
+    }
+    return null;
+  }
+
   changeCpuOpponent(direction) {
     const teams = this.getCpuOpponentTeams();
     if (teams.length <= 1) return;
@@ -574,10 +610,34 @@ class DodgeballGame {
   loop(time) {
     const delta = Math.min(0.033, (time - this.previousTime) / 1000 || 0);
     this.previousTime = time;
-    this.input.update();
-    this.update(delta);
-    this.draw();
-    requestAnimationFrame((nextTime) => this.loop(nextTime));
+    try {
+      this.input.update();
+      this.update(delta);
+      this.draw();
+    } catch (error) {
+      this.handleRuntimeError(error);
+    } finally {
+      requestAnimationFrame((nextTime) => this.loop(nextTime));
+    }
+  }
+
+  handleRuntimeError(error) {
+    this.lastRuntimeError = error;
+    this.runtimeErrorCount += 1;
+    console.error("Dodgeball runtime error recovered:", error);
+
+    this.pendingThrow = null;
+    this.chargingThrow = null;
+    if (this.cpuController) {
+      this.cpuController.holderPlan = null;
+      this.cpuController.currentHolderId = null;
+    }
+    if (this.ball && this.ball.isFlying && (!this.ball.thrower || this.ball.thrower.defeated)) {
+      this.ball.drop();
+    }
+    if (this.state === "playing") {
+      this.message = "RECOVERING";
+    }
   }
 
   update(delta) {
@@ -626,24 +686,25 @@ class DodgeballGame {
 
   updateModeSelect() {
     if (this.wasMenuDirectionPressed("left") || this.wasMenuDirectionPressed("up")) {
-      this.modeIndex = 0;
-      this.gameMode = "single";
+      this.modeIndex = Math.max(0, this.modeIndex - 1);
     }
     if (this.wasMenuDirectionPressed("right") || this.wasMenuDirectionPressed("down")) {
-      this.modeIndex = 1;
-      this.gameMode = "versus";
+      this.modeIndex = Math.min(2, this.modeIndex + 1);
     }
     if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
-      this.gameMode = this.modeIndex === 0 ? "single" : "versus";
+      this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
       this.state = "teamSelect";
       this.teamSelectionSide = "left";
       this.teamSelectionSlot = 0;
       this.teamSelectionSlots = { left: 0, right: 0 };
+      this.watchSelectionSlot = 0;
     }
   }
 
   updateTeamSelect() {
-    if (this.gameMode === "versus") {
+    if (this.gameMode === "watch") {
+      this.updateWatchTeamSelect();
+    } else if (this.gameMode === "versus") {
       this.updateTeamSelectCursor("left", 1);
       this.updateTeamSelectCursor("right", 2);
     } else {
@@ -664,14 +725,54 @@ class DodgeballGame {
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
       this.teamSelectionSlot = START_SLOT;
+      return;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
       this.setupMatch();
       this.state = "playing";
     }
     if (this.input.wasPressed("button1")) {
+      if (this.teamSelectionSlot === START_SLOT) {
+        this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+        return;
+      }
       this.state = "modeSelect";
     }
+  }
+
+  updateWatchTeamSelect() {
+    const teams = this.getCpuOpponentTeams();
+    if (this.watchSelectionSlot === 0) {
+      this.watchCpuLeftIndex = this.moveWatchTeamIndex(this.watchCpuLeftIndex, teams.length);
+    } else if (this.watchSelectionSlot === 1) {
+      this.watchCpuRightIndex = this.moveWatchTeamIndex(this.watchCpuRightIndex, teams.length);
+    }
+
+    if (this.input.wasPressed("button2")) {
+      if (this.watchSelectionSlot < 2) {
+        this.watchSelectionSlot += 1;
+      } else {
+        this.setupMatch();
+        this.state = "playing";
+      }
+    }
+    if (this.input.wasPressed("button1")) {
+      if (this.watchSelectionSlot > 0) {
+        this.watchSelectionSlot -= 1;
+      } else {
+        this.state = "modeSelect";
+      }
+    }
+  }
+
+  moveWatchTeamIndex(index, length) {
+    let next = index;
+    if (this.wasMenuDirectionPressed("left")) next -= 1;
+    if (this.wasMenuDirectionPressed("right")) next += 1;
+    if (this.wasMenuDirectionPressed("up")) next -= 2;
+    if (this.wasMenuDirectionPressed("down")) next += 2;
+    if (next === index) return index;
+    return ((next % length) + length) % length;
   }
 
   updateTeamSelectCursor(side, playerIndex) {
@@ -767,11 +868,16 @@ class DodgeballGame {
 
   updatePlaying(delta) {
     this.updateEffects(delta);
-    if (this.gameMode !== "versus") {
+    if (this.gameMode === "watch") {
+      this.cpuControllerLeft?.update(delta);
+      this.cpuController?.update(delta);
+    } else if (this.gameMode !== "versus") {
       this.cpuController.update(delta);
     }
-    this.autoSwitchToIncomingShotTarget();
-    this.updateControlSwitching(delta);
+    if (this.gameMode !== "watch") {
+      this.autoSwitchToIncomingShotTarget();
+      this.updateControlSwitching(delta);
+    }
     this.handlePlayerButtons();
     this.handleCpuButtons();
     this.updateChargingThrow(delta);
@@ -793,6 +899,7 @@ class DodgeballGame {
   }
 
   handlePlayerButtons() {
+    if (this.gameMode === "watch") return;
     const holder = this.ball.owner;
     const selfTeamHasBall = holder && holder.team === "left";
     const rightTeamHasBall = holder && holder.team === "right";
@@ -858,8 +965,16 @@ class DodgeballGame {
 
   handleCpuButtons() {
     if (this.gameMode === "versus") return;
-    for (const member of this.rightTeam) {
-      const command = this.cpuController.getCommand(member);
+    if (this.gameMode === "watch") {
+      this.handleCpuTeamButtons(this.leftTeam, this.cpuControllerLeft, this.rightTeam);
+    }
+    this.handleCpuTeamButtons(this.rightTeam, this.cpuController, this.leftTeam);
+  }
+
+  handleCpuTeamButtons(team, controller, opponents) {
+    if (!controller) return;
+    for (const member of team) {
+      const command = controller.getCommand(member);
       if (command.catch) member.startCatch(GAME_CONFIG.battle.catchDuration);
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
@@ -867,20 +982,22 @@ class DodgeballGame {
         this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
       }
       if (command.shoot && this.ball.owner === member) {
-        this.launchFromAi(member, "shoot", this.leftTeam);
+        this.launchFromAi(member, "shoot", opponents);
       }
       if (command.pass && this.ball.owner === member) {
-        this.launchFromAi(member, "pass", this.rightTeam.filter((p) => p !== member));
+        this.launchFromAi(member, "pass", team.filter((p) => p !== member));
       }
     }
   }
 
   updatePlayers(delta) {
-    const active = this.getPlayerControlledMember();
+    const active = this.gameMode === "watch" ? null : this.getPlayerControlledMember();
     for (const member of this.leftTeam) {
       const area = this.getMoveArea(member, member === active || this.ball.owner === member);
       let controls = { moveX: 0, moveY: 0, dash: false };
-      if (member === active && !member.defeated) {
+      if (this.gameMode === "watch") {
+        controls = this.cpuControllerLeft?.getCommand(member) || controls;
+      } else if (member === active && !member.defeated) {
         controls = {
           moveX: this.input.current.moveX,
           moveY: this.input.current.moveY,
@@ -896,9 +1013,9 @@ class DodgeballGame {
       member.update(delta, controls, area, GAME_CONFIG.battle);
     }
 
-    const activeRight = this.getRightControlledMember();
+    const activeRight = this.gameMode === "watch" ? null : this.getRightControlledMember();
     for (const member of this.rightTeam) {
-      let command = this.cpuController.getCommand(member);
+      let command = this.cpuController?.getCommand(member) || { moveX: 0, moveY: 0, dash: false };
       if (this.gameMode === "versus") {
         command = member === activeRight && !member.defeated
           ? {
@@ -1262,13 +1379,10 @@ class DodgeballGame {
 
   startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
     if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
-    if (!actor.consumeStamina(
-      GAME_CONFIG.battle.stamina.shootCost,
-      GAME_CONFIG.battle.stamina.recoveryDelay
-    )) return false;
 
-    const aim = this.getDefaultShootAim(actor, this.leftTeam);
-    const target = this.findShootTargetInAim(actor, this.leftTeam, aim);
+    const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
+    const aim = this.getDefaultShootAim(actor, enemies);
+    const target = this.findShootTargetInAim(actor, enemies, aim);
     this.chargingThrow = {
       actor,
       kind: "shoot",
@@ -1349,7 +1463,7 @@ class DodgeballGame {
     if (kind === "shoot") {
       const aim = this.getDefaultShootAim(actor, candidates);
       const target = this.findShootTargetInAim(actor, candidates, aim);
-      this.queueThrow(actor, target, kind, aim);
+      this.queueThrow(actor, target, kind, aim, true);
       return;
     }
 
@@ -1357,13 +1471,13 @@ class DodgeballGame {
     const aim = target
       ? this.normalizedVector(target.x - actor.x, target.y - actor.y)
       : this.getDefaultShootAim(actor, actor.team === "left" ? this.rightTeam : this.leftTeam);
-    this.queueThrow(actor, target, kind, aim);
+    this.queueThrow(actor, target, kind, aim, true);
   }
 
-  queueThrow(actor, target, kind, aim) {
+  queueThrow(actor, target, kind, aim, ignoreStamina = false) {
     if (this.pendingThrow || this.ball.owner !== actor || actor.defeated) return false;
     if (!target && kind !== "shoot") return false;
-    if (kind === "shoot" && !actor.consumeStamina(
+    if (kind === "shoot" && !ignoreStamina && !actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
       GAME_CONFIG.battle.stamina.recoveryDelay
     )) return false;
@@ -1436,10 +1550,12 @@ class DodgeballGame {
 
     charged.chargeTime = Math.min(MAX_SHOT_CHARGE_TIME, charged.chargeTime + delta);
     if (charged.kind === "shoot") {
-      charged.actor.drainStamina(
-        GAME_CONFIG.battle.stamina.shootChargeDrainPerSecond * delta,
-        GAME_CONFIG.battle.stamina.recoveryDelay
-      );
+      if (!charged.cpuControlled) {
+        charged.actor.drainStamina(
+          GAME_CONFIG.battle.stamina.shootChargeDrainPerSecond * delta,
+          GAME_CONFIG.battle.stamina.recoveryDelay
+        );
+      }
       const selection = charged.cpuControlled
         ? this.getCpuShootSelection(charged.actor)
         : this.getShootSelection(charged.actor, charged.playerIndex);
@@ -1461,7 +1577,7 @@ class DodgeballGame {
         this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
         return;
       }
-      if (charged.actor.stamina <= 0) {
+      if (!charged.cpuControlled && charged.actor.stamina <= 0) {
         this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
         return;
       }
@@ -1597,6 +1713,7 @@ class DodgeballGame {
   }
 
   getCurrentPassTarget() {
+    if (this.gameMode === "watch") return null;
     if (!this.ball.owner) return null;
     if (this.ball.owner.team === "left") {
       return this.getPassTarget(this.ball.owner, this.input.current.moveX, this.input.current.moveY);
@@ -1617,6 +1734,7 @@ class DodgeballGame {
   }
 
   getCurrentShootTarget() {
+    if (this.gameMode === "watch") return null;
     if (!this.ball.owner) return null;
     const playerIndex = this.ball.owner.team === "right" ? 2 : 1;
     if (this.ball.owner.team === "right" && this.gameMode !== "versus") return null;
@@ -1842,7 +1960,10 @@ class DodgeballGame {
       const friendly = catcher.team === this.ball.thrower.team;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
-      if (!this.canManualCatch(catcher, friendly)) continue;
+      if (!this.canManualCatch(catcher, friendly)) {
+        if (!this.ball.isFlying || !this.ball.thrower || !this.ball.catchable) return;
+        continue;
+      }
 
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
       const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
@@ -2552,6 +2673,46 @@ class DodgeballGame {
     context.restore();
   }
 
+  drawModeSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawMenuBackground();
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 7;
+    context.font = "bold 58px Meiryo, sans-serif";
+    context.strokeText("モードセレクト", centerX, 155);
+    context.fillText("モードセレクト", centerX, 155);
+
+    const modes = [
+      { label: "一人用", note: "1P vs CPU" },
+      { label: "二人用", note: "2P対戦" },
+      { label: "観戦", note: "CPU vs CPU" }
+    ];
+    for (let i = 0; i < modes.length; i += 1) {
+      const x = 310 + i * 410;
+      const selected = this.modeIndex === i;
+      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, x - 140, 275, 280, 140, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 34px Meiryo, sans-serif";
+      context.fillText(modes[i].label, x, 332);
+      context.font = "20px Meiryo, sans-serif";
+      context.fillText(modes[i].note, x, 374);
+    }
+
+    context.fillStyle = "#fff7df";
+    context.font = "20px Meiryo, sans-serif";
+    context.fillText("左右で選択 / ボタン2で決定", centerX, 520);
+    context.restore();
+  }
+
   drawTeamSelect() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
@@ -2576,6 +2737,173 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "18px Meiryo, sans-serif";
     context.fillText("左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る", centerX, 688);
+    context.restore();
+  }
+
+  drawModeSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawMenuBackground();
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 6;
+    context.font = "bold 58px Meiryo, sans-serif";
+    context.strokeText("モードセレクト", centerX, 155);
+    context.fillText("モードセレクト", centerX, 155);
+
+    const modes = [
+      { label: "一人用", note: "1P vs CPU" },
+      { label: "二人用", note: "1P vs 2P" },
+      { label: "観戦", note: "CPU vs CPU" }
+    ];
+    for (let i = 0; i < modes.length; i += 1) {
+      const x = 310 + i * 410;
+      const selected = this.modeIndex === i;
+      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, x - 140, 275, 280, 140, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 34px Meiryo, sans-serif";
+      context.fillText(modes[i].label, x, 332);
+      context.font = "20px Meiryo, sans-serif";
+      context.fillText(modes[i].note, x, 374);
+    }
+
+    context.fillStyle = "#fff7df";
+    context.font = "20px Meiryo, sans-serif";
+    context.fillText("左右で選択 / ボタン2で決定", centerX, 520);
+    context.restore();
+  }
+
+  drawTeamSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawMenuBackground();
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 6;
+    context.font = "bold 46px Meiryo, sans-serif";
+    context.strokeText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
+    context.fillText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
+
+    if (this.gameMode === "watch") {
+      this.drawWatchTeamSelect();
+    } else {
+      this.drawTeamSelectSide("left", 120, "#0057ff");
+      if (this.gameMode === "versus") {
+        this.drawTeamSelectSide("right", 700, "#f01818");
+      } else {
+        this.drawCpuOpponentSelect();
+      }
+    }
+    this.drawMatchStartButton();
+
+    context.fillStyle = "#fff7df";
+    context.font = "18px Meiryo, sans-serif";
+    const help = this.gameMode === "watch"
+      ? "上下でチーム選択 / 左右で欄移動 / ボタン2で決定・観戦開始 / ボタン1で戻る"
+      : this.gameMode === "single"
+        ? "左右で選手選択 / 上下でCPUチーム選択 / ボタン2でタイプ変更・決定 / ボタン1で戻る"
+        : "左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る";
+    context.fillText(help, centerX, 688);
+    context.restore();
+  }
+
+  drawWatchTeamSelect() {
+    const leftTeam = this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex);
+    const rightTeam = this.getCpuOpponentTeamByIndex(this.watchCpuRightIndex);
+    this.drawWatchTeamColumn("左CPUチーム", 110, 145, "#0057ff", this.watchCpuLeftIndex, this.watchSelectionSlot === 0);
+    this.drawWatchTeamColumn("右CPUチーム", 760, 145, "#f01818", this.watchCpuRightIndex, this.watchSelectionSlot === 1);
+    this.drawWatchCpuTeamDetails(leftTeam, 155, 330, "#0057ff");
+    this.drawWatchCpuTeamDetails(rightTeam, 805, 330, "#f01818");
+  }
+
+  drawWatchTeamColumn(title, x, y, color, selectedIndex, active) {
+    const context = this.context;
+    const teams = this.getCpuOpponentTeams();
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 28px Meiryo, sans-serif";
+    context.fillText(title, x, y - 22);
+
+    context.fillStyle = active ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+    context.strokeStyle = active ? "#263241" : "rgba(38,50,65,0.36)";
+    context.lineWidth = active ? 5 : 2;
+    this.roundRect(context, x, y, 560, 142, 8);
+    context.fill();
+    context.stroke();
+
+    context.font = "bold 22px Meiryo, sans-serif";
+    for (let i = 0; i < teams.length; i += 1) {
+      const rowX = x + 18 + (i % 2) * 270;
+      const rowY = y + 42 + Math.floor(i / 2) * 48;
+      const rowSelected = i === selectedIndex;
+      context.fillStyle = rowSelected ? "rgba(255,216,61,0.9)" : "rgba(255,255,255,0.65)";
+      context.strokeStyle = rowSelected ? "#263241" : "rgba(38,50,65,0.22)";
+      context.lineWidth = rowSelected ? 4 : 1;
+      this.roundRect(context, rowX, rowY - 28, 248, 36, 6);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.fillText(teams[i].name, rowX + 12, rowY - 4);
+    }
+    context.restore();
+  }
+
+  drawWatchCpuTeamDetails(team, x, y, color) {
+    const context = this.context;
+    const players = team.players || [];
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = "rgba(255,255,255,0.82)";
+    context.strokeStyle = "rgba(38,50,65,0.36)";
+    context.lineWidth = 2;
+    this.roundRect(context, x, y, 482, 260, 8);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = color;
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText(team.name, x + 18, y + 34);
+    context.fillStyle = "#4b5360";
+    context.font = "16px Meiryo, sans-serif";
+    context.fillText(team.description || "", x + 18, y + 62);
+
+    context.fillStyle = "#263241";
+    context.font = "bold 13px Meiryo, sans-serif";
+    context.fillText("選手", x + 18, y + 92);
+    context.fillText("HP", x + 148, y + 92);
+    context.fillText("P", x + 198, y + 92);
+    context.fillText("S", x + 230, y + 92);
+    context.fillText("J", x + 262, y + 92);
+    context.fillText("T", x + 294, y + 92);
+    context.fillText("技", x + 366, y + 92);
+
+    context.font = "13px Meiryo, sans-serif";
+    for (let i = 0; i < Math.min(players.length, 8); i += 1) {
+      const player = players[i];
+      const rowY = y + 118 + i * 17;
+      const stats = player.stats || {};
+      const roleLabel = player.position === "out" ? "外" : "内";
+      context.fillStyle = i < 5 ? "rgba(0,87,255,0.06)" : "rgba(240,24,24,0.06)";
+      context.fillRect(x + 12, rowY - 13, 458, 16);
+      context.fillStyle = "#263241";
+      context.fillText(`${roleLabel} ${player.name}`, x + 18, rowY);
+      context.fillText(String(player.maxHp ?? team.maxHp ?? ""), x + 148, rowY);
+      context.fillText(String(stats.power ?? ""), x + 202, rowY);
+      context.fillText(String(stats.speed ?? ""), x + 234, rowY);
+      context.fillText(String(stats.jump ?? ""), x + 266, rowY);
+      context.fillText(String(stats.technique ?? ""), x + 298, rowY);
+      context.fillText(this.getSpecialShotShortLabel(player.specialShotType), x + 366, rowY);
+    }
     context.restore();
   }
 
@@ -2632,11 +2960,10 @@ class DodgeballGame {
     context.font = "bold 13px Meiryo, sans-serif";
     context.fillText("名前", x + 18, y + 64);
     context.fillText("HP", x + 118, y + 64);
-    context.fillText("ST", x + 160, y + 64);
-    context.fillText("P", x + 206, y + 64);
-    context.fillText("S", x + 238, y + 64);
-    context.fillText("J", x + 270, y + 64);
-    context.fillText("T", x + 302, y + 64);
+    context.fillText("P", x + 168, y + 64);
+    context.fillText("S", x + 200, y + 64);
+    context.fillText("J", x + 232, y + 64);
+    context.fillText("T", x + 264, y + 64);
     context.fillText("技", x + 330, y + 64);
 
     context.font = "13px Meiryo, sans-serif";
@@ -2650,11 +2977,10 @@ class DodgeballGame {
       context.fillStyle = "#263241";
       context.fillText(`${roleLabel} ${player.name}`, x + 18, rowY);
       context.fillText(String(player.maxHp ?? team.maxHp ?? ""), x + 118, rowY);
-      context.fillText(String(player.maxStamina ?? team.maxStamina ?? ""), x + 160, rowY);
-      context.fillText(String(stats.power ?? ""), x + 210, rowY);
-      context.fillText(String(stats.speed ?? ""), x + 242, rowY);
-      context.fillText(String(stats.jump ?? ""), x + 274, rowY);
-      context.fillText(String(stats.technique ?? ""), x + 306, rowY);
+      context.fillText(String(stats.power ?? ""), x + 172, rowY);
+      context.fillText(String(stats.speed ?? ""), x + 204, rowY);
+      context.fillText(String(stats.jump ?? ""), x + 236, rowY);
+      context.fillText(String(stats.technique ?? ""), x + 268, rowY);
       context.fillText(this.getSpecialShotShortLabel(player.specialShotType), x + 330, rowY);
     }
   }
@@ -2675,7 +3001,8 @@ class DodgeballGame {
     context.textBaseline = "middle";
     context.font = "bold 18px Meiryo, sans-serif";
     context.lineWidth = 4;
-    for (const player of this.rightTeam) {
+    const namedPlayers = this.gameMode === "watch" ? [...this.leftTeam, ...this.rightTeam] : this.rightTeam;
+    for (const player of namedPlayers) {
       if (!player || player.defeated || player.leaveTimer > GAME_CONFIG.battle.exitDelay) continue;
       const scale = player.lastDrawScale || 1;
       const x = player.x + 36 * scale;
@@ -2768,9 +3095,11 @@ class DodgeballGame {
   drawMatchStartButton() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
-    const selected = this.gameMode === "versus"
-      ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
-      : this.teamSelectionSlot === START_SLOT;
+    const selected = this.gameMode === "watch"
+      ? this.watchSelectionSlot === 2
+      : this.gameMode === "versus"
+        ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
+        : this.teamSelectionSlot === START_SLOT;
     context.save();
     context.textAlign = "center";
     context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.82)";
@@ -2782,6 +3111,36 @@ class DodgeballGame {
     context.fillStyle = "#263241";
     context.font = "bold 24px Meiryo, sans-serif";
     context.fillText("試合開始", centerX, 650);
+    if (this.gameMode === "versus" && selected) {
+      context.font = "bold 14px Meiryo, sans-serif";
+      context.fillStyle = "#4b5360";
+      const labels = [];
+      if (this.teamSelectionSlots.left === START_SLOT) labels.push("1P");
+      if (this.teamSelectionSlots.right === START_SLOT) labels.push("2P");
+      context.fillText(labels.join(" / "), centerX, 612);
+    }
+    context.restore();
+  }
+
+  drawMatchStartButton() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const selected = this.gameMode === "watch"
+      ? this.watchSelectionSlot === 2
+      : this.gameMode === "versus"
+        ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
+        : this.teamSelectionSlot === START_SLOT;
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.82)";
+    context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
+    context.lineWidth = selected ? 6 : 3;
+    this.roundRect(context, centerX - 200, 620, 400, 44, 8);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#263241";
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText(this.gameMode === "watch" ? "観戦開始" : "試合開始", centerX, 650);
     if (this.gameMode === "versus" && selected) {
       context.font = "bold 14px Meiryo, sans-serif";
       context.fillStyle = "#4b5360";
