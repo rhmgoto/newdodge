@@ -238,8 +238,16 @@ class Ball {
       }
     }
     if (this.specialShotType === "boomerang" && this.thrower && !this.thrower.defeated) {
-      const passedTarget = this.target && ((this.vx >= 0 && this.x > this.target.x + 90) || (this.vx < 0 && this.x < this.target.x - 90));
-      if (!this.returning && (passedTarget || this.travelDistance > 1000)) {
+      if (!this.returning) {
+        const speed = Math.hypot(this.vx, this.vy) || 1;
+        const sideForce = Math.min(360, 130 + this.travelDistance * 0.22) * this.boomerangCurveSign;
+        const sideX = -this.vy / speed;
+        const sideY = this.vx / speed;
+        this.vx += sideX * sideForce * delta;
+        this.vy += sideY * sideForce * delta;
+      }
+      const passedTarget = this.target && ((this.vx >= 0 && this.x > this.target.x + 170) || (this.vx < 0 && this.x < this.target.x - 170));
+      if (!this.returning && (passedTarget || this.travelDistance > 1250)) {
         this.returning = true;
         this.target = this.thrower;
         this.hitPlayerIds.clear();
@@ -249,18 +257,15 @@ class Ball {
         const dy = this.thrower.y - 42 - this.y;
         const length = Math.hypot(dx, dy) || 1;
         const speed = Math.max(760, Math.hypot(this.vx, this.vy));
-        const arcStrength = Math.min(760, 420 + length * 0.46) * this.boomerangCurveSign;
+        const arcStrength = Math.min(1120, 640 + length * 0.68) * this.boomerangCurveSign;
         const desiredX = (dx / length) * speed + (-dy / length) * arcStrength;
         const desiredY = (dy / length) * speed + (dx / length) * arcStrength;
         const turn = Math.min(1, delta * 4.5);
         this.vx += (desiredX - this.vx) * turn;
         this.vy += (desiredY - this.vy) * turn;
-        if (Math.hypot(dx, dy) < this.boomerangStartDistance * 0.48) {
+        if (Math.hypot(dx, dy) < this.boomerangStartDistance * 0.72) {
           this.drop();
           return;
-        }
-        if (Math.hypot(dx, dy) < this.radius + 42) {
-          this.drop();
         }
       }
     }

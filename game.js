@@ -1,8 +1,9 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
 const TEAM_SELECTION_COUNT = 8;
-const TEAM_SELECT_COLUMNS = 4;
-const START_SLOT = TEAM_SELECTION_COUNT;
+const TEAM_SELECT_COLUMNS = 5;
+const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
+const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const MAX_SHOT_CHARGE_TIME = 1.5;
 
 const GAME_CONFIG = {
@@ -91,6 +92,7 @@ class DodgeballGame {
       left: this.createDefaultTeamSelection(),
       right: this.createDefaultTeamSelection()
     };
+    this.cpuOpponentIndex = 0;
     this.previousTime = 0;
     this.autoSwitchCooldown = 0;
     this.rightStickSwitchCooldown = 0;
@@ -221,8 +223,10 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const color = isLeft ? "#3087f2" : "#f05a45";
-    const trim = isLeft ? "#f6fbff" : "#fff0cf";
+    const cpuTeam = !isLeft && this.gameMode === "single" ? this.getSelectedCpuOpponentTeam() : null;
+    const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
+    const pantsColor = cpuTeam?.pantsColor || color;
+    const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
     const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
     const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
     const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
@@ -354,8 +358,10 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const color = isLeft ? "#3087f2" : "#f05a45";
-    const trim = isLeft ? "#f6fbff" : "#fff0cf";
+    const cpuTeam = !isLeft && this.gameMode === "single" ? this.getSelectedCpuOpponentTeam() : null;
+    const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
+    const pantsColor = cpuTeam?.pantsColor || color;
+    const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
     const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
     const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
     const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
@@ -369,8 +375,9 @@ class DodgeballGame {
       maxStamina: GAME_CONFIG.player.maxStamina,
       speed: GAME_CONFIG.player.speed,
       throwPower: GAME_CONFIG.player.throwPower,
-      stats: GAME_CONFIG.player.stats,
       uniformColor: color,
+      pantsColor,
+      uniformEmblem: cpuTeam?.uniformEmblem,
       trimColor: trim,
       ...options
     });
@@ -382,16 +389,24 @@ class DodgeballGame {
       { x: innerArea.x + innerArea.w * (isLeft ? 0.68 : 0.32), y: innerArea.y + innerArea.h * 0.62 }
     ];
 
-    const roster = innerPositions.map((position, index) => makePlayer({
-      id: `${prefix}-inner-${index + 1}`,
-      name: `${prefix}-inner-${index + 1}`,
-      role: "inner",
-      zone: innerZone,
-      x: position.x,
-      y: position.y,
-      characterType: selectedTypes[index],
-      hairColor: index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined
-    }));
+    const getCpuPlayer = (slot) => cpuTeam?.players?.[slot] || null;
+    const roster = innerPositions.map((position, index) => {
+      const cpuPlayer = getCpuPlayer(index);
+      return makePlayer({
+        id: `${prefix}-inner-${index + 1}`,
+        name: cpuPlayer?.name || cpuTeam?.innerNames?.[index] || `${prefix}-inner-${index + 1}`,
+        role: "inner",
+        zone: innerZone,
+        x: position.x,
+        y: position.y,
+        characterType: cpuPlayer?.characterType || cpuTeam?.characterType || selectedTypes[index],
+        maxHp: cpuPlayer?.maxHp ?? cpuTeam?.maxHp,
+        maxStamina: cpuPlayer?.maxStamina ?? cpuTeam?.maxStamina,
+        stats: cpuPlayer?.stats || cpuTeam?.stats,
+        hairColor: cpuPlayer?.hairColor || cpuTeam?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
+        cpuProfile: cpuPlayer?.cpuProfile || cpuTeam?.cpuProfile
+      });
+    });
 
     roster.push(
       makePlayer({
@@ -401,25 +416,41 @@ class DodgeballGame {
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + topArea.h * 0.45,
-        characterType: selectedTypes[5]
+        name: getCpuPlayer(5)?.name || cpuTeam?.outNames?.[0] || `${prefix}-out-top`,
+        characterType: getCpuPlayer(5)?.characterType || cpuTeam?.characterType || selectedTypes[5],
+        maxHp: getCpuPlayer(5)?.maxHp ?? cpuTeam?.maxHp,
+        maxStamina: getCpuPlayer(5)?.maxStamina ?? cpuTeam?.maxStamina,
+        stats: getCpuPlayer(5)?.stats || cpuTeam?.stats,
+        hairColor: getCpuPlayer(5)?.hairColor || cpuTeam?.hairColor,
+        cpuProfile: getCpuPlayer(5)?.cpuProfile || cpuTeam?.cpuProfile
       }),
       makePlayer({
         id: `${prefix}-out-bottom`,
-        name: `${prefix}-out-bottom`,
+        name: getCpuPlayer(6)?.name || cpuTeam?.outNames?.[1] || `${prefix}-out-bottom`,
         role: "out",
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
         y: bottomArea.y + bottomArea.h * 0.5,
-        characterType: selectedTypes[6]
+        characterType: getCpuPlayer(6)?.characterType || cpuTeam?.characterType || selectedTypes[6],
+        maxHp: getCpuPlayer(6)?.maxHp ?? cpuTeam?.maxHp,
+        maxStamina: getCpuPlayer(6)?.maxStamina ?? cpuTeam?.maxStamina,
+        stats: getCpuPlayer(6)?.stats || cpuTeam?.stats,
+        hairColor: getCpuPlayer(6)?.hairColor || cpuTeam?.hairColor,
+        cpuProfile: getCpuPlayer(6)?.cpuProfile || cpuTeam?.cpuProfile
       }),
       makePlayer({
         id: `${prefix}-out-side`,
-        name: `${prefix}-out-side`,
+        name: getCpuPlayer(7)?.name || cpuTeam?.outNames?.[2] || `${prefix}-out-side`,
         role: "out",
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
         y: sideArea.y + sideArea.h * 0.52,
-        characterType: selectedTypes[7]
+        characterType: getCpuPlayer(7)?.characterType || cpuTeam?.characterType || selectedTypes[7],
+        maxHp: getCpuPlayer(7)?.maxHp ?? cpuTeam?.maxHp,
+        maxStamina: getCpuPlayer(7)?.maxStamina ?? cpuTeam?.maxStamina,
+        stats: getCpuPlayer(7)?.stats || cpuTeam?.stats,
+        hairColor: getCpuPlayer(7)?.hairColor || cpuTeam?.hairColor,
+        cpuProfile: getCpuPlayer(7)?.cpuProfile || cpuTeam?.cpuProfile
       })
     );
 
@@ -430,6 +461,81 @@ class DodgeballGame {
       player.homeY = player.y;
     }
     return roster;
+  }
+
+  getCpuOpponentTeams() {
+    return [
+      {
+        id: "town-dodgies",
+        name: "\u753a\u5185\u30c9\u30c3\u30b8\u30fc\u30ba",
+        description: "\u7df4\u7fd2\u7528\u306e\u5f31\u3044\u30c1\u30fc\u30e0",
+        characterType: "normal",
+        innerNames: ["\u305f\u3051\u3057", "\u3053\u3046\u305f", "\u307e\u3055\u308b", "\u3086\u3046\u304d", "\u3057\u3093\u307a\u3044"],
+        outNames: ["\u3072\u308d\u3057", "\u3051\u3093\u3058", "\u305f\u304b\u3057"],
+        uniformColor: "#f7f7f2",
+        pantsColor: "#8f9299",
+        trimColor: "#d9dde4",
+        hairColor: "#17191d",
+        maxHp: 50,
+        maxStamina: 100,
+        stats: { power: 5, speed: 5, jump: 5, technique: 5 },
+        cpuProfile: "townDodgies"
+      },
+      {
+        id: "bakusou-boys",
+        name: "\u7206\u8d70\u30dc\u30fc\u30a4\u30ba",
+        description: "\u4fca\u8db3\u306e\u9078\u624b\u304c\u591a\u3044\u30c1\u30fc\u30e0",
+        characterType: "jump",
+        innerNames: ["\u305f\u3051\u308b", "\u308a\u3087\u3046\u305f", "\u3057\u3087\u3046\u305f", "\u3086\u3046\u307e", "\u306f\u308b\u304d"],
+        outNames: ["\u3060\u3044\u304d", "\u3051\u3044\u305f", "\u3057\u3085\u3093"],
+        uniformColor: "#ffd83d",
+        pantsColor: "#111318",
+        trimColor: "#fff3a6",
+        hairColor: "#111318",
+        maxHp: 70,
+        maxStamina: 100,
+        stats: { power: 6, speed: 8, jump: 7, technique: 6 },
+        cpuProfile: "bakusouBoys"
+      },
+      {
+        id: "hinomaru-bombers",
+        name: "\u65e5\u306e\u4e38\u30dc\u30f3\u30d0\u30fc\u30ba",
+        description: "\u65e5\u672c\u4ee3\u8868\u30ec\u30d9\u30eb\u306e\u5f37\u8c6a\u30c1\u30fc\u30e0",
+        characterType: "normal",
+        innerNames: ["\u308c\u3064", "\u3080\u3055\u3057", "\u3057\u3087\u3046", "\u3058\u3093", "\u3060\u3044\u3061"],
+        outNames: ["\u306f\u3084\u3068", "\u3048\u3093\u3058", "\u3072\u304b\u308b"],
+        uniformColor: "#f7f7f2",
+        pantsColor: "#f7f7f2",
+        trimColor: "#d9dde4",
+        hairColor: "#111318",
+        uniformEmblem: "hinomaru",
+        maxHp: 150,
+        maxStamina: 110,
+        stats: { power: 7, speed: 7, jump: 7, technique: 7 },
+        cpuProfile: "hinomaruBombers",
+        players: [
+          { name: "\u308c\u3064", characterType: "jump", maxHp: 150, maxStamina: 110, stats: { power: 6, speed: 8, jump: 7, technique: 7 } },
+          { name: "\u3080\u3055\u3057", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
+          { name: "\u3057\u3087\u3046", characterType: "speed", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 6, jump: 8, technique: 7 } },
+          { name: "\u3058\u3093", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
+          { name: "\u3060\u3044\u3061", characterType: "power", maxHp: 150, maxStamina: 110, stats: { power: 8, speed: 5, jump: 6, technique: 7 } },
+          { name: "\u306f\u3084\u3068", characterType: "normal", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 7, technique: 7 } },
+          { name: "\u3048\u3093\u3058", characterType: "speed", maxHp: 150, maxStamina: 110, stats: { power: 7, speed: 7, jump: 8, technique: 6 } },
+          { name: "\u3072\u304b\u308b", characterType: "jump", maxHp: 150, maxStamina: 110, stats: { power: 6, speed: 8, jump: 7, technique: 7 } }
+        ]
+      }
+    ];
+  }
+
+  getSelectedCpuOpponentTeam() {
+    const teams = this.getCpuOpponentTeams();
+    return teams[this.cpuOpponentIndex] || teams[0];
+  }
+
+  changeCpuOpponent(direction) {
+    const teams = this.getCpuOpponentTeams();
+    if (teams.length <= 1) return;
+    this.cpuOpponentIndex = (this.cpuOpponentIndex + direction + teams.length) % teams.length;
   }
 
   loop(time) {
@@ -500,10 +606,13 @@ class DodgeballGame {
 
   updateSingleTeamSelectCursor() {
     const moved = this.moveTeamSelectCursor(this.teamSelectionSide, this.teamSelectionSlot, 1);
-    this.teamSelectionSide = moved.side;
+    this.teamSelectionSide = moved.slot < TEAM_SELECTION_COUNT ? "left" : moved.side;
     this.teamSelectionSlot = moved.slot;
     if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT) {
       this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
+    }
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
+      this.changeCpuOpponent(1);
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
       this.setupMatch();
@@ -540,9 +649,16 @@ class DodgeballGame {
     const down = this.wasMenuDirectionPressed("down", playerIndex);
 
     if (nextSlot === START_SLOT) {
-      if (up) nextSlot = TEAM_SELECTION_COUNT - 2;
+      if (up) nextSlot = !lockSide ? CPU_OPPONENT_SLOT : TEAM_SELECTION_COUNT - 2;
       if (left && !lockSide) nextSide = "left";
       if (right && !lockSide) nextSide = "right";
+      return { side: nextSide, slot: nextSlot };
+    }
+
+    if (nextSlot === CPU_OPPONENT_SLOT && !lockSide) {
+      if (up || left) nextSlot = TEAM_SELECT_COLUMNS - 1;
+      if (down) nextSlot = START_SLOT;
+      if (right) this.changeCpuOpponent(1);
       return { side: nextSide, slot: nextSlot };
     }
 
@@ -561,12 +677,11 @@ class DodgeballGame {
       if (col < TEAM_SELECT_COLUMNS - 1 && nextSlot + 1 < TEAM_SELECTION_COUNT) {
         nextSlot += 1;
       } else if (!lockSide) {
-        nextSide = nextSide === "left" ? "right" : "left";
-        nextSlot = row * TEAM_SELECT_COLUMNS;
+        nextSlot = CPU_OPPONENT_SLOT;
       }
     }
     if (up && row > 0) nextSlot -= TEAM_SELECT_COLUMNS;
-    if (down) nextSlot = row < lastRow ? Math.min(nextSlot + TEAM_SELECT_COLUMNS, TEAM_SELECTION_COUNT - 1) : START_SLOT;
+    if (down) nextSlot = row < lastRow ? Math.min(nextSlot + TEAM_SELECT_COLUMNS, TEAM_SELECTION_COUNT - 1) : (!lockSide ? CPU_OPPONENT_SLOT : START_SLOT);
     return { side: nextSide, slot: nextSlot };
   }
 
@@ -1832,6 +1947,10 @@ class DodgeballGame {
         }
         this.spawnEffect(this.ball.x, ballY, this.getSpecialHitColor(specialType), specialType ? "special" : "hit");
         this.spawnDamageNumber(target, damage);
+        if (specialType === "boomerang") {
+          this.ball.drop();
+          return;
+        }
         if (specialType !== "boomerang" && specialType !== "iron") {
           this.ball.bounceFromHit(-direction, damage / 20);
         }
@@ -2316,6 +2435,7 @@ class DodgeballGame {
     this.drawEffects();
     this.drawChargeEffect();
     this.drawSpecialAnticipationEffect();
+    this.drawCpuPlayerNames(context);
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
@@ -2382,12 +2502,71 @@ class DodgeballGame {
     context.fillText("チーム編成", centerX, 84);
 
     this.drawTeamSelectSide("left", 120, "#0057ff");
-    this.drawTeamSelectSide("right", 700, "#f01818");
+    if (this.gameMode === "versus") {
+      this.drawTeamSelectSide("right", 700, "#f01818");
+    } else {
+      this.drawCpuOpponentSelect();
+    }
     this.drawMatchStartButton();
 
     context.fillStyle = "#fff7df";
     context.font = "18px Meiryo, sans-serif";
     context.fillText("左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る", centerX, 688);
+    context.restore();
+  }
+
+  drawCpuOpponentSelect() {
+    const context = this.context;
+    const teams = this.getCpuOpponentTeams();
+    const selected = this.teamSelectionSlot === CPU_OPPONENT_SLOT;
+    const x = 760;
+    const y = 165;
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = "#f01818";
+    context.font = "bold 28px Meiryo, sans-serif";
+    context.fillText("CPU TEAM", x, 142);
+
+    context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+    context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
+    context.lineWidth = selected ? 5 : 2;
+    this.roundRect(context, x, y, 360, 220, 8);
+    context.fill();
+    context.stroke();
+
+    context.font = "bold 22px Meiryo, sans-serif";
+    for (let i = 0; i < teams.length; i += 1) {
+      const rowY = y + 46 + i * 48;
+      const rowSelected = i === this.cpuOpponentIndex;
+      context.fillStyle = rowSelected ? "rgba(255,216,61,0.9)" : "rgba(255,255,255,0.72)";
+      context.strokeStyle = rowSelected ? "#263241" : "rgba(38,50,65,0.25)";
+      context.lineWidth = rowSelected ? 4 : 1;
+      this.roundRect(context, x + 18, rowY - 28, 324, 36, 6);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.fillText(teams[i].name, x + 34, rowY - 4);
+    }
+    context.restore();
+  }
+
+  drawCpuPlayerNames(context) {
+    if (this.gameMode === "versus") return;
+    context.save();
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.lineWidth = 4;
+    for (const player of this.rightTeam) {
+      if (!player || player.defeated || player.leaveTimer > GAME_CONFIG.battle.exitDelay) continue;
+      const scale = player.lastDrawScale || 1;
+      const x = player.x + 36 * scale;
+      const y = player.y - player.jumpZ - 58 * scale;
+      context.strokeStyle = "rgba(255,255,255,0.9)";
+      context.fillStyle = "#263241";
+      context.strokeText(player.name || "", x, y);
+      context.fillText(player.name || "", x, y);
+    }
     context.restore();
   }
 
@@ -2496,14 +2675,16 @@ class DodgeballGame {
     context.restore();
   }
 
-  drawCharacterPreview(x, y, side, type) {
+  drawCharacterPreview(x, y, side, type, style = null) {
     const context = this.context;
     const body = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-    const suit = side === "left" ? "#0057ff" : "#f01818";
+    const suit = style?.uniformColor || (side === "left" ? "#0057ff" : "#f01818");
+    const pants = style?.pantsColor || suit;
+    const hair = style?.hairColor || "#f2c14e";
     context.save();
     context.translate(x, y);
     context.scale(body.scaleX * 0.48, body.scaleY * 0.48);
-    context.strokeStyle = suit;
+    context.strokeStyle = pants;
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = 11 * body.legWidth;
@@ -2529,6 +2710,12 @@ class DodgeballGame {
     context.beginPath();
     context.ellipse(0, -42, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
+    if (style?.uniformEmblem === "hinomaru") {
+      context.fillStyle = "#d92828";
+      context.beginPath();
+      context.arc(0, -45, 8, 0, Math.PI * 2);
+      context.fill();
+    }
     if (body.mage) {
       context.fillStyle = suit;
       context.strokeStyle = "rgba(38,50,65,0.35)";
@@ -2561,6 +2748,13 @@ class DodgeballGame {
       context.beginPath();
       context.arc(0, -100, 29 * body.headScale, 0, Math.PI * 2);
     }
+    context.fill();
+    context.fillStyle = hair;
+    context.beginPath();
+    context.arc(0, -109, 26, Math.PI, Math.PI * 2);
+    context.lineTo(22, -104);
+    context.quadraticCurveTo(0, -114, -24, -103);
+    context.closePath();
     context.fill();
     if (body.mage) {
       context.fillStyle = "#8a4a24";

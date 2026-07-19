@@ -104,17 +104,20 @@ class Player {
     this.radius = options.radius || 37;
     this.characterType = options.characterType || "normal";
     const typeDefinition = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
-    this.stats = this.createStats(typeDefinition.stats || options.stats);
-    this.maxHp = typeDefinition.maxHp || options.maxHp || 100;
+    this.stats = this.createStats(options.stats || typeDefinition.stats);
+    this.maxHp = options.maxHp ?? typeDefinition.maxHp ?? 100;
     this.hp = this.maxHp;
     this.baseSpeed = options.speed || 230;
     this.speed = this.baseSpeed * this.getStatScale("speed", 0.045);
     this.baseThrowPower = options.throwPower || 20;
     this.throwPower = this.baseThrowPower * this.getStatScale("power", 0.07);
     this.uniformColor = options.uniformColor;
+    this.pantsColor = options.pantsColor || this.uniformColor;
+    this.uniformEmblem = options.uniformEmblem || null;
     this.trimColor = options.trimColor || "#ffffff";
     this.faceColor = options.faceColor || "#ffd4a3";
     this.hairColor = options.hairColor || "#3d2a1f";
+    this.cpuProfile = options.cpuProfile || null;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
     this.visualDirection = this.team === "left" ? "right" : "left";
@@ -603,7 +606,12 @@ class Player {
   }
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
-    const colors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
+    const teamColors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
+    const colors = {
+      ...teamColors,
+      suit: this.uniformColor || teamColors.suit,
+      pants: this.pantsColor || this.uniformColor || teamColors.suit
+    };
     const body = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 1 : 0;
     const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !crouch;
@@ -738,14 +746,14 @@ class Player {
       context.rotate(-0.12);
     }
 
-    this.drawModelLimb(context, pose.backLeg, colors.suit, 11 * body.legWidth);
+    this.drawModelLimb(context, pose.backLeg, colors.pants, 11 * body.legWidth);
     this.drawModelLimb(context, pose.backArm, PLAYER_MODEL.skinShade, 9 * body.armWidth);
-    this.drawModelFoot(context, pose.backLeg[2], colors.suit);
+    this.drawModelFoot(context, pose.backLeg[2], colors.pants);
 
     this.drawModelTorso(context, 0, torsoY, colors, body);
 
-    this.drawModelLimb(context, pose.frontLeg, colors.suit, 12 * body.legWidth);
-    this.drawModelFoot(context, pose.frontLeg[2], colors.suit);
+    this.drawModelLimb(context, pose.frontLeg, colors.pants, 12 * body.legWidth);
+    this.drawModelFoot(context, pose.frontLeg[2], colors.pants);
     this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10 * body.armWidth);
     if (body.mage) {
       this.drawMageSkirt(context, torsoY, colors);
@@ -802,6 +810,12 @@ class Player {
     context.beginPath();
     context.ellipse(x, y, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
+    if (this.uniformEmblem === "hinomaru") {
+      context.fillStyle = "#d92828";
+      context.beginPath();
+      context.arc(x, y - 3, Math.max(7, 10 * Math.min(body.torsoX, body.torsoY)), 0, Math.PI * 2);
+      context.fill();
+    }
   }
 
   drawMageSkirt(context, torsoY, colors) {
@@ -852,12 +866,13 @@ class Player {
   }
 
   drawModelHead(context, x, y, colors, damaged, direction, body = CHARACTER_TYPES.normal) {
+    const hairColor = this.hairColor || PLAYER_MODEL.hair;
     if (body.mage) {
-      context.fillStyle = "#8a4a24";
+      context.fillStyle = hairColor;
       context.beginPath();
       context.ellipse(x - 11, y + 10, 13, 34, -0.12, 0, Math.PI * 2);
       context.fill();
-      context.fillStyle = "#6f351b";
+      context.fillStyle = hairColor;
       context.beginPath();
       context.ellipse(x + 18, y + 10, 10, 34, 0.12, 0, Math.PI * 2);
       context.fill();
@@ -873,7 +888,7 @@ class Player {
     context.fill();
 
     if (body.mage) {
-      context.fillStyle = "#8a4a24";
+      context.fillStyle = hairColor;
       context.beginPath();
       context.arc(x, y - 13, 25, Math.PI, Math.PI * 2);
       context.lineTo(x + 21, y - 7);
@@ -881,22 +896,20 @@ class Player {
       context.closePath();
       context.fill();
     } else if (this.characterType === "normal") {
-      context.fillStyle = PLAYER_MODEL.hair;
+      context.fillStyle = hairColor;
       context.beginPath();
-      context.moveTo(x - 28, y - 4);
-      context.lineTo(x - 24, y - 25);
-      context.lineTo(x - 15, y - 13);
-      context.lineTo(x - 8, y - 32);
-      context.lineTo(x + 1, y - 14);
-      context.lineTo(x + 10, y - 31);
-      context.lineTo(x + 17, y - 12);
-      context.lineTo(x + 28, y - 24);
-      context.lineTo(x + 25, y - 3);
-      context.quadraticCurveTo(x, y - 13, x - 28, y - 4);
+      context.arc(x, y - 3, 28, Math.PI, Math.PI * 2);
+      context.lineTo(x + 27, y - 6);
+      context.lineTo(x + 17, y + 2);
+      context.lineTo(x + 8, y - 8);
+      context.lineTo(x - 1, y + 3);
+      context.lineTo(x - 11, y - 8);
+      context.lineTo(x - 20, y + 2);
+      context.lineTo(x - 28, y - 6);
       context.closePath();
       context.fill();
     } else {
-      context.fillStyle = PLAYER_MODEL.hair;
+      context.fillStyle = hairColor;
       context.beginPath();
       context.arc(x, y - 9, 27, Math.PI, Math.PI * 2);
       context.lineTo(x + 22, y - 4);
@@ -906,20 +919,15 @@ class Player {
     }
 
     if (direction === "up") {
-      context.fillStyle = body.mage ? "#8a4a24" : PLAYER_MODEL.hair;
+      context.fillStyle = hairColor;
       context.beginPath();
       if (body.mage) {
         context.ellipse(x, y + 6, 27, 40, 0, Math.PI * 0.85, Math.PI * 2.15);
         context.fill();
       } else if (this.characterType === "normal") {
-        context.moveTo(x - 27, y - 1);
-        context.lineTo(x - 20, y - 22);
-        context.lineTo(x - 8, y - 8);
-        context.lineTo(x + 1, y - 26);
-        context.lineTo(x + 10, y - 8);
-        context.lineTo(x + 24, y - 20);
-        context.lineTo(x + 27, y - 1);
-        context.quadraticCurveTo(x, y + 10, x - 27, y - 1);
+        context.arc(x, y - 2, 27, Math.PI * 0.86, Math.PI * 2.14);
+        context.lineTo(x + 24, y + 2);
+        context.quadraticCurveTo(x, y + 13, x - 24, y + 2);
         context.fill();
       } else {
         context.arc(x, y - 2, 25, Math.PI * 0.9, Math.PI * 2.1);

@@ -195,6 +195,16 @@ class CPUController {
   getHolderPlan(holder) {
     if (this.holderPlan && this.holderPlan.holderId === holder.id) return this.holderPlan;
 
+    if (holder.cpuProfile === "townDodgies") {
+      return this.getTownDodgiesHolderPlan(holder);
+    }
+    if (holder.cpuProfile === "bakusouBoys") {
+      return this.getBakusouBoysHolderPlan(holder);
+    }
+    if (holder.cpuProfile === "hinomaruBombers") {
+      return this.getHinomaruBombersHolderPlan(holder);
+    }
+
     const roll = Math.random();
     let type = "normal-shot";
     if (this.passChainFinisher) {
@@ -236,6 +246,94 @@ class CPUController {
       x: holder.role === "inner" ? centerLineX : holder.homeX,
       y: holder.y,
       chargeTime: 1.05 + Math.random() * 0.45
+    };
+    return this.holderPlan;
+  }
+
+  getTownDodgiesHolderPlan(holder) {
+    const roll = Math.random();
+    let type = "normal-shot";
+    if (holder.role === "out") {
+      type = roll < 0.2 ? "normal-shot"
+        : roll < 0.38 ? "pass-chain"
+          : roll < 0.62 ? "dash-shot"
+            : roll < 0.84 ? "charge-dash-shot"
+              : roll < 0.96 ? "charge-shot"
+                : "jump-shot";
+    } else {
+      type = roll < 0.16 ? "normal-shot"
+        : roll < 0.3 ? "center-shot"
+          : roll < 0.52 ? "dash-shot"
+            : roll < 0.64 ? "pass-chain"
+              : roll < 0.84 ? "charge-dash-shot"
+                : roll < 0.98 ? "charge-shot"
+                  : "jump-shot";
+    }
+
+    const centerLineX = this.config.court.centerX + 82;
+    this.holderPlan = {
+      holderId: holder.id,
+      type,
+      x: holder.role === "inner" ? centerLineX : holder.homeX,
+      y: holder.y,
+      chargeTime: 0.75 + Math.random() * 0.45
+    };
+    return this.holderPlan;
+  }
+
+  getBakusouBoysHolderPlan(holder) {
+    const roll = Math.random();
+    let type = "pass-chain";
+    if (holder.role === "inner") {
+      type = roll < 0.3 ? "charge-jump-shot"
+        : roll < 0.46 ? "charge-dash-shot"
+          : roll < 0.68 ? "pass-chain"
+            : roll < 0.84 ? "jump-shot"
+              : roll < 0.94 ? "dash-shot"
+                : "normal-shot";
+    } else {
+      type = roll < 0.34 ? "pass-chain"
+        : roll < 0.58 ? "jump-shot"
+          : roll < 0.78 ? "charge-jump-shot"
+            : roll < 0.92 ? "dash-shot"
+              : "normal-shot";
+    }
+
+    const centerLineX = this.config.court.centerX + 82;
+    this.holderPlan = {
+      holderId: holder.id,
+      type,
+      x: holder.role === "inner" ? centerLineX : holder.homeX,
+      y: holder.y,
+      chargeTime: 1.05 + Math.random() * 0.4
+    };
+    return this.holderPlan;
+  }
+
+  getHinomaruBombersHolderPlan(holder) {
+    const roll = Math.random();
+    let type = "charge-jump-shot";
+    if (holder.role === "inner") {
+      type = roll < 0.36 ? "charge-jump-shot"
+        : roll < 0.62 ? "charge-dash-shot"
+          : roll < 0.78 ? "pass-chain"
+            : roll < 0.9 ? "charge-shot"
+              : "dash-shot";
+    } else {
+      type = roll < 0.34 ? "charge-jump-shot"
+        : roll < 0.58 ? "charge-dash-shot"
+          : roll < 0.78 ? "pass-chain"
+            : roll < 0.92 ? "charge-shot"
+              : "normal-shot";
+    }
+
+    const centerLineX = this.config.court.centerX + 82;
+    this.holderPlan = {
+      holderId: holder.id,
+      type,
+      x: holder.role === "inner" ? centerLineX : holder.homeX,
+      y: holder.y,
+      chargeTime: 1.18 + Math.random() * 0.32
     };
     return this.holderPlan;
   }
@@ -364,10 +462,14 @@ class CPUController {
         ? readyToReact ? this.config.cpuCatchChance * 2.7 : frontShot ? this.config.cpuCatchChance * 2.2 : this.config.cpuCatchChance * 0.35
         : strongShot ? frontShot ? this.config.cpuCatchChance * 0.22 : this.config.cpuCatchChance * 0.06
           : readyToReact ? this.config.cpuCatchChance * 0.9 : frontShot ? this.config.cpuCatchChance * 1.05 : this.config.cpuCatchChance * 0.16;
+      const catchScale = member.cpuProfile === "townDodgies" ? 0.42 : 1;
+      const dodgeScale = member.cpuProfile === "townDodgies" ? 1.22 : 1;
+      const profileCatchScale = member.cpuProfile === "hinomaruBombers" ? (frontShot ? 2.15 : 1.25) : catchScale;
+      const profileDodgeScale = member.cpuProfile === "hinomaruBombers" ? 0.78 : dodgeScale;
 
-      if (frontShot && distance < (weakShot ? 320 : 240) && Math.random() < catchChance) {
+      if (frontShot && distance < (weakShot ? 360 : 280) && Math.random() < catchChance * profileCatchScale) {
         command.catch = true;
-      } else if (laneThreat && Math.random() < dodgeChance) {
+      } else if (laneThreat && Math.random() < Math.min(0.96, dodgeChance * profileDodgeScale)) {
         this.dodgeIncomingShot(command, member, readyToReact || strongShot);
       }
     }
