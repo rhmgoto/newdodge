@@ -22,7 +22,7 @@ const DEFAULT_PLAYER_STATS = {
 
 const CHARACTER_TYPES = {
   normal: {
-    maxHp: 100,
+    maxHp: 60,
     maxStamina: 100,
     stats: { power: 6, speed: 6, jump: 6, technique: 6 },
     label: "ノーマル",
@@ -35,7 +35,7 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   power: {
-    maxHp: 100,
+    maxHp: 60,
     maxStamina: 100,
     stats: { power: 8, speed: 4, jump: 3, technique: 4 },
     label: "デーブ",
@@ -48,7 +48,7 @@ const CHARACTER_TYPES = {
     legLength: 1
   },
   speed: {
-    maxHp: 100,
+    maxHp: 60,
     maxStamina: 100,
     stats: { power: 6, speed: 5, jump: 8, technique: 6 },
     label: "のっぽ",
@@ -61,7 +61,7 @@ const CHARACTER_TYPES = {
     legLength: 1.2
   },
   jump: {
-    maxHp: 100,
+    maxHp: 60,
     maxStamina: 100,
     stats: { power: 5, speed: 8, jump: 6, technique: 7 },
     label: "ちび",
@@ -86,7 +86,7 @@ class Player {
     this.y = options.y;
     this.homeX = options.x;
     this.homeY = options.y;
-    this.radius = options.radius || 24;
+    this.radius = options.radius || 37;
     this.characterType = options.characterType || "normal";
     const typeDefinition = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
     this.stats = this.createStats(typeDefinition.stats || options.stats);
@@ -432,7 +432,7 @@ class Player {
 
   getScale(config) {
     const t = Math.max(0, Math.min(1, (this.y - config.depthTop) / (config.depthBottom - config.depthTop)));
-    return 0.72 + t * 0.34;
+    return (0.72 + t * 0.34) * (config.characterScale || 1);
   }
 
   applyKnockback(delta, area) {

@@ -1,25 +1,28 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
+const TEAM_SELECTION_COUNT = 8;
+const TEAM_SELECT_COLUMNS = 4;
+const START_SLOT = TEAM_SELECTION_COUNT;
 
 const GAME_CONFIG = {
   width: 1440,
   height: 720,
   court: {
-    x: -143,
-    y: 58,
-    w: 2126,
-    h: 759,
+    x: -356,
+    y: 138,
+    w: 2551,
+    h: 911,
     centerX: 920
   },
   view: {
-    paddingX: 20,
-    paddingY: 12,
+    paddingX: 8,
+    paddingY: 0,
     playZoom: 1,
-    worldTop: 0,
-    worldBottomPadding: 12
+    worldTop: -120,
+    worldBottomPadding: 0
   },
   player: {
-    maxHp: 100,
+    maxHp: 60,
     maxStamina: 100,
     speed: 235,
     throwPower: 20,
@@ -31,7 +34,7 @@ const GAME_CONFIG = {
     }
   },
   ball: {
-    radius: 24,
+    radius: 37,
     damage: 20,
     shootSpeed: 1140,
     passSpeed: 645,
@@ -58,13 +61,14 @@ const GAME_CONFIG = {
     turnDuration: 0.2,
     turnSpeedMultiplier: 0.32,
     depthTop: 140,
-    depthBottom: 720,
+    depthBottom: 1080,
+    characterScale: 1.56,
     stamina: {
       shootCost: 18,
       shootChargeDrainPerSecond: 11,
       duckCost: 14,
       dashDrainPerSecond: 38,
-      recoveryPerSecond: 48,
+      recoveryPerSecond: 72,
       recoveryDelay: 0.7
     }
   }
@@ -97,6 +101,7 @@ class DodgeballGame {
     this.lastEnemyHolderIdP2 = null;
     this.pendingThrow = null;
     this.chargingThrow = null;
+    this.shotMultiplierDisplay = null;
     this.effects = [];
     this.message = "READY";
     this.setupMatch();
@@ -104,7 +109,7 @@ class DodgeballGame {
   }
 
   createDefaultTeamSelection() {
-    return ["normal", "normal", "normal", "power", "speed", "jump"];
+    return Array(TEAM_SELECTION_COUNT).fill("normal");
   }
 
   setupMatch() {
@@ -136,6 +141,7 @@ class DodgeballGame {
     this.lastEnemyHolderIdP2 = null;
     this.pendingThrow = null;
     this.chargingThrow = null;
+    this.shotMultiplierDisplay = null;
   }
 
   createAreas() {
@@ -144,7 +150,7 @@ class DodgeballGame {
     const topY = c.y + 10;
     const backY = c.y + 96;
     const frontY = c.y + c.h - 38;
-    const outfieldDepth = 170;
+    const outfieldDepth = 204;
     const sideOutTop = c.y + 96;
     const sideOutBottom = c.y + c.h - 38;
     const projectedX = (x, y) => this.projectCourtX(x, y, topY, c.y + c.h);
@@ -177,9 +183,9 @@ class DodgeballGame {
       leftSideOut: trapezoid(
         sideOutTop,
         sideOutBottom,
-        projectedX(c.x, sideOutTop) - 300,
+        projectedX(c.x, sideOutTop) - 360,
         projectedX(c.x, sideOutTop) - 10,
-        projectedX(c.x, sideOutBottom) - 300,
+        projectedX(c.x, sideOutBottom) - 360,
         projectedX(c.x, sideOutBottom) - 10
       ),
       rightTopOut: { x: c.centerX + 22, y: backY - outfieldDepth, w: halfW - 44, h: outfieldDepth },
@@ -188,9 +194,9 @@ class DodgeballGame {
         sideOutTop,
         sideOutBottom,
         projectedX(c.x + c.w, sideOutTop) + 10,
-        projectedX(c.x + c.w, sideOutTop) + 300,
+        projectedX(c.x + c.w, sideOutTop) + 360,
         projectedX(c.x + c.w, sideOutBottom) + 10,
-        projectedX(c.x + c.w, sideOutBottom) + 300
+        projectedX(c.x + c.w, sideOutBottom) + 360
       )
     };
   }
@@ -229,7 +235,7 @@ class DodgeballGame {
       : [innerArea.x + innerArea.w - 650, innerArea.x + innerArea.w - 410, innerArea.x + innerArea.w - 180];
     const ys = [innerArea.y + 105, innerArea.y + 250, innerArea.y + 395];
 
-    return [
+    const roster = [
       new Player({
         id: `${prefix}-inner-1`,
         name: names[0],
@@ -335,6 +341,94 @@ class DodgeballGame {
         trimColor: trim
       })
     ];
+
+    for (const player of roster) {
+      const area = this.areas[player.zone];
+      player.clampToArea(area);
+      player.homeX = player.x;
+      player.homeY = player.y;
+    }
+    return roster;
+  }
+
+  createTeam(team) {
+    const isLeft = team === "left";
+    const color = isLeft ? "#3087f2" : "#f05a45";
+    const trim = isLeft ? "#f6fbff" : "#fff0cf";
+    const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
+    const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
+    const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
+    const bottomArea = isLeft ? this.areas.rightBottomOut : this.areas.leftBottomOut;
+    const prefix = isLeft ? "left" : "right";
+    const selectedTypes = this.teamSelections?.[team] || Array(TEAM_SELECTION_COUNT).fill("normal");
+    const innerZone = isLeft ? "leftInner" : "rightInner";
+    const makePlayer = (options) => new Player({
+      team,
+      maxHp: GAME_CONFIG.player.maxHp,
+      maxStamina: GAME_CONFIG.player.maxStamina,
+      speed: GAME_CONFIG.player.speed,
+      throwPower: GAME_CONFIG.player.throwPower,
+      stats: GAME_CONFIG.player.stats,
+      uniformColor: color,
+      trimColor: trim,
+      ...options
+    });
+    const innerPositions = [
+      { x: innerArea.x + innerArea.w * (isLeft ? 0.24 : 0.76), y: innerArea.y + innerArea.h * 0.34 },
+      { x: innerArea.x + innerArea.w * (isLeft ? 0.42 : 0.58), y: innerArea.y + innerArea.h * 0.22 },
+      { x: innerArea.x + innerArea.w * 0.5, y: innerArea.y + innerArea.h * 0.5 },
+      { x: innerArea.x + innerArea.w * (isLeft ? 0.36 : 0.64), y: innerArea.y + innerArea.h * 0.72 },
+      { x: innerArea.x + innerArea.w * (isLeft ? 0.68 : 0.32), y: innerArea.y + innerArea.h * 0.62 }
+    ];
+
+    const roster = innerPositions.map((position, index) => makePlayer({
+      id: `${prefix}-inner-${index + 1}`,
+      name: `${prefix}-inner-${index + 1}`,
+      role: "inner",
+      zone: innerZone,
+      x: position.x,
+      y: position.y,
+      characterType: selectedTypes[index],
+      hairColor: index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined
+    }));
+
+    roster.push(
+      makePlayer({
+        id: `${prefix}-out-top`,
+        name: `${prefix}-out-top`,
+        role: "out",
+        zone: isLeft ? "rightTopOut" : "leftTopOut",
+        x: topArea.x + topArea.w * 0.55,
+        y: topArea.y + topArea.h * 0.45,
+        characterType: selectedTypes[5]
+      }),
+      makePlayer({
+        id: `${prefix}-out-bottom`,
+        name: `${prefix}-out-bottom`,
+        role: "out",
+        zone: isLeft ? "rightBottomOut" : "leftBottomOut",
+        x: bottomArea.x + bottomArea.w * 0.45,
+        y: bottomArea.y + bottomArea.h * 0.5,
+        characterType: selectedTypes[6]
+      }),
+      makePlayer({
+        id: `${prefix}-out-side`,
+        name: `${prefix}-out-side`,
+        role: "out",
+        zone: isLeft ? "rightSideOut" : "leftSideOut",
+        x: sideArea.x + sideArea.w * 0.5,
+        y: sideArea.y + sideArea.h * 0.52,
+        characterType: selectedTypes[7]
+      })
+    );
+
+    for (const player of roster) {
+      const area = this.areas[player.zone];
+      player.clampToArea(area);
+      player.homeX = player.x;
+      player.homeY = player.y;
+    }
+    return roster;
   }
 
   loop(time) {
@@ -407,10 +501,10 @@ class DodgeballGame {
     const moved = this.moveTeamSelectCursor(this.teamSelectionSide, this.teamSelectionSlot, 1);
     this.teamSelectionSide = moved.side;
     this.teamSelectionSlot = moved.slot;
-    if (this.input.wasPressed("button2") && this.teamSelectionSlot < 6) {
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT) {
       this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
     }
-    if (this.input.wasPressed("button2") && this.teamSelectionSlot === 6) {
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
       this.setupMatch();
       this.state = "playing";
     }
@@ -424,10 +518,10 @@ class DodgeballGame {
     this.teamSelectionSlots[side] = moved.slot;
     const slot = moved.slot;
 
-    if (this.input.wasPressed("button2", playerIndex) && slot < 6) {
+    if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT) {
       this.changeSelectedCharacterType(side, slot, 1);
     }
-    if (this.input.wasPressed("button2", playerIndex) && slot === 6) {
+    if (this.input.wasPressed("button2", playerIndex) && slot === START_SLOT) {
       this.setupMatch();
       this.state = "playing";
     }
@@ -444,33 +538,34 @@ class DodgeballGame {
     const up = this.wasMenuDirectionPressed("up", playerIndex);
     const down = this.wasMenuDirectionPressed("down", playerIndex);
 
-    if (nextSlot === 6) {
-      if (up) nextSlot = 4;
+    if (nextSlot === START_SLOT) {
+      if (up) nextSlot = TEAM_SELECTION_COUNT - 2;
       if (left && !lockSide) nextSide = "left";
       if (right && !lockSide) nextSide = "right";
       return { side: nextSide, slot: nextSlot };
     }
 
-    const row = Math.floor(nextSlot / 3);
-    const col = nextSlot % 3;
+    const row = Math.floor(nextSlot / TEAM_SELECT_COLUMNS);
+    const col = nextSlot % TEAM_SELECT_COLUMNS;
+    const lastRow = Math.floor((TEAM_SELECTION_COUNT - 1) / TEAM_SELECT_COLUMNS);
     if (left) {
       if (col > 0) {
         nextSlot -= 1;
       } else if (!lockSide) {
         nextSide = nextSide === "left" ? "right" : "left";
-        nextSlot = row * 3 + 2;
+        nextSlot = Math.min(row * TEAM_SELECT_COLUMNS + TEAM_SELECT_COLUMNS - 1, TEAM_SELECTION_COUNT - 1);
       }
     }
     if (right) {
-      if (col < 2) {
+      if (col < TEAM_SELECT_COLUMNS - 1 && nextSlot + 1 < TEAM_SELECTION_COUNT) {
         nextSlot += 1;
       } else if (!lockSide) {
         nextSide = nextSide === "left" ? "right" : "left";
-        nextSlot = row * 3;
+        nextSlot = row * TEAM_SELECT_COLUMNS;
       }
     }
-    if (up && row > 0) nextSlot -= 3;
-    if (down) nextSlot = row === 0 ? nextSlot + 3 : 6;
+    if (up && row > 0) nextSlot -= TEAM_SELECT_COLUMNS;
+    if (down) nextSlot = row < lastRow ? Math.min(nextSlot + TEAM_SELECT_COLUMNS, TEAM_SELECTION_COUNT - 1) : START_SLOT;
     return { side: nextSide, slot: nextSlot };
   }
 
@@ -494,19 +589,13 @@ class DodgeballGame {
     for (let step = 0; step < this.typeOrder.length; step += 1) {
       index = (index + direction + this.typeOrder.length) % this.typeOrder.length;
       const nextType = this.typeOrder[index];
-      if (this.canUseCharacterType(side, slot, nextType)) {
-        selections[slot] = nextType;
-        return;
-      }
+      selections[slot] = nextType;
+      return;
     }
   }
 
   canUseCharacterType(side, slot, type) {
-    const count = this.teamSelections[side].reduce((sum, selected, index) => {
-      if (index === slot) return sum;
-      return sum + (selected === type ? 1 : 0);
-    }, 0);
-    return count < 3;
+    return true;
   }
 
   updatePlaying(delta) {
@@ -521,6 +610,7 @@ class DodgeballGame {
     this.updateChargingThrow(delta);
     this.updatePendingThrow(delta);
     this.updatePlayers(delta);
+    this.resolvePlayerCollisions();
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
     this.autoPickupLooseBall();
@@ -663,6 +753,33 @@ class DodgeballGame {
     }
   }
 
+  resolvePlayerCollisions() {
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (let i = 0; i < this.players.length; i += 1) {
+        const a = this.players[i];
+        if (a.defeated || a.downTimer > 0) continue;
+        for (let j = i + 1; j < this.players.length; j += 1) {
+          const b = this.players[j];
+          if (b.defeated || b.downTimer > 0) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          const minDistance = (a.radius + b.radius) * 0.95;
+          if (distance >= minDistance) continue;
+          const push = (minDistance - distance) * 0.5;
+          const nx = dx / distance;
+          const ny = dy / distance;
+          a.x -= nx * push;
+          a.y -= ny * push;
+          b.x += nx * push;
+          b.y += ny * push;
+          a.clampToArea(this.getMoveArea(a, this.ball.owner === a));
+          b.clampToArea(this.getMoveArea(b, this.ball.owner === b));
+        }
+      }
+    }
+  }
+
   getMoveArea(member, isControlled) {
     if (isControlled && member.role === "out") {
       return this.getTeamOutfieldArea(member.team);
@@ -765,7 +882,7 @@ class DodgeballGame {
       const crowdPenalty = team.reduce((sum, teammate) => {
         if (teammate === member || teammate.defeated) return sum;
         const distance = Math.hypot(point.x - teammate.x, point.y - teammate.y);
-        return sum + (distance < 130 ? 130 - distance : 0);
+        return sum + (distance < 210 ? (210 - distance) * 2.4 : 0);
       }, 0);
       const homePenalty = Math.hypot(point.x - member.homeX, point.y - member.homeY) * 0.05;
       const score = holderDistance * 1.45 - crowdPenalty - homePenalty;
@@ -1019,6 +1136,7 @@ class DodgeballGame {
     actor.throwLockTimer = Math.max(actor.throwLockTimer, kind === "shoot" ? 0.3 : 0.18);
     actor.markThrowing(kind === "shoot" ? 0.32 : 0.22, kind);
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, charged.aerialCombo)) {
+      if (kind === "shoot") this.showShotMultiplier(multiplier, actor);
       this.spawnEffect(
         actor.x + actor.facing * 40,
         actor.y - 48 - actor.jumpZ,
@@ -1100,6 +1218,7 @@ class DodgeballGame {
 
     this.pendingThrow = null;
     if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier)) {
+      if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor);
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
         pending.actor.y - 48,
@@ -1539,11 +1658,11 @@ class DodgeballGame {
 
     const thrower = this.ball.thrower;
     const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
-    const facingIncoming = this.isFacingIncomingBall(catcher);
+    const facingQuality = this.getIncomingFacingQuality(catcher);
     const visualDistance = Math.hypot(this.ball.x - catcher.x, this.ball.y - this.ball.z - (catcher.y - catcher.jumpZ - 62));
     const timing = Math.max(0, 1 - visualDistance / 250);
     const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
-    const facingFactor = facingIncoming ? 1.32 : 0.2;
+    const facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
     const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.06;
     const chance = Math.max(0.1, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus) * distanceFactor * facingFactor));
     if (Math.random() <= chance) return true;
@@ -1576,6 +1695,28 @@ class DodgeballGame {
   }
 
   isFacingIncomingBall(catcher) {
+    return this.getIncomingFacingQuality(catcher) === "front";
+  }
+
+  getIncomingFacingQuality(catcher) {
+    const incomingX = -this.ball.vx;
+    const incomingY = -this.ball.vy;
+    const incomingLength = Math.hypot(incomingX, incomingY) || 1;
+    const incoming = { x: incomingX / incomingLength, y: incomingY / incomingLength };
+    const facing = this.getFacingVector(catcher);
+    const dot = incoming.x * facing.x + incoming.y * facing.y;
+    if (dot >= 0.55) return "front";
+    if (dot >= -0.35) return "side";
+    return "back";
+  }
+
+  getFacingVector(player) {
+    if (player.visualDirection === "up") return { x: 0, y: -1 };
+    if (player.visualDirection === "down") return { x: 0, y: 1 };
+    return { x: player.facing || (player.visualDirection === "left" ? -1 : 1), y: 0 };
+  }
+
+  isFacingIncomingBallLegacy(catcher) {
     const horizontal = Math.abs(this.ball.vx) >= Math.abs(this.ball.vy);
     if (horizontal) {
       return catcher.facing === (this.ball.vx < 0 ? 1 : -1);
@@ -1589,7 +1730,10 @@ class DodgeballGame {
     const isPassCut = this.ball.kind === "pass" && this.ball.thrower && this.ball.thrower.team !== catcher.team;
     const isEnemyShot = !friendly && this.ball.kind === "shoot";
     const jumpBonus = catcher.jumpZ > 0 ? 72 : 0;
-    const facingBonus = isEnemyShot && this.isFacingIncomingBall(catcher) ? 34 : 0;
+    const facingQuality = isEnemyShot ? this.getIncomingFacingQuality(catcher) : "front";
+    const facingBonus = isEnemyShot
+      ? facingQuality === "front" ? 38 : facingQuality === "side" ? 14 : -26
+      : 0;
     const techniqueBonus = isEnemyShot ? Math.max(0, (catcher.stats?.technique || 5) - 5) * 6 : 0;
     const inflateX = isEnemyShot ? 52 + facingBonus + techniqueBonus : isPassCut ? 72 : 96;
     const inflateY = (isEnemyShot ? 54 + facingBonus * 0.45 + techniqueBonus : isPassCut ? 64 : 76) + jumpBonus;
@@ -1960,7 +2104,20 @@ class DodgeballGame {
     });
   }
 
+  showShotMultiplier(multiplier, actor) {
+    this.shotMultiplierDisplay = {
+      multiplier,
+      team: actor.team,
+      life: 2.6,
+      maxLife: 2.6
+    };
+  }
+
   updateEffects(delta) {
+    if (this.shotMultiplierDisplay) {
+      this.shotMultiplierDisplay.life -= delta;
+      if (this.shotMultiplierDisplay.life <= 0) this.shotMultiplierDisplay = null;
+    }
     this.effects = this.effects.filter((effect) => {
       effect.life -= delta;
       return effect.life > 0;
@@ -2023,8 +2180,8 @@ class DodgeballGame {
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
-    this.drawHud();
     this.drawGamepadButtonMonitor();
+    this.drawShotMultiplierDebug();
 
     if (this.state === "paused") {
       this.drawOverlay("PAUSE", "STARTまたはEscapeで再開");
@@ -2104,11 +2261,11 @@ class DodgeballGame {
     context.font = "bold 28px Meiryo, sans-serif";
     context.fillText(title, x, 142);
 
-    for (let i = 0; i < 6; i += 1) {
-      const row = Math.floor(i / 3);
-      const col = i % 3;
-      const cardX = x + col * 155;
-      const cardY = 165 + row * 205;
+    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
+      const row = Math.floor(i / TEAM_SELECT_COLUMNS);
+      const col = i % TEAM_SELECT_COLUMNS;
+      const cardX = x + col * 122;
+      const cardY = 165 + row * 185;
       const selected = this.isTeamSelectSlotSelected(side, i);
       const type = this.teamSelections[side][i];
       const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
@@ -2116,15 +2273,15 @@ class DodgeballGame {
       context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
       context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
       context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 132, 158, 8);
+      this.roundRect(context, cardX, cardY, 108, 142, 8);
       context.fill();
       context.stroke();
 
-      this.drawCharacterPreview(cardX + 66, cardY + 108, side, type);
+      this.drawCharacterPreview(cardX + 54, cardY + 100, side, type);
       context.textAlign = "center";
       context.fillStyle = "#263241";
       context.font = "bold 18px Meiryo, sans-serif";
-      context.fillText(definition.label, cardX + 66, cardY + 32);
+      context.fillText(definition.label, cardX + 54, cardY + 30);
       context.font = "14px Meiryo, sans-serif";
       context.fillText(i < 3 ? `内野 ${i + 1}` : `外野 ${i - 2}`, cardX + 66, cardY + 52);
     }
@@ -2136,12 +2293,48 @@ class DodgeballGame {
     return this.teamSelectionSide === side && this.teamSelectionSlot === slot;
   }
 
+  drawTeamSelectSide(side, x, color) {
+    const context = this.context;
+    const title = side === "left" ? "1P TEAM" : "2P TEAM";
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 28px Meiryo, sans-serif";
+    context.fillText(title, x, 142);
+
+    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
+      const row = Math.floor(i / TEAM_SELECT_COLUMNS);
+      const col = i % TEAM_SELECT_COLUMNS;
+      const cardX = x + col * 122;
+      const cardY = 165 + row * 185;
+      const selected = this.isTeamSelectSlotSelected(side, i);
+      const type = this.teamSelections[side][i];
+      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
+
+      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
+      context.lineWidth = selected ? 5 : 2;
+      this.roundRect(context, cardX, cardY, 108, 142, 8);
+      context.fill();
+      context.stroke();
+
+      this.drawCharacterPreview(cardX + 54, cardY + 100, side, type);
+      context.textAlign = "center";
+      context.fillStyle = "#263241";
+      context.font = "bold 18px Meiryo, sans-serif";
+      context.fillText(definition.label, cardX + 54, cardY + 30);
+      context.font = "14px Meiryo, sans-serif";
+      context.fillText(i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`, cardX + 54, cardY + 50);
+    }
+    context.restore();
+  }
+
   drawMatchStartButton() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
     const selected = this.gameMode === "versus"
-      ? this.teamSelectionSlots.left === 6 || this.teamSelectionSlots.right === 6
-      : this.teamSelectionSlot === 6;
+      ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
+      : this.teamSelectionSlot === START_SLOT;
     context.save();
     context.textAlign = "center";
     context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.82)";
@@ -2157,8 +2350,8 @@ class DodgeballGame {
       context.font = "bold 14px Meiryo, sans-serif";
       context.fillStyle = "#4b5360";
       const labels = [];
-      if (this.teamSelectionSlots.left === 6) labels.push("1P");
-      if (this.teamSelectionSlots.right === 6) labels.push("2P");
+      if (this.teamSelectionSlots.left === START_SLOT) labels.push("1P");
+      if (this.teamSelectionSlots.right === START_SLOT) labels.push("2P");
       context.fillText(labels.join(" / "), centerX, 612);
     }
     context.restore();
@@ -2226,9 +2419,9 @@ class DodgeballGame {
     const c = GAME_CONFIG.court;
     const width = c.x + c.w + 260;
     context.fillStyle = "#bfc36d";
-    context.fillRect(c.x - 320, c.y - 210, width + 640, c.h + 500);
-    this.drawBench(c.centerX - 650, 32, "#3087f2");
-    this.drawBench(c.centerX + 430, 32, "#f05a45");
+    context.fillRect(c.x - 420, c.y - 310, width + 840, c.h + 620);
+    this.drawBench(c.centerX - 650, -56, "#3087f2");
+    this.drawBench(c.centerX + 430, -56, "#f05a45");
   }
 
   drawBench(x, y, color) {
@@ -2400,6 +2593,33 @@ class DodgeballGame {
     context.fill();
     context.fillStyle = "#fff7df";
     context.fillText(text, GAME_CONFIG.width - 28, y + 22);
+    context.restore();
+  }
+
+  drawShotMultiplierDebug() {
+    if (!this.shotMultiplierDisplay) return;
+    const context = this.context;
+    const display = this.shotMultiplierDisplay;
+    const alpha = Math.max(0, Math.min(1, display.life / 0.35, 1));
+    const text = `SHOT x${display.multiplier.toFixed(2)}`;
+    const teamText = display.team === "left" ? "1P" : "2P";
+
+    context.save();
+    context.globalAlpha = alpha;
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.textAlign = "left";
+    const width = Math.max(134, context.measureText(text).width + 34);
+    const x = 14;
+    const y = 14;
+    context.fillStyle = "rgba(20, 26, 36, 0.72)";
+    this.roundRect(context, x, y, width, 50, 7);
+    context.fill();
+    context.fillStyle = display.team === "left" ? "#9fd0ff" : "#ffb0a6";
+    context.font = "bold 13px Meiryo, sans-serif";
+    context.fillText(teamText, x + 14, y + 19);
+    context.fillStyle = "#fff7df";
+    context.font = "bold 20px Meiryo, sans-serif";
+    context.fillText(text, x + 14, y + 41);
     context.restore();
   }
 

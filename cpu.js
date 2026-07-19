@@ -240,7 +240,7 @@ class CPUController {
       const holderDistance = Math.hypot(p.x - holder.x, p.y - holder.y);
       const teammatePenalty = this.teammateCrowding(member, p.x, p.y);
       const homePenalty = Math.hypot(p.x - member.homeX, p.y - member.homeY) * 0.06;
-      const score = holderDistance * 1.45 - teammatePenalty - homePenalty;
+      const score = holderDistance * 1.45 - teammatePenalty * 1.8 - homePenalty;
       if (score > bestScore) {
         best = p;
         bestScore = score;
@@ -412,7 +412,7 @@ class CPUController {
     for (const teammate of this.team) {
       if (teammate === member || teammate.defeated) continue;
       const distance = Math.hypot(teammate.x - x, teammate.y - y);
-      if (distance < 140) penalty += 140 - distance;
+      if (distance < 220) penalty += (220 - distance) * 2.2;
     }
     return penalty;
   }
