@@ -540,23 +540,33 @@ class CPUController {
     if (!ballComing) return;
 
     this.reactionTimer -= delta;
-    if (this.reactionTimer > 0) return;
+    if (this.reactionTimer > 0 && !this.hasUrgentDefender()) return;
 
     for (const member of this.team.filter((p) => p.role === "inner" && !p.defeated)) {
       const command = this.commands.get(member.id);
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
-      const maxReactDistance = member.cpuProfile === "hinomaruBombers" ? 620 : 430;
+      const technique = member.stats?.technique || 5;
+      const speed = member.stats?.speed || 5;
+      const jump = member.stats?.jump || 5;
+      const defenseStat = Math.max(technique, speed, jump);
+      const maxReactDistance = (member.cpuProfile === "hinomaruBombers" ? 620 : 430) + Math.max(0, defenseStat - 5) * 36;
       if (distance > maxReactDistance) continue;
 
       const frontShot = this.isFrontShot(member);
-      const laneThreat = Math.abs(this.ball.y - member.y) < 105;
+      const nearShot = distance < 210;
+      const closePanic = distance < 145;
+      const laneThreat = Math.abs(this.ball.y - member.y) < 105 + Math.max(0, speed - 5) * 9;
       const throwerDistance = this.ball.thrower ? Math.hypot(this.ball.thrower.x - member.x, this.ball.thrower.y - member.y) : distance;
       const farShot = throwerDistance > 520 || distance > 260;
-      const readyToReact = frontShot && farShot;
+      const quickDefender = defenseStat >= 7;
+      const readyToReact = frontShot && (farShot || (quickDefender && nearShot));
       const specialShot = Boolean(this.ball.specialShotType);
       const shotMultiplier = this.ball.shotMultiplier || 1;
       const strongShot = specialShot || shotMultiplier >= 1.28 || this.ball.power >= 28;
       const weakShot = !specialShot && shotMultiplier <= 1.08 && this.ball.power <= 23;
+      const techniqueBoost = 1 + Math.max(0, technique - 5) * 0.32;
+      const speedBoost = 1 + Math.max(0, speed - 5) * 0.26;
+      const jumpBoost = 1 + Math.max(0, jump - 5) * 0.25;
       const dodgeChance = strongShot
         ? readyToReact ? 0.9 : frontShot ? 0.72 : 0.3
         : readyToReact ? 0.42 : frontShot ? 0.28 : 0.14;
@@ -576,27 +586,56 @@ class CPUController {
         profileDodgeScale = strongShot ? 1.12 : 0.96;
       }
 
-      const catchDistance = member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280);
-      if (frontShot && distance < catchDistance && Math.random() < catchChance * profileCatchScale) {
+      const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30;
+      const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
+      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1);
+      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
+      if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
         command.catch = true;
-      } else if (laneThreat && Math.random() < Math.min(0.96, dodgeChance * profileDodgeScale)) {
-        this.dodgeIncomingShot(command, member, readyToReact || strongShot);
+      } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
+        this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, { speed, jump, closePanic });
       }
     }
 
     this.reactionTimer = this.randomReaction();
   }
 
-  dodgeIncomingShot(command, member, readyToReact) {
+  hasUrgentDefender() {
+    for (const member of this.team) {
+      if (member.defeated || member.role !== "inner") continue;
+      const stats = member.stats || {};
+      const defenseStat = Math.max(stats.technique || 5, stats.speed || 5, stats.jump || 5);
+      if (defenseStat < 7) continue;
+      const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
+      const laneThreat = Math.abs(this.ball.y - member.y) < 126;
+      if (distance < 230 && laneThreat) return true;
+    }
+    return false;
+  }
+
+  dodgeIncomingShot(command, member, readyToReact, traits = {}) {
+    const speed = traits.speed ?? member.stats?.speed ?? 5;
+    const jump = traits.jump ?? member.stats?.jump ?? 5;
     const dodgeRoll = Math.random();
-    if (dodgeRoll < 0.42) {
+    const speedBias = Math.max(0, speed - 5) * 0.08;
+    const jumpBias = Math.max(0, jump - 5) * 0.1;
+    if (dodgeRoll < 0.3 - Math.min(0.16, speedBias + jumpBias * 0.5)) {
       command.crouch = true;
-    } else if (dodgeRoll < 0.78 && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
+    } else if (dodgeRoll < 0.58 + jumpBias && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
       command.jump = true;
     }
-    command.moveY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
-    command.moveX = this.ball.vx > 0 ? -0.42 : 0.42;
-    command.dash = readyToReact;
+    const incomingSpeed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+    const perpendicularX = -this.ball.vy / incomingSpeed;
+    const perpendicularY = this.ball.vx / incomingSpeed;
+    const awayY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const lateralStrength = speed >= 7 ? 1 : 0.62;
+    command.moveX = perpendicularX * side * lateralStrength + (this.ball.vx > 0 ? -0.28 : 0.28);
+    command.moveY = perpendicularY * side * lateralStrength + awayY * (speed >= 7 ? 0.42 : 0.26);
+    const length = Math.hypot(command.moveX, command.moveY) || 1;
+    command.moveX /= length;
+    command.moveY /= length;
+    command.dash = readyToReact || speed >= 7 || traits.closePanic;
   }
 
   isFrontShot(member) {

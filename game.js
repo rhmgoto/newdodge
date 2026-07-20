@@ -2198,13 +2198,15 @@ class DodgeballGame {
     const thrower = this.ball.thrower;
     const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
     const facingQuality = this.getIncomingFacingQuality(catcher);
+    const technique = catcher.stats?.technique || 5;
     const visualDistance = Math.hypot(this.ball.x - catcher.x, this.ball.y - this.ball.z - (catcher.y - catcher.jumpZ - 62));
     const timing = Math.max(0, 1 - visualDistance / 250);
     const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
     const facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
-    const techniqueBonus = ((catcher.stats?.technique || 5) - 5) * 0.06;
+    const techniqueBonus = (technique - 5) * 0.075;
+    const expertCloseCatchBonus = technique >= 7 && facingQuality === "front" && visualDistance < 170 ? 0.16 : 0;
     const specialCatchPenalty = this.ball.specialShotType === "iron" ? 0.34 : 1;
-    const chance = Math.max(0.06, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus) * distanceFactor * facingFactor * specialCatchPenalty));
+    const chance = Math.max(0.06, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) * distanceFactor * facingFactor * specialCatchPenalty));
     if (Math.random() <= chance) return true;
 
     if (this.ball.specialShotType === "iron") {
