@@ -382,6 +382,7 @@ class Ball {
 
   getSpecialColor() {
     if (this.specialShotType === "boost") return "#ff6b1a";
+    if (this.specialShotType === "triple") return "#ffcc8a";
     if (this.specialShotType === "lightning") return "#66f6ff";
     if (this.specialShotType === "iron") return "#7e8592";
     if (this.specialShotType === "boomerang") return "#ffe36a";

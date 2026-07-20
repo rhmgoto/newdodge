@@ -278,6 +278,9 @@ class CPUController {
     if (holder.cpuProfile === "hinomaruBombers") {
       return this.getHinomaruBombersHolderPlan(holder);
     }
+    if (holder.cpuProfile === "americanBigBalls") {
+      return this.getAmericanBigBallsHolderPlan(holder);
+    }
 
     const roll = Math.random();
     let type = "normal-shot";
@@ -394,6 +397,44 @@ class CPUController {
     }
 
     return this.createHolderPlan(holder, type, 1.02 + Math.random() * 0.28);
+  }
+
+  getAmericanBigBallsHolderPlan(holder) {
+    const roll = Math.random();
+    let type = "pass-chain";
+    if (holder.name === "\u30b8\u30e7\u30fc") {
+      type = roll < 0.24 ? "dash-jump-strong-shot"
+        : roll < 0.48 ? "dash-strong-shot"
+          : roll < 0.64 ? "jump-strong-shot"
+            : roll < 0.78 ? "center-shot"
+              : roll < 0.9 ? "normal-shot"
+                : "pass-chain";
+    } else if (this.passChainFinisher) {
+      type = roll < 0.36 ? "dash-strong-shot"
+        : roll < 0.58 ? "jump-strong-shot"
+          : roll < 0.78 ? "center-shot"
+            : "normal-shot";
+      this.passChainFinisher = false;
+    } else if (this.passChainRemaining > 0) {
+      this.passChainRemaining -= 1;
+      type = "pass-chain";
+      if (this.passChainRemaining <= 0) {
+        this.passChainFinisher = true;
+      }
+    } else if (holder.role === "inner") {
+      type = roll < 0.58 ? "pass-chain"
+        : roll < 0.74 ? "dash-strong-shot"
+          : roll < 0.86 ? "jump-strong-shot"
+            : roll < 0.94 ? "center-shot"
+              : "normal-shot";
+    } else {
+      type = roll < 0.64 ? "pass-chain"
+        : roll < 0.82 ? "dash-strong-shot"
+          : roll < 0.92 ? "jump-strong-shot"
+            : "normal-shot";
+    }
+
+    return this.createHolderPlan(holder, type, 1.08 + Math.random() * 0.32);
   }
 
   createHolderPlan(holder, type, chargeTime) {

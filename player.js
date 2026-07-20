@@ -117,6 +117,7 @@ class Player {
     this.trimColor = options.trimColor || "#ffffff";
     this.faceColor = options.faceColor || "#ffd4a3";
     this.hairColor = options.hairColor || "#3d2a1f";
+    this.eyeColor = options.eyeColor || PLAYER_MODEL.visor;
     this.cpuProfile = options.cpuProfile || null;
     this.cpuControlled = Boolean(options.cpuControlled);
     this.specialShotType = options.specialShotType || null;
@@ -814,7 +815,26 @@ class Player {
     context.beginPath();
     context.ellipse(x, y, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
-    if (this.uniformEmblem === "hinomaru") {
+    if (this.uniformEmblem === "usaStripes" || this.uniformEmblem === "joeBib") {
+      context.save();
+      context.clip();
+      context.fillStyle = "#111318";
+      const stripeH = 9;
+      for (let sy = y - 38 * body.torsoY; sy < y + 38 * body.torsoY; sy += stripeH * 2) {
+        context.fillRect(x - 34 * body.torsoX, sy, 68 * body.torsoX, stripeH);
+      }
+      context.restore();
+    }
+    if (this.uniformEmblem === "joeBib") {
+      context.fillStyle = "#f7f7f2";
+      this.roundRect(context, x - 14 * body.torsoX, y - 19 * body.torsoY, 28 * body.torsoX, 32 * body.torsoY, 4);
+      context.fill();
+      context.fillStyle = "#d92828";
+      context.font = "bold 14px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("J", x, y - 3);
+    } else if (this.uniformEmblem === "hinomaru") {
       context.fillStyle = "#d92828";
       context.beginPath();
       context.arc(x, y - 3, Math.max(7, 10 * Math.min(body.torsoX, body.torsoY)), 0, Math.PI * 2);
@@ -940,7 +960,7 @@ class Player {
       return;
     }
 
-    context.fillStyle = PLAYER_MODEL.visor;
+    context.fillStyle = this.eyeColor || PLAYER_MODEL.visor;
     context.beginPath();
     const frontView = direction === "down";
     const eye1X = frontView ? x - 8 : x + 8;
