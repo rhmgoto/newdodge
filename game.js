@@ -3682,11 +3682,8 @@ class DodgeballGame {
   drawPlayableTeamSelectSide(side, x, title, color) {
     const team = this.getSelectedTeamForSide(side);
     this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
-    if (!this.teamSelectionConfirmed?.[side]) {
-      this.drawTeamPendingPanel(team, x + 54, 278, color);
-      return;
-    }
-    this.drawTeamPlayerCards(side, team, x, 264, color, Boolean(team?.isCustom));
+    const editable = Boolean(team?.isCustom && this.teamSelectionConfirmed?.[side]);
+    this.drawTeamPlayerCards(side, team, x, 264, color, editable);
   }
 
   drawEditableTeamCards(side, x, y, color) {
@@ -3780,7 +3777,11 @@ class DodgeballGame {
       const row = Math.floor(i / 4);
       const col = i % 4;
       const cardX = x + col * 136;
-      const cardY = y + row * 182;
+      const cardY = y + row * 180;
+      if (i === 0) {
+        context.fillStyle = "#dff8ff";
+        context.fillRect(x - 8, y - 36, 600, 34);
+      }
       const player = editable ? null : team?.players?.[i];
       const type = editable
         ? this.teamSelections[side][i]
@@ -3798,30 +3799,30 @@ class DodgeballGame {
       context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
       context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
       context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 122, 168, 8);
+      this.roundRect(context, cardX, cardY, 122, 170, 8);
       context.fill();
       context.stroke();
 
       context.textAlign = "center";
       context.fillStyle = "#263241";
       context.font = "bold 13px Meiryo, sans-serif";
-      context.fillText(title, cardX + 61, cardY + 18);
+      context.fillText(title, cardX + 61, cardY + 17);
       context.font = "12px Meiryo, sans-serif";
-      context.fillText(roleLabel, cardX + 61, cardY + 34);
+      context.fillText(roleLabel, cardX + 61, cardY + 32);
 
-      this.drawCharacterPreview(cardX + 61, cardY + 92, side, type, previewStyle);
+      this.drawCharacterPreview(cardX + 61, cardY + 105, side, type, previewStyle, 0.36);
 
       context.fillStyle = "#263241";
       context.font = "bold 12px Meiryo, sans-serif";
-      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 120);
+      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 130);
       context.font = "11px Meiryo, sans-serif";
       context.fillText(
         `P${stats.power ?? "-"} S${stats.speed ?? "-"} J${stats.jump ?? "-"} T${stats.technique ?? "-"}`,
         cardX + 61,
-        cardY + 139
+        cardY + 147
       );
       context.font = "10px Meiryo, sans-serif";
-      context.fillText(this.getSpecialShotLabel(player?.specialShotType), cardX + 61, cardY + 158);
+      context.fillText(this.getSpecialShotLabel(player?.specialShotType), cardX + 61, cardY + 163);
       context.textAlign = "left";
     }
 
@@ -3878,7 +3879,7 @@ class DodgeballGame {
     context.restore();
   }
 
-  drawCharacterPreview(x, y, side, type, style = null) {
+  drawCharacterPreview(x, y, side, type, style = null, scale = 0.48) {
     const context = this.context;
     const body = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
     const suit = style?.uniformColor || (side === "left" ? "#0057ff" : "#f01818");
@@ -3886,7 +3887,7 @@ class DodgeballGame {
     const hair = style?.hairColor || "#f2c14e";
     context.save();
     context.translate(x, y);
-    context.scale(body.scaleX * 0.48, body.scaleY * 0.48);
+    context.scale(body.scaleX * scale, body.scaleY * scale);
     context.strokeStyle = pants;
     context.lineCap = "round";
     context.lineJoin = "round";
@@ -3913,6 +3914,25 @@ class DodgeballGame {
     context.beginPath();
     context.ellipse(0, -42, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
+    if (style?.uniformEmblem === "usaStripes" || style?.uniformEmblem === "joeBib") {
+      context.save();
+      context.clip();
+      context.fillStyle = "#111318";
+      for (let stripeY = -76; stripeY <= -10; stripeY += 14) {
+        context.fillRect(-32 * body.torsoX, stripeY, 64 * body.torsoX, 7);
+      }
+      context.restore();
+    }
+    if (style?.uniformEmblem === "joeBib") {
+      context.fillStyle = "#f7f7f2";
+      this.roundRect(context, -13 * body.torsoX, -58 * body.torsoY, 26 * body.torsoX, 27 * body.torsoY, 4);
+      context.fill();
+      context.fillStyle = "#d92828";
+      context.font = "bold 22px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("J", 0, -44);
+    }
     if (style?.uniformEmblem === "hinomaru") {
       context.fillStyle = "#d92828";
       context.beginPath();
@@ -3946,7 +3966,7 @@ class DodgeballGame {
       context.restore();
       context.save();
       context.translate(x, y);
-      context.scale(body.scaleX * 0.48, body.scaleY * 0.48);
+      context.scale(body.scaleX * scale, body.scaleY * scale);
       context.fillStyle = "#ffd1a3";
       context.beginPath();
       context.arc(0, -100, 29 * body.headScale, 0, Math.PI * 2);
