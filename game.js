@@ -39,7 +39,8 @@ const GAME_CONFIG = {
   ball: {
     radius: 37,
     damage: 20,
-    shootSpeed: 1197,
+    shootSpeed: 1377,
+    specialShootSpeed: 1197,
     passSpeed: 645,
     moveBonus: 0.34,
     gravity: 520,
@@ -48,7 +49,7 @@ const GAME_CONFIG = {
   },
   battle: {
     pickupDistance: 62,
-    rollingPickupDistance: 168,
+    rollingPickupDistance: 210,
     catchDuration: 0.36,
     catchWidth: 74,
     catchHeight: 92,
@@ -66,6 +67,10 @@ const GAME_CONFIG = {
     depthTop: 140,
     depthBottom: 1080,
     characterScale: 1.56,
+    spiritMax: 10,
+    spiritFillSeconds: 20,
+    spiritDamageGain: 2,
+    spiritDefeatGain: 5,
     stamina: {
       shootCost: 18,
       shootChargeDrainPerSecond: 11,
@@ -157,6 +162,7 @@ class DodgeballGame {
       : null;
     this.effects = [];
     this.message = "READY";
+    this.spiritPoints = { left: 0, right: 0 };
     this.autoSwitchCooldown = 0;
     this.rightStickSwitchCooldown = 0;
     this.manualSwitchGrace = 0;
@@ -1065,6 +1071,7 @@ class DodgeballGame {
 
   updatePlaying(delta) {
     this.updateEffects(delta);
+    this.updateSpirit(delta);
     if (this.gameMode === "watch") {
       this.cpuControllerLeft?.update(delta);
       this.cpuController?.update(delta);
@@ -1093,6 +1100,13 @@ class DodgeballGame {
     this.handleHits();
     this.ensureBallIsPlayable();
     this.checkGameOver();
+  }
+
+  updateSpirit(delta) {
+    const max = GAME_CONFIG.battle.spiritMax;
+    const gain = max / GAME_CONFIG.battle.spiritFillSeconds;
+    this.spiritPoints.left = Math.min(max, this.spiritPoints.left + gain * delta);
+    this.spiritPoints.right = Math.min(max, this.spiritPoints.right + gain * delta);
   }
 
   handlePlayerButtons() {
@@ -1726,6 +1740,7 @@ class DodgeballGame {
       ? pending.specialType || this.getSpecialShotType(pending.actor, pending.shotMultiplier)
       : null;
     if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier, specialType)) {
+      if (specialType) this.consumeSpirit(pending.actor.team);
       if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
@@ -1958,7 +1973,7 @@ class DodgeballGame {
   }
 
   getSpecialShotType(actor, multiplier) {
-    if (multiplier < 1.5) return null;
+    if (!this.hasFullSpirit(actor.team)) return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";
@@ -2314,8 +2329,10 @@ class DodgeballGame {
       const specialType = this.ball.specialShotType;
       const damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
       const knockbackScale = specialType ? 1.5 : 1;
+      const hpBefore = target.hp;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
+        this.addSpiritForDamage(target.team, hpBefore, target.hp);
         this.ball.hitPlayerIds?.add(target.id);
         if (specialType === "lightning") {
           if (target.hp > 0) {
@@ -2356,6 +2373,29 @@ class DodgeballGame {
     return baseDamage;
   }
 
+  addSpirit(team, amount) {
+    if (!this.spiritPoints || !team) return;
+    const max = GAME_CONFIG.battle.spiritMax;
+    this.spiritPoints[team] = Math.max(0, Math.min(max, (this.spiritPoints[team] || 0) + amount));
+  }
+
+  addSpiritForDamage(team, hpBefore, hpAfter) {
+    if (hpBefore <= 0) return;
+    const gain = hpAfter <= 0
+      ? GAME_CONFIG.battle.spiritDefeatGain
+      : GAME_CONFIG.battle.spiritDamageGain;
+    this.addSpirit(team, gain);
+  }
+
+  hasFullSpirit(team) {
+    return (this.spiritPoints?.[team] || 0) >= GAME_CONFIG.battle.spiritMax;
+  }
+
+  consumeSpirit(team) {
+    if (!this.spiritPoints || !team) return;
+    this.spiritPoints[team] = 0;
+  }
+
   healTeam(teamName, amount) {
     const team = teamName === "left" ? this.leftTeam : this.rightTeam;
     for (const member of team) {
@@ -2377,7 +2417,9 @@ class DodgeballGame {
       const distance = Math.hypot(enemy.x - primaryTarget.x, enemy.y - primaryTarget.y);
       if (distance > splashRadius) continue;
       const direction = enemy.x >= primaryTarget.x ? 1 : -1;
+      const hpBefore = enemy.hp;
       if (enemy.takeDamage(splashDamage, direction, GAME_CONFIG.battle, 1.5)) {
+        this.addSpiritForDamage(enemy.team, hpBefore, enemy.hp);
         enemy.stun(0.36);
         this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 70, "#8ffcff", "special");
         this.spawnDamageNumber(enemy, splashDamage);
@@ -2823,6 +2865,7 @@ class DodgeballGame {
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
+    this.drawSpiritGauges();
     this.drawGamepadButtonMonitor();
     this.drawShotMultiplierDebug();
 
@@ -4031,6 +4074,39 @@ class DodgeballGame {
     context.fillStyle = this.input.gamepadConnected ? "#c6ff9a" : "#f7d8a8";
     context.fillText(this.input.getGamepadStatusText(), centerX, 66);
     context.restore();
+  }
+
+  drawSpiritGauges() {
+    if (!this.spiritPoints) return;
+    const context = this.context;
+    const max = GAME_CONFIG.battle.spiritMax;
+    const drawGauge = (team, x, y, color, label) => {
+      const value = Math.max(0, Math.min(max, this.spiritPoints[team] || 0));
+      const ratio = value / max;
+      const full = value >= max;
+      context.save();
+      context.fillStyle = "rgba(21, 29, 38, 0.72)";
+      this.roundRect(context, x, y, 270, 42, 8);
+      context.fill();
+      context.strokeStyle = full ? "#fff36a" : "rgba(255,255,255,0.42)";
+      context.lineWidth = full ? 4 : 2;
+      context.stroke();
+      context.fillStyle = "rgba(255,255,255,0.18)";
+      this.roundRect(context, x + 78, y + 12, 150, 16, 6);
+      context.fill();
+      context.fillStyle = full ? "#fff36a" : color;
+      this.roundRect(context, x + 78, y + 12, 150 * ratio, 16, 6);
+      context.fill();
+      context.fillStyle = "#fff7df";
+      context.font = "bold 15px Meiryo, sans-serif";
+      context.textAlign = "left";
+      context.fillText(label, x + 12, y + 27);
+      context.textAlign = "right";
+      context.fillText(`${Math.floor(value)}/${max}`, x + 258, y + 27);
+      context.restore();
+    };
+    drawGauge("left", 18, 18, "#3087f2", "1P 気合");
+    drawGauge("right", GAME_CONFIG.width - 288, 18, "#f05a45", this.gameMode === "single" ? "CPU 気合" : "2P 気合");
   }
 
   drawGamepadButtonMonitor() {

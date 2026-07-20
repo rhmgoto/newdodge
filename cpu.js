@@ -50,6 +50,7 @@ class CPUController {
     const holder = this.ball.owner;
     const cpuHolder = holder && holder.team === this.teamName ? holder : null;
     const looseBallChaser = this.getLooseBallChaser();
+    const friendlyShotChaser = looseBallChaser ? null : this.getFriendlyFlyingShotChaser();
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
@@ -76,6 +77,18 @@ class CPUController {
       if (looseBallChaser === member) {
         this.moveToward(command, member, this.ball.x, this.ball.y);
         command.dash = true;
+        if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 240) {
+          command.catch = true;
+        }
+        continue;
+      }
+
+      if (friendlyShotChaser === member) {
+        this.moveToward(command, member, this.ball.x, this.ball.y);
+        command.dash = true;
+        if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 260) {
+          command.catch = true;
+        }
         continue;
       }
 
@@ -423,8 +436,9 @@ class CPUController {
     for (const member of this.team) {
       if (member.defeated || !this.canReachLooseBall(member)) continue;
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
-      const roleBias = member.role === "out" ? -35 : 0;
-      const score = distance + roleBias;
+      const roleBias = member.role === "out" ? -45 : 0;
+      const speedBonus = Math.max(0, (member.stats?.speed || 5) - 5) * 18;
+      const score = distance + roleBias - speedBonus;
       if (score < bestScore) {
         best = member;
         bestScore = score;
@@ -437,15 +451,44 @@ class CPUController {
     if (!this.ball.isLoose || this.ball.owner || this.ball.isFlying) return false;
     const area = this.config.areas ? this.config.areas[member.zone] : null;
     if (!area) return false;
-    const margin = member.role === "inner" ? 60 : 80;
+    const margin = member.role === "inner" ? 120 : 150;
     const inOwnZone = (
       this.ball.x >= area.x - margin &&
       this.ball.x <= area.x + area.w + margin &&
       this.ball.y >= area.y - margin &&
       this.ball.y <= area.y + area.h + margin
     );
-    const nearby = Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < (member.role === "inner" ? 520 : 700);
+    const nearby = Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < (member.role === "inner" ? 760 : 980);
     return inOwnZone || nearby;
+  }
+
+  getFriendlyFlyingShotChaser() {
+    if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower) return null;
+    if (this.ball.thrower.team !== this.teamName || this.ball.owner) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (const member of this.team) {
+      if (member.defeated || member === this.ball.thrower) continue;
+      const area = this.config.areas ? this.config.areas[member.zone] : null;
+      if (!area) continue;
+      const bounds = this.getAreaBounds(area);
+      const ballNearZone = (
+        this.ball.x >= bounds.x - 220 &&
+        this.ball.x <= bounds.x + bounds.w + 220 &&
+        this.ball.y >= bounds.y - 180 &&
+        this.ball.y <= bounds.y + bounds.h + 180
+      );
+      const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
+      if (!ballNearZone && distance > 820) continue;
+      const forwardSideBonus = member.role === "out" ? -180 : 0;
+      const speedBonus = Math.max(0, (member.stats?.speed || 5) - 5) * 20;
+      const score = distance + forwardSideBonus - speedBonus;
+      if (score < bestScore) {
+        best = member;
+        bestScore = score;
+      }
+    }
+    return best;
   }
 
   evadeHolder(command, member, holder) {
@@ -750,6 +793,25 @@ class CPUController {
       left: trapezoid.leftTop + (trapezoid.leftBottom - trapezoid.leftTop) * t,
       right: trapezoid.rightTop + (trapezoid.rightBottom - trapezoid.rightTop) * t
     };
+  }
+
+  getAreaBounds(area) {
+    if (!area) return { x: 0, y: 0, w: 0, h: 0 };
+    if (area.rects) {
+      const bounds = area.rects.map((rect) => this.getAreaBounds(rect));
+      const minX = Math.min(...bounds.map((rect) => rect.x));
+      const minY = Math.min(...bounds.map((rect) => rect.y));
+      const maxX = Math.max(...bounds.map((rect) => rect.x + rect.w));
+      const maxY = Math.max(...bounds.map((rect) => rect.y + rect.h));
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+    if (area.trapezoid) {
+      const t = area.trapezoid;
+      const minX = Math.min(t.leftTop, t.rightTop, t.leftBottom, t.rightBottom);
+      const maxX = Math.max(t.leftTop, t.rightTop, t.leftBottom, t.rightBottom);
+      return { x: minX, y: t.yTop, w: maxX - minX, h: t.yBottom - t.yTop };
+    }
+    return area;
   }
 
   nearestActiveOpponent(member) {

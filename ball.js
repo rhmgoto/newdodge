@@ -61,8 +61,9 @@ class Ball {
 
     if (this.isFlying) {
       if (this.kind !== "pass") {
-        this.vx *= Math.pow(0.994, delta * 60);
-        this.vy *= Math.pow(0.994, delta * 60);
+        const airDrag = this.specialShotType ? 0.994 : 0.996;
+        this.vx *= Math.pow(airDrag, delta * 60);
+        this.vy *= Math.pow(airDrag, delta * 60);
       }
       this.vz -= this.config.gravity * delta;
     } else {
@@ -81,6 +82,9 @@ class Ball {
         this.vz = Math.abs(this.vz) * 0.28;
       } else {
         this.vz = 0;
+      }
+      if (this.isFlying && this.kind === "shoot") {
+        this.drop();
       }
       if (!this.owner && Math.hypot(this.vx, this.vy) < 130) {
         this.drop();
@@ -185,25 +189,30 @@ class Ball {
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
     const speedRatio = kind === "shoot" ? this.getShootSpeedRatio(throwMultiplier) : throwMultiplier;
-    const speed = kind === "shoot" ? this.config.shootSpeed * speedRatio : this.config.passSpeed;
+    const shootBaseSpeed = kind === "shoot" && this.specialShotType
+      ? this.config.specialShootSpeed || this.config.shootSpeed
+      : this.config.shootSpeed;
+    const speed = kind === "shoot" ? shootBaseSpeed * speedRatio : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
     if (kind === "shoot" && target) {
       const trajectorySpeed = this.specialShotType === "boost"
-        ? this.config.shootSpeed * 1.8
+        ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
       const targetZ = (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
       const arcLift = this.specialShotType === "boost"
         ? 28 + Math.max(0, throwMultiplier - 0.7) * 18
-        : 70 + Math.max(0, throwMultiplier - 0.7) * 45;
+        : this.specialShotType
+          ? 70 + Math.max(0, throwMultiplier - 0.7) * 45
+          : 110 + Math.max(0, throwMultiplier - 0.7) * 34;
       this.vz = Math.max(-80, Math.min(610, solvedVz + arcLift));
     } else {
       this.vz = kind === "shoot"
-        ? 430 + Math.max(0, throwMultiplier - 0.7) * 120 + actor.jumpZ * 0.12
+        ? 470 + Math.max(0, throwMultiplier - 0.7) * (this.specialShotType ? 120 : 82) + actor.jumpZ * 0.12
         : 650 + actor.jumpZ * 0.15;
       if (this.specialShotType === "boost" && kind === "shoot") {
         this.vz = Math.max(160, this.vz * 0.45);
@@ -219,7 +228,7 @@ class Ball {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
-      const baseSpeed = this.config.shootSpeed;
+      const baseSpeed = this.config.specialShootSpeed || this.config.shootSpeed;
       let gearMultiplier = 0.35;
       if (this.boostElapsed >= 0.95) {
         gearMultiplier = 1.8;
@@ -273,7 +282,7 @@ class Ball {
   getShootSpeedRatio(throwMultiplier = 1) {
     const t = Math.max(0, Math.min(1, ((throwMultiplier || 0.7) - 0.7) / 1.45));
     if (!this.specialShotType) {
-      return 1 + t * 0.4;
+      return 1 + t * 0.24;
     }
     if (this.specialShotType === "boost") {
       return 0.35;
@@ -290,8 +299,11 @@ class Ball {
   launchPassArc(actor, target, passMultiplier = 1) {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
-    catchPoint.z += 208 + Math.max(0, passMultiplier - 1) * 338;
-    this.passDuration = Math.max(0.78, Math.min(1.95, distance / Math.max(1, this.config.passSpeed * (0.95 + passMultiplier * 0.24))));
+    const outfieldPass = actor.role === "out" || target.role === "out";
+    const speedBoost = outfieldPass ? 1.3 : 1;
+    const arcBoost = outfieldPass ? 2.84 : 2;
+    catchPoint.z += (208 + Math.max(0, passMultiplier - 1) * 338) * arcBoost;
+    this.passDuration = Math.max(0.62, Math.min(1.95, distance / Math.max(1, this.config.passSpeed * speedBoost * (0.95 + passMultiplier * 0.24))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
