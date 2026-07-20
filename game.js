@@ -11,10 +11,10 @@ const GAME_CONFIG = {
   width: 1440,
   height: 720,
   court: {
-    x: -356,
+    x: -693,
     y: 138,
-    w: 2551,
-    h: 911,
+    w: 3227,
+    h: 1537,
     centerX: 920
   },
   view: {
