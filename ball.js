@@ -184,16 +184,15 @@ class Ball {
     const dx = targetX - this.x + aimVector.x * aimNudge;
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
-    const flightMultiplier = kind === "shoot" ? Math.max(0.9, throwMultiplier) : throwMultiplier;
-    const specialSpeed = this.specialShotType === "lightning" ? 1.22 : this.specialShotType === "iron" ? 0.72 : this.specialShotType === "boost" ? 0.16 : 1;
-    const speed = kind === "shoot" ? this.config.shootSpeed * flightMultiplier * specialSpeed : this.config.passSpeed;
+    const speedRatio = kind === "shoot" ? this.getShootSpeedRatio(throwMultiplier) : throwMultiplier;
+    const speed = kind === "shoot" ? this.config.shootSpeed * speedRatio : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     this.vx = (dx / length) * speed + actor.vx * moveBonus;
     this.vy = (dy / length) * speed + actor.vy * moveBonus;
     if (kind === "shoot" && target) {
       const trajectorySpeed = this.specialShotType === "boost"
-        ? this.config.shootSpeed * flightMultiplier
+        ? this.config.shootSpeed * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
       const targetZ = (target.jumpZ || 0) + 22;
@@ -220,16 +219,16 @@ class Ball {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
-      const baseSpeed = this.config.shootSpeed * Math.max(0.9, this.shotMultiplier || 1);
-      let gearMultiplier = 0.16;
+      const baseSpeed = this.config.shootSpeed;
+      let gearMultiplier = 0.35;
       if (this.boostElapsed >= 0.95) {
-        gearMultiplier = 1.85;
+        gearMultiplier = 1.8;
       } else if (this.boostElapsed >= 0.68) {
-        gearMultiplier = 1.25;
+        gearMultiplier = 1.35;
       } else if (this.boostElapsed >= 0.42) {
-        gearMultiplier = 0.72;
+        gearMultiplier = 0.95;
       } else if (this.boostElapsed >= 0.2) {
-        gearMultiplier = 0.36;
+        gearMultiplier = 0.6;
       }
       const targetSpeed = baseSpeed * gearMultiplier;
       if (Math.abs(currentSpeed - targetSpeed) > 1) {
@@ -269,6 +268,23 @@ class Ball {
         }
       }
     }
+  }
+
+  getShootSpeedRatio(throwMultiplier = 1) {
+    const t = Math.max(0, Math.min(1, ((throwMultiplier || 0.7) - 0.7) / 1.45));
+    if (!this.specialShotType) {
+      return 1 + t * 0.4;
+    }
+    if (this.specialShotType === "boost") {
+      return 0.35;
+    }
+
+    const specialBase = this.specialShotType === "lightning"
+      ? 1.35
+      : this.specialShotType === "iron"
+        ? 1.05
+        : 1.25;
+    return Math.min(1.6, specialBase + t * 0.3);
   }
 
   launchPassArc(actor, target, passMultiplier = 1) {

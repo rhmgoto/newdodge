@@ -106,7 +106,10 @@ class CPUController {
     if (plan.type === "center-shot") {
       this.moveToward(command, holder, plan.x, plan.y);
       command.dash = true;
-      if (Math.hypot(holder.x - plan.x, holder.y - plan.y) < 42 && this.throwTimer <= 0) {
+      if (!plan.startedAt) plan.startedAt = Date.now();
+      const reachedLine = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 42;
+      const waitedTooLong = Date.now() - plan.startedAt > 2200;
+      if ((reachedLine || waitedTooLong) && this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.36 + Math.random() * 0.24;
         this.holderPlan = null;
@@ -218,7 +221,9 @@ class CPUController {
     if (plan.type === "catch-and-shoot") {
       const target = this.nearestActiveOpponent(holder);
       if (target) this.facePoint(command, holder, target.x, target.y);
-      if (holder.jumpZ > 18 && this.throwTimer <= 0) {
+      if (!plan.startedAt) plan.startedAt = Date.now();
+      const missedAerialWindow = holder.jumpZ <= 0 && Date.now() - plan.startedAt > 900;
+      if ((holder.jumpZ > 18 || missedAerialWindow) && this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.55 + Math.random() * 0.15;
         this.holderPlan = null;
@@ -379,7 +384,7 @@ class CPUController {
   }
 
   createHolderPlan(holder, type, chargeTime) {
-    const centerLineX = this.config.court.centerX + 82;
+    const centerLineX = this.getAttackLineX(holder);
     this.holderPlan = {
       holderId: holder.id,
       type,
@@ -390,6 +395,25 @@ class CPUController {
       startedAt: 0
     };
     return this.holderPlan;
+  }
+
+  getAttackLineX(holder) {
+    const area = this.config.areas ? this.config.areas[holder.zone] : null;
+    const margin = Math.max(holder.radius || 36, 54);
+    if (area?.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, holder.y);
+      if (bounds) {
+        return holder.team === "left"
+          ? bounds.right - margin
+          : bounds.left + margin;
+      }
+    }
+    if (area) {
+      return holder.team === "left"
+        ? area.x + area.w - margin
+        : area.x + margin;
+    }
+    return this.config.court.centerX + (holder.team === "left" ? -82 : 82);
   }
 
   getLooseBallChaser() {

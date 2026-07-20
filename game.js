@@ -4,6 +4,7 @@ const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
+const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
 
 const GAME_CONFIG = {
@@ -38,7 +39,7 @@ const GAME_CONFIG = {
   ball: {
     radius: 37,
     damage: 20,
-    shootSpeed: 798,
+    shootSpeed: 1197,
     passSpeed: 645,
     moveBonus: 0.34,
     gravity: 520,
@@ -92,9 +93,12 @@ class DodgeballGame {
       left: this.createDefaultTeamSelection(),
       right: this.createDefaultTeamSelection()
     };
+    this.selectedTeamIndices = { left: 0, right: 1 };
+    this.teamSelectionConfirmed = { left: false, right: false };
+    this.teamRosterConfirmed = { left: false, right: false };
     this.cpuOpponentIndex = 0;
-    this.watchCpuLeftIndex = 0;
-    this.watchCpuRightIndex = 1;
+    this.watchCpuLeftIndex = 2;
+    this.watchCpuRightIndex = 3;
     this.watchSelectionSlot = 0;
     this.pauseMenuIndex = 0;
     this.previousTime = 0;
@@ -242,10 +246,11 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const cpuTeam = this.getCpuTeamForSide(team);
-    const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
-    const pantsColor = cpuTeam?.pantsColor || color;
-    const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
+    const teamDefinition = this.getTeamDefinitionForSide(team);
+    const cpuTeam = teamDefinition?.isCustom ? null : teamDefinition;
+    const color = teamDefinition?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
+    const pantsColor = teamDefinition?.pantsColor || color;
+    const trim = teamDefinition?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
     const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
     const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
     const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
@@ -377,10 +382,11 @@ class DodgeballGame {
 
   createTeam(team) {
     const isLeft = team === "left";
-    const cpuTeam = this.getCpuTeamForSide(team);
-    const color = cpuTeam?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
-    const pantsColor = cpuTeam?.pantsColor || color;
-    const trim = cpuTeam?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
+    const teamDefinition = this.getTeamDefinitionForSide(team);
+    const cpuTeam = teamDefinition?.isCustom ? null : teamDefinition;
+    const color = teamDefinition?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
+    const pantsColor = teamDefinition?.pantsColor || color;
+    const trim = teamDefinition?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
     const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
     const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
     const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
@@ -396,9 +402,9 @@ class DodgeballGame {
       throwPower: GAME_CONFIG.player.throwPower,
       uniformColor: color,
       pantsColor,
-      uniformEmblem: cpuTeam?.uniformEmblem,
+      uniformEmblem: teamDefinition?.uniformEmblem,
       trimColor: trim,
-      cpuControlled: Boolean(cpuTeam),
+      cpuControlled: this.isCpuControlledSide(team),
       ...options
     });
     const innerPositions = [
@@ -419,11 +425,11 @@ class DodgeballGame {
         zone: innerZone,
         x: position.x,
         y: position.y,
-        characterType: cpuPlayer?.characterType || cpuTeam?.characterType || selectedTypes[index],
-        maxHp: cpuPlayer?.maxHp ?? cpuTeam?.maxHp,
-        maxStamina: cpuPlayer?.maxStamina ?? cpuTeam?.maxStamina,
-        stats: cpuPlayer?.stats || cpuTeam?.stats,
-        hairColor: cpuPlayer?.hairColor || cpuTeam?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
+        characterType: cpuPlayer?.characterType || (teamDefinition?.isCustom ? selectedTypes[index] : teamDefinition?.characterType) || selectedTypes[index],
+        maxHp: cpuPlayer?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: cpuPlayer?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: cpuPlayer?.stats || teamDefinition?.stats,
+        hairColor: cpuPlayer?.hairColor || teamDefinition?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
         cpuProfile: cpuPlayer?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: cpuPlayer?.specialShotType
       });
@@ -437,11 +443,11 @@ class DodgeballGame {
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + topArea.h * 0.45,
         name: getCpuPlayer(5)?.name || cpuTeam?.outNames?.[0] || `${prefix}-out-top`,
-        characterType: getCpuPlayer(5)?.characterType || cpuTeam?.characterType || selectedTypes[5],
-        maxHp: getCpuPlayer(5)?.maxHp ?? cpuTeam?.maxHp,
-        maxStamina: getCpuPlayer(5)?.maxStamina ?? cpuTeam?.maxStamina,
-        stats: getCpuPlayer(5)?.stats || cpuTeam?.stats,
-        hairColor: getCpuPlayer(5)?.hairColor || cpuTeam?.hairColor,
+        characterType: getCpuPlayer(5)?.characterType || (teamDefinition?.isCustom ? selectedTypes[5] : teamDefinition?.characterType) || selectedTypes[5],
+        maxHp: getCpuPlayer(5)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: getCpuPlayer(5)?.stats || teamDefinition?.stats,
+        hairColor: getCpuPlayer(5)?.hairColor || teamDefinition?.hairColor,
         cpuProfile: getCpuPlayer(5)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(5)?.specialShotType
       }),
@@ -452,11 +458,11 @@ class DodgeballGame {
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
         y: bottomArea.y + bottomArea.h * 0.5,
-        characterType: getCpuPlayer(6)?.characterType || cpuTeam?.characterType || selectedTypes[6],
-        maxHp: getCpuPlayer(6)?.maxHp ?? cpuTeam?.maxHp,
-        maxStamina: getCpuPlayer(6)?.maxStamina ?? cpuTeam?.maxStamina,
-        stats: getCpuPlayer(6)?.stats || cpuTeam?.stats,
-        hairColor: getCpuPlayer(6)?.hairColor || cpuTeam?.hairColor,
+        characterType: getCpuPlayer(6)?.characterType || (teamDefinition?.isCustom ? selectedTypes[6] : teamDefinition?.characterType) || selectedTypes[6],
+        maxHp: getCpuPlayer(6)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(6)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: getCpuPlayer(6)?.stats || teamDefinition?.stats,
+        hairColor: getCpuPlayer(6)?.hairColor || teamDefinition?.hairColor,
         cpuProfile: getCpuPlayer(6)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(6)?.specialShotType
       }),
@@ -467,11 +473,11 @@ class DodgeballGame {
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
         y: sideArea.y + sideArea.h * 0.52,
-        characterType: getCpuPlayer(7)?.characterType || cpuTeam?.characterType || selectedTypes[7],
-        maxHp: getCpuPlayer(7)?.maxHp ?? cpuTeam?.maxHp,
-        maxStamina: getCpuPlayer(7)?.maxStamina ?? cpuTeam?.maxStamina,
-        stats: getCpuPlayer(7)?.stats || cpuTeam?.stats,
-        hairColor: getCpuPlayer(7)?.hairColor || cpuTeam?.hairColor,
+        characterType: getCpuPlayer(7)?.characterType || (teamDefinition?.isCustom ? selectedTypes[7] : teamDefinition?.characterType) || selectedTypes[7],
+        maxHp: getCpuPlayer(7)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(7)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: getCpuPlayer(7)?.stats || teamDefinition?.stats,
+        hairColor: getCpuPlayer(7)?.hairColor || teamDefinition?.hairColor,
         cpuProfile: getCpuPlayer(7)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(7)?.specialShotType
       })
@@ -579,17 +585,72 @@ class DodgeballGame {
     ];
   }
 
+  getCustomTeamDefinitions() {
+    return [
+      {
+        id: "blue-stars",
+        name: "ブルースターズ",
+        description: "1P向けの自由編成チーム",
+        isCustom: true,
+        defaultSide: "left",
+        characterType: "normal",
+        uniformColor: "#0057ff",
+        pantsColor: "#0057ff",
+        trimColor: "#f6fbff",
+        hairColor: "#f2c14e",
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
+        stats: GAME_CONFIG.player.stats
+      },
+      {
+        id: "red-fires",
+        name: "レッドファイアーズ",
+        description: "2P向けの自由編成チーム",
+        isCustom: true,
+        defaultSide: "right",
+        characterType: "normal",
+        uniformColor: "#f01818",
+        pantsColor: "#f01818",
+        trimColor: "#fff0cf",
+        hairColor: "#f2c14e",
+        maxHp: GAME_CONFIG.player.maxHp,
+        maxStamina: GAME_CONFIG.player.maxStamina,
+        stats: GAME_CONFIG.player.stats
+      }
+    ];
+  }
+
+  getSelectableTeams() {
+    return [...this.getCustomTeamDefinitions(), ...this.getCpuOpponentTeams()];
+  }
+
   getSelectedCpuOpponentTeam() {
-    const teams = this.getCpuOpponentTeams();
+    const teams = this.getSelectableTeams();
     return teams[this.cpuOpponentIndex] || teams[0];
   }
 
   getCpuOpponentTeamByIndex(index) {
-    const teams = this.getCpuOpponentTeams();
+    const teams = this.getSelectableTeams();
+    return teams[((index % teams.length) + teams.length) % teams.length] || teams[0];
+  }
+
+  getSelectedTeamForSide(team) {
+    const teams = this.getSelectableTeams();
+    const index = this.selectedTeamIndices?.[team] ?? (team === "left" ? 0 : 1);
     return teams[((index % teams.length) + teams.length) % teams.length] || teams[0];
   }
 
   getCpuTeamForSide(team) {
+    const selected = this.getTeamDefinitionForSide(team);
+    if (selected?.isCustom) return null;
+    return selected;
+  }
+
+  isCpuControlledSide(team) {
+    return this.gameMode === "watch" || (this.gameMode === "single" && team === "right");
+  }
+
+  getTeamDefinitionForSide(team) {
     if (this.gameMode === "watch") {
       return team === "left"
         ? this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex)
@@ -598,13 +659,28 @@ class DodgeballGame {
     if (this.gameMode === "single" && team === "right") {
       return this.getSelectedCpuOpponentTeam();
     }
-    return null;
+    return this.getSelectedTeamForSide(team);
   }
 
   changeCpuOpponent(direction) {
-    const teams = this.getCpuOpponentTeams();
+    const teams = this.getSelectableTeams();
     if (teams.length <= 1) return;
     this.cpuOpponentIndex = (this.cpuOpponentIndex + direction + teams.length) % teams.length;
+  }
+
+  changeSelectedTeam(side, direction) {
+    const teams = this.getSelectableTeams();
+    if (teams.length <= 1) return;
+    this.selectedTeamIndices[side] = (this.selectedTeamIndices[side] + direction + teams.length) % teams.length;
+    if (this.teamSelectionConfirmed) {
+      this.teamSelectionConfirmed[side] = false;
+    }
+    if (this.teamRosterConfirmed) {
+      this.teamRosterConfirmed[side] = false;
+    }
+    if (this.gameMode === "single" && side === "right") {
+      this.cpuOpponentIndex = this.selectedTeamIndices.right;
+    }
   }
 
   loop(time) {
@@ -695,9 +771,20 @@ class DodgeballGame {
       this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
       this.state = "teamSelect";
       this.teamSelectionSide = "left";
-      this.teamSelectionSlot = 0;
-      this.teamSelectionSlots = { left: 0, right: 0 };
+      this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+      this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
+      this.teamSelectionConfirmed = { left: false, right: false };
+      this.teamRosterConfirmed = { left: false, right: false };
       this.watchSelectionSlot = 0;
+      if (this.gameMode === "single") {
+        this.selectedTeamIndices = { left: 0, right: 2 };
+        this.cpuOpponentIndex = 2;
+      } else if (this.gameMode === "versus") {
+        this.selectedTeamIndices = { left: 0, right: 1 };
+      } else {
+        this.watchCpuLeftIndex = 2;
+        this.watchCpuRightIndex = 3;
+      }
     }
   }
 
@@ -718,22 +805,63 @@ class DodgeballGame {
 
   updateSingleTeamSelectCursor() {
     const moved = this.moveTeamSelectCursor(this.teamSelectionSide, this.teamSelectionSlot, 1);
-    this.teamSelectionSide = moved.slot < TEAM_SELECTION_COUNT ? "left" : moved.side;
+    this.teamSelectionSide = moved.side;
     this.teamSelectionSlot = moved.slot;
-    if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT) {
+    const selectedTeam = this.getSelectedTeamForSide(this.teamSelectionSide);
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT && selectedTeam?.isCustom) {
       this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
     }
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot === CUSTOM_TEAM_CONFIRM_SLOT && selectedTeam?.isCustom) {
+      this.confirmTeamRoster(this.teamSelectionSide);
+      return;
+    }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
-      this.teamSelectionSlot = START_SLOT;
+      if (!this.teamSelectionConfirmed[this.teamSelectionSide]) {
+        this.teamSelectionConfirmed[this.teamSelectionSide] = true;
+        if (selectedTeam?.isCustom) {
+          this.teamSelectionSlot = 0;
+        } else if (this.teamSelectionSide === "left") {
+          this.teamRosterConfirmed[this.teamSelectionSide] = true;
+          this.teamSelectionSide = "right";
+        } else {
+          this.teamRosterConfirmed[this.teamSelectionSide] = true;
+          this.teamSelectionSlot = START_SLOT;
+        }
+      } else if (selectedTeam?.isCustom) {
+        this.teamSelectionSlot = 0;
+      } else if (this.teamSelectionSide === "left") {
+        this.teamSelectionSide = "right";
+      } else {
+        this.teamSelectionSlot = START_SLOT;
+      }
       return;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
-      this.setupMatch();
-      this.state = "playing";
+      if (this.canStartSelectedMatch()) {
+        this.setupMatch();
+        this.state = "playing";
+      }
     }
     if (this.input.wasPressed("button1")) {
       if (this.teamSelectionSlot === START_SLOT) {
+        this.teamSelectionSide = "right";
         this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+        return;
+      }
+      if (this.teamSelectionSlot < TEAM_SELECTION_COUNT) {
+        this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+        return;
+      }
+      if (this.teamSelectionSlot === CUSTOM_TEAM_CONFIRM_SLOT) {
+        this.teamSelectionSlot = TEAM_SELECTION_COUNT - 1;
+        return;
+      }
+      if (this.teamSelectionSlot === CPU_OPPONENT_SLOT && this.teamSelectionSide === "right") {
+        this.teamSelectionSide = "left";
+        return;
+      }
+      if (this.teamSelectionSlot === CPU_OPPONENT_SLOT && this.teamSelectionConfirmed[this.teamSelectionSide]) {
+        this.teamSelectionConfirmed[this.teamSelectionSide] = false;
         return;
       }
       this.state = "modeSelect";
@@ -741,7 +869,7 @@ class DodgeballGame {
   }
 
   updateWatchTeamSelect() {
-    const teams = this.getCpuOpponentTeams();
+    const teams = this.getSelectableTeams();
     if (this.watchSelectionSlot === 0) {
       this.watchCpuLeftIndex = this.moveWatchTeamIndex(this.watchCpuLeftIndex, teams.length);
     } else if (this.watchSelectionSlot === 1) {
@@ -775,19 +903,71 @@ class DodgeballGame {
     return ((next % length) + length) % length;
   }
 
+  canStartSelectedMatch() {
+    return Boolean(this.teamRosterConfirmed?.left && this.teamRosterConfirmed?.right);
+  }
+
+  confirmTeamRoster(side) {
+    this.teamSelectionConfirmed[side] = true;
+    this.teamRosterConfirmed[side] = true;
+    if (this.gameMode === "single") {
+      if (side === "left") {
+        this.teamSelectionSide = "right";
+        this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+      } else {
+        this.teamSelectionSlot = START_SLOT;
+      }
+      return;
+    }
+
+    this.teamSelectionSlots[side] = START_SLOT;
+  }
+
   updateTeamSelectCursor(side, playerIndex) {
     const moved = this.moveTeamSelectCursor(side, this.teamSelectionSlots[side], playerIndex, true);
     this.teamSelectionSlots[side] = moved.slot;
     const slot = moved.slot;
+    const selectedTeam = this.getSelectedTeamForSide(side);
 
-    if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT) {
+    if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT && selectedTeam?.isCustom) {
       this.changeSelectedCharacterType(side, slot, 1);
     }
+    if (this.input.wasPressed("button2", playerIndex) && slot === CUSTOM_TEAM_CONFIRM_SLOT && selectedTeam?.isCustom) {
+      this.confirmTeamRoster(side);
+      return;
+    }
+    if (this.input.wasPressed("button2", playerIndex) && slot === CPU_OPPONENT_SLOT) {
+      if (!this.teamSelectionConfirmed[side]) {
+        this.teamSelectionConfirmed[side] = true;
+        if (selectedTeam?.isCustom) {
+          this.teamSelectionSlots[side] = 0;
+        } else {
+          this.teamRosterConfirmed[side] = true;
+          this.teamSelectionSlots[side] = START_SLOT;
+        }
+      } else {
+        this.teamSelectionSlots[side] = selectedTeam?.isCustom ? 0 : START_SLOT;
+      }
+    }
     if (this.input.wasPressed("button2", playerIndex) && slot === START_SLOT) {
-      this.setupMatch();
-      this.state = "playing";
+      if (this.canStartSelectedMatch()) {
+        this.setupMatch();
+        this.state = "playing";
+      }
     }
     if (this.input.wasPressed("button1", playerIndex)) {
+      if (slot === START_SLOT || slot < TEAM_SELECTION_COUNT) {
+        this.teamSelectionSlots[side] = CPU_OPPONENT_SLOT;
+        return;
+      }
+      if (slot === CUSTOM_TEAM_CONFIRM_SLOT) {
+        this.teamSelectionSlots[side] = TEAM_SELECTION_COUNT - 1;
+        return;
+      }
+      if (slot === CPU_OPPONENT_SLOT && this.teamSelectionConfirmed[side]) {
+        this.teamSelectionConfirmed[side] = false;
+        return;
+      }
       this.state = "modeSelect";
     }
   }
@@ -801,39 +981,56 @@ class DodgeballGame {
     const down = this.wasMenuDirectionPressed("down", playerIndex);
 
     if (nextSlot === START_SLOT) {
-      if (up) nextSlot = !lockSide ? CPU_OPPONENT_SLOT : TEAM_SELECTION_COUNT - 2;
+      if (up) nextSlot = CPU_OPPONENT_SLOT;
       if (left && !lockSide) nextSide = "left";
       if (right && !lockSide) nextSide = "right";
       return { side: nextSide, slot: nextSlot };
     }
 
-    if (nextSlot === CPU_OPPONENT_SLOT && !lockSide) {
-      if (left) nextSlot = TEAM_SELECT_COLUMNS - 1;
-      if (up) this.changeCpuOpponent(-1);
-      if (down) this.changeCpuOpponent(1);
+    if (nextSlot === CUSTOM_TEAM_CONFIRM_SLOT) {
+      if (left || up || down) nextSlot = TEAM_SELECTION_COUNT - 1;
       return { side: nextSide, slot: nextSlot };
     }
 
-    const row = Math.floor(nextSlot / TEAM_SELECT_COLUMNS);
-    const col = nextSlot % TEAM_SELECT_COLUMNS;
-    const lastRow = Math.floor((TEAM_SELECTION_COUNT - 1) / TEAM_SELECT_COLUMNS);
+    if (nextSlot === CPU_OPPONENT_SLOT) {
+      if (left && !lockSide) nextSide = "left";
+      if (right && !lockSide) nextSide = "right";
+      if (up) this.changeSelectedTeam(nextSide, -1);
+      if (down) this.changeSelectedTeam(nextSide, 1);
+      return { side: nextSide, slot: nextSlot };
+    }
+
+    const selectColumns = this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+      ? 4
+      : TEAM_SELECT_COLUMNS;
+    const row = Math.floor(nextSlot / selectColumns);
+    const col = nextSlot % selectColumns;
+    const lastRow = Math.floor((TEAM_SELECTION_COUNT - 1) / selectColumns);
     if (left) {
       if (col > 0) {
         nextSlot -= 1;
       } else if (!lockSide) {
         nextSide = nextSide === "left" ? "right" : "left";
-        nextSlot = Math.min(row * TEAM_SELECT_COLUMNS + TEAM_SELECT_COLUMNS - 1, TEAM_SELECTION_COUNT - 1);
+        nextSlot = Math.min(row * selectColumns + selectColumns - 1, TEAM_SELECTION_COUNT - 1);
       }
     }
     if (right) {
-      if (col < TEAM_SELECT_COLUMNS - 1 && nextSlot + 1 < TEAM_SELECTION_COUNT) {
+      if (col < selectColumns - 1 && nextSlot + 1 < TEAM_SELECTION_COUNT) {
         nextSlot += 1;
-      } else if (!lockSide) {
-        nextSlot = CPU_OPPONENT_SLOT;
+      } else {
+        nextSlot = this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+          ? CUSTOM_TEAM_CONFIRM_SLOT
+          : CPU_OPPONENT_SLOT;
       }
     }
     if (up && row > 0) nextSlot -= TEAM_SELECT_COLUMNS;
-    if (down) nextSlot = row < lastRow ? Math.min(nextSlot + TEAM_SELECT_COLUMNS, TEAM_SELECTION_COUNT - 1) : (!lockSide ? CPU_OPPONENT_SLOT : START_SLOT);
+    if (down) {
+      nextSlot = row < lastRow
+        ? Math.min(nextSlot + selectColumns, TEAM_SELECTION_COUNT - 1)
+        : this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+          ? CUSTOM_TEAM_CONFIRM_SLOT
+          : CPU_OPPONENT_SLOT;
+    }
     return { side: nextSide, slot: nextSlot };
   }
 
@@ -2827,7 +3024,7 @@ class DodgeballGame {
 
   drawWatchTeamColumn(title, x, y, color, selectedIndex, active) {
     const context = this.context;
-    const teams = this.getCpuOpponentTeams();
+    const teams = this.getSelectableTeams();
     context.save();
     context.textAlign = "left";
     context.fillStyle = color;
@@ -3120,6 +3317,366 @@ class DodgeballGame {
       context.fillText(labels.join(" / "), centerX, 612);
     }
     context.restore();
+  }
+
+  drawTeamSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawMenuBackground();
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 6;
+    context.font = "bold 46px Meiryo, sans-serif";
+    context.strokeText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
+    context.fillText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
+
+    if (this.gameMode === "watch") {
+      this.drawWatchTeamSelect();
+    } else {
+      this.drawPlayableTeamSelectSide("left", 90, this.gameMode === "single" ? "1P TEAM" : "1P TEAM", "#0057ff");
+      this.drawPlayableTeamSelectSide("right", 760, this.gameMode === "single" ? "CPU TEAM" : "2P TEAM", "#f01818");
+    }
+    this.drawMatchStartButton();
+
+    context.fillStyle = "#fff7df";
+    context.font = "18px Meiryo, sans-serif";
+    const help = this.gameMode === "watch"
+      ? "左スティックでチーム選択 / ボタン2で決定・観戦開始 / ボタン1で戻る"
+      : "上下でチーム選択 / ボタン2で決定・タイプ変更・試合開始 / ボタン1で戻る";
+    context.fillText(help, centerX, 688);
+    context.restore();
+  }
+
+  drawPlayableTeamSelectSide(side, x, title, color) {
+    const team = this.getSelectedTeamForSide(side);
+    this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
+    if (!this.teamSelectionConfirmed?.[side]) {
+      this.drawTeamPendingPanel(team, x + 54, 278, color);
+    } else if (team?.isCustom) {
+      this.drawEditableTeamCards(side, x, 270, color);
+    } else {
+      this.drawFixedTeamSummary(team, x + 54, 278, color);
+    }
+  }
+
+  drawTeamPendingPanel(team, x, y, color) {
+    const context = this.context;
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "rgba(255,255,255,0.68)";
+    context.strokeStyle = "rgba(38,50,65,0.28)";
+    context.lineWidth = 2;
+    this.roundRect(context, x, y, 482, 132, 8);
+    context.fill();
+    context.stroke();
+    context.fillStyle = color;
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText(team?.name || "", x + 241, y + 48);
+    context.fillStyle = "#4b5360";
+    context.font = "16px Meiryo, sans-serif";
+    context.fillText("ボタン2でチーム決定", x + 241, y + 86);
+    context.restore();
+  }
+
+  drawTeamChoicePanel(side, x, y, width, title, color, active) {
+    const context = this.context;
+    const teams = this.getSelectableTeams();
+    const selectedIndex = this.selectedTeamIndices[side] ?? 0;
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 26px Meiryo, sans-serif";
+    context.fillText(title, x, y - 16);
+
+    context.fillStyle = active ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+    context.strokeStyle = active ? "#263241" : "rgba(38,50,65,0.36)";
+    context.lineWidth = active ? 5 : 2;
+    this.roundRect(context, x, y, width, 126, 8);
+    context.fill();
+    context.stroke();
+
+    context.font = "bold 18px Meiryo, sans-serif";
+    for (let i = 0; i < teams.length; i += 1) {
+      const rowX = x + 16 + (i % 2) * 278;
+      const rowY = y + 38 + Math.floor(i / 2) * 38;
+      const rowSelected = i === selectedIndex;
+      context.fillStyle = rowSelected ? "rgba(255,216,61,0.9)" : "rgba(255,255,255,0.65)";
+      context.strokeStyle = rowSelected ? "#263241" : "rgba(38,50,65,0.22)";
+      context.lineWidth = rowSelected ? 4 : 1;
+      this.roundRect(context, rowX, rowY - 24, 258, 30, 6);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.fillText(teams[i].name, rowX + 10, rowY - 3);
+    }
+    context.restore();
+  }
+
+  drawEditableTeamCards(side, x, y, color) {
+    const context = this.context;
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.fillText("自由編成メンバー", x, y - 12);
+
+    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const cardX = x + col * 136;
+      const cardY = y + row * 165;
+      const selected = this.isTeamSelectSlotSelected(side, i);
+      const type = this.teamSelections[side][i];
+      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
+
+      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
+      context.lineWidth = selected ? 5 : 2;
+      this.roundRect(context, cardX, cardY, 116, 132, 8);
+      context.fill();
+      context.stroke();
+
+      this.drawCharacterPreview(cardX + 58, cardY + 96, side, type);
+      context.textAlign = "center";
+      context.fillStyle = "#263241";
+      context.font = "bold 16px Meiryo, sans-serif";
+      context.fillText(definition.label, cardX + 58, cardY + 28);
+      context.font = "13px Meiryo, sans-serif";
+      context.fillText(i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`, cardX + 58, cardY + 48);
+      context.textAlign = "left";
+    }
+
+    const confirmSelected = this.isTeamSelectSlotSelected(side, CUSTOM_TEAM_CONFIRM_SLOT);
+    const buttonX = x + 548;
+    const buttonY = y + 108;
+    context.fillStyle = confirmSelected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
+    context.strokeStyle = confirmSelected ? "#263241" : "rgba(38,50,65,0.45)";
+    context.lineWidth = confirmSelected ? 6 : 3;
+    this.roundRect(context, buttonX, buttonY, 94, 62, 8);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#263241";
+    context.font = "bold 22px Meiryo, sans-serif";
+    context.textAlign = "center";
+    context.fillText("決定", buttonX + 47, buttonY + 39);
+    context.restore();
+  }
+
+  drawFixedTeamSummary(team, x, y, color) {
+    const context = this.context;
+    const players = team?.players || [];
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = "rgba(255,255,255,0.82)";
+    context.strokeStyle = "rgba(38,50,65,0.36)";
+    context.lineWidth = 2;
+    this.roundRect(context, x, y, 482, 292, 8);
+    context.fill();
+    context.stroke();
+    context.fillStyle = color;
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText(team?.name || "", x + 18, y + 34);
+    context.fillStyle = "#4b5360";
+    context.font = "15px Meiryo, sans-serif";
+    context.fillText(team?.description || "", x + 18, y + 60);
+    context.fillStyle = "#263241";
+    context.font = "bold 13px Meiryo, sans-serif";
+    context.fillText("選手", x + 18, y + 88);
+    context.fillText("HP", x + 150, y + 88);
+    context.fillText("P", x + 198, y + 88);
+    context.fillText("S", x + 230, y + 88);
+    context.fillText("J", x + 262, y + 88);
+    context.fillText("T", x + 294, y + 88);
+    context.fillText("技", x + 326, y + 88);
+    context.font = "13px Meiryo, sans-serif";
+    for (let i = 0; i < Math.min(players.length, 8); i += 1) {
+      const player = players[i];
+      const rowY = y + 114 + i * 20;
+      const stats = player.stats || {};
+      const roleLabel = player.position === "out" ? "外" : "内";
+      context.fillStyle = i < 5 ? "rgba(0,87,255,0.06)" : "rgba(240,24,24,0.06)";
+      context.fillRect(x + 12, rowY - 14, 458, 18);
+      context.fillStyle = "#263241";
+      context.fillText(`${roleLabel} ${player.name}`, x + 18, rowY);
+      context.fillText(String(player.maxHp ?? team.maxHp ?? ""), x + 150, rowY);
+      context.fillText(String(stats.power ?? ""), x + 202, rowY);
+      context.fillText(String(stats.speed ?? ""), x + 234, rowY);
+      context.fillText(String(stats.jump ?? ""), x + 266, rowY);
+      context.fillText(String(stats.technique ?? ""), x + 298, rowY);
+      context.fillText(this.getSpecialShotShortLabel(player.specialShotType), x + 326, rowY);
+    }
+    context.restore();
+  }
+
+  drawPlayableTeamSelectSide(side, x, title, color) {
+    const team = this.getSelectedTeamForSide(side);
+    this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
+    if (!this.teamSelectionConfirmed?.[side]) {
+      this.drawTeamPendingPanel(team, x + 54, 278, color);
+      return;
+    }
+    this.drawTeamPlayerCards(side, team, x, 264, color, Boolean(team?.isCustom));
+  }
+
+  drawEditableTeamCards(side, x, y, color) {
+    this.drawTeamPlayerCards(side, this.getSelectedTeamForSide(side), x, y, color, true);
+  }
+
+  drawFixedTeamSummary(team, x, y, color) {
+    this.drawTeamPlayerCards("right", team, x - 54, y - 14, color, false);
+  }
+
+  drawTeamPlayerCards(side, team, x, y, color, editable) {
+    const context = this.context;
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.fillText(editable ? "自由編成メンバー" : team?.name || "", x, y - 12);
+
+    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const cardX = x + col * 136;
+      const cardY = y + row * 178;
+      const player = editable ? null : team?.players?.[i];
+      const type = editable
+        ? this.teamSelections[side][i]
+        : player?.characterType || team?.characterType || "normal";
+      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
+      const stats = editable ? definition.stats : player?.stats || team?.stats || definition.stats;
+      const maxHp = editable ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
+      const roleLabel = editable
+        ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
+        : `${player?.position === "out" ? "外" : "内"} ${player?.name || ""}`;
+      const title = editable ? definition.label : player?.name || definition.label;
+      const selected = editable && this.isTeamSelectSlotSelected(side, i);
+      const previewStyle = editable ? null : team;
+
+      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
+      context.lineWidth = selected ? 5 : 2;
+      this.roundRect(context, cardX, cardY, 122, 158, 8);
+      context.fill();
+      context.stroke();
+
+      this.drawCharacterPreview(cardX + 61, cardY + 80, side, type, previewStyle);
+      context.textAlign = "center";
+      context.fillStyle = "#263241";
+      context.font = "bold 14px Meiryo, sans-serif";
+      context.fillText(title, cardX + 61, cardY + 22);
+      context.font = "12px Meiryo, sans-serif";
+      context.fillText(roleLabel, cardX + 61, cardY + 40);
+      context.font = "bold 12px Meiryo, sans-serif";
+      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 112);
+      context.font = "11px Meiryo, sans-serif";
+      context.fillText(
+        `P${stats.power ?? "-"} S${stats.speed ?? "-"} J${stats.jump ?? "-"} T${stats.technique ?? "-"}`,
+        cardX + 61,
+        cardY + 131
+      );
+      context.fillText(`技 ${this.getSpecialShotShortLabel(player?.specialShotType)}`, cardX + 61, cardY + 148);
+      context.textAlign = "left";
+    }
+
+    if (editable) {
+      const confirmSelected = this.isTeamSelectSlotSelected(side, CUSTOM_TEAM_CONFIRM_SLOT);
+      const buttonX = x + 548;
+      const buttonY = y + 118;
+      context.fillStyle = confirmSelected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
+      context.strokeStyle = confirmSelected ? "#263241" : "rgba(38,50,65,0.45)";
+      context.lineWidth = confirmSelected ? 6 : 3;
+      this.roundRect(context, buttonX, buttonY, 94, 62, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 22px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.fillText("決定", buttonX + 47, buttonY + 39);
+    }
+    context.restore();
+  }
+
+  drawTeamPlayerCards(side, team, x, y, color, editable) {
+    const context = this.context;
+    context.save();
+    context.textAlign = "left";
+    context.fillStyle = color;
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.fillText(editable ? "自由編成メンバー" : team?.name || "", x, y - 12);
+
+    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const cardX = x + col * 136;
+      const cardY = y + row * 182;
+      const player = editable ? null : team?.players?.[i];
+      const type = editable
+        ? this.teamSelections[side][i]
+        : player?.characterType || team?.characterType || "normal";
+      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
+      const stats = editable ? definition.stats : player?.stats || team?.stats || definition.stats;
+      const maxHp = editable ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
+      const roleLabel = editable
+        ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
+        : (player?.position === "out" ? "外野" : "内野");
+      const title = editable ? definition.label : player?.name || definition.label;
+      const selected = editable && this.isTeamSelectSlotSelected(side, i);
+      const previewStyle = editable ? null : team;
+
+      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
+      context.lineWidth = selected ? 5 : 2;
+      this.roundRect(context, cardX, cardY, 122, 168, 8);
+      context.fill();
+      context.stroke();
+
+      context.textAlign = "center";
+      context.fillStyle = "#263241";
+      context.font = "bold 13px Meiryo, sans-serif";
+      context.fillText(title, cardX + 61, cardY + 18);
+      context.font = "12px Meiryo, sans-serif";
+      context.fillText(roleLabel, cardX + 61, cardY + 34);
+
+      this.drawCharacterPreview(cardX + 61, cardY + 92, side, type, previewStyle);
+
+      context.fillStyle = "#263241";
+      context.font = "bold 12px Meiryo, sans-serif";
+      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 120);
+      context.font = "11px Meiryo, sans-serif";
+      context.fillText(
+        `P${stats.power ?? "-"} S${stats.speed ?? "-"} J${stats.jump ?? "-"} T${stats.technique ?? "-"}`,
+        cardX + 61,
+        cardY + 139
+      );
+      context.font = "10px Meiryo, sans-serif";
+      context.fillText(this.getSpecialShotLabel(player?.specialShotType), cardX + 61, cardY + 158);
+      context.textAlign = "left";
+    }
+
+    if (editable) {
+      const confirmSelected = this.isTeamSelectSlotSelected(side, CUSTOM_TEAM_CONFIRM_SLOT);
+      const buttonX = x + 548;
+      const buttonY = y + 118;
+      context.fillStyle = confirmSelected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
+      context.strokeStyle = confirmSelected ? "#263241" : "rgba(38,50,65,0.45)";
+      context.lineWidth = confirmSelected ? 6 : 3;
+      this.roundRect(context, buttonX, buttonY, 94, 62, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 22px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.fillText("決定", buttonX + 47, buttonY + 39);
+    }
+    context.restore();
+  }
+
+  isTeamSelectSlotSelected(side, slot) {
+    if (this.gameMode === "versus") return this.teamSelectionSlots[side] === slot;
+    return this.teamSelectionSide === side && this.teamSelectionSlot === slot;
   }
 
   drawMatchStartButton() {
