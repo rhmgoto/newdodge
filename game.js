@@ -62,13 +62,13 @@ const GAME_CONFIG = {
     jumpVelocity: 630,
     jumpGravity: 920,
     dashSpeedMultiplier: 3.2,
-    turnDuration: 0.2,
+    turnDuration: 0.4,
     turnSpeedMultiplier: 0.32,
     depthTop: 140,
     depthBottom: 1080,
     characterScale: 1.56,
     spiritMax: 10,
-    spiritFillSeconds: 20,
+    spiritFillSeconds: 10,
     spiritDamageGain: 2,
     spiritDefeatGain: 5,
     stamina: {
@@ -122,6 +122,8 @@ class DodgeballGame {
     this.lastRuntimeError = null;
     this.runtimeErrorCount = 0;
     this.effects = [];
+    this.audioContext = null;
+    this.boostAudioStage = 0;
     this.message = "READY";
     this.setupMatch();
     requestAnimationFrame((time) => this.loop(time));
@@ -141,6 +143,7 @@ class DodgeballGame {
     this.controlledPlayerId = "left-inner-1";
     this.controlledRightPlayerId = "right-inner-1";
     this.ball = new Ball(GAME_CONFIG.ball);
+    this.boostAudioStage = 0;
     this.ball.x = court.centerX;
     this.ball.y = court.y + court.h * 0.55;
     this.cpuControllerLeft = this.gameMode === "watch"
@@ -586,17 +589,17 @@ class DodgeballGame {
         uniformEmblem: "hinomaru",
         maxHp: 150,
         maxStamina: 110,
-        stats: { power: 7, speed: 7, jump: 7, technique: 7 },
+        stats: { power: 9, speed: 9, jump: 9, technique: 8 },
         cpuProfile: "hinomaruBombers",
         players: [
-          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 9, "boost"),
-          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
-          player("しょう", "inner", "speed", 150, 110, 9, 8, 11, 9, "boomerang"),
-          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
-          player("だいち", "inner", "power", 150, 110, 11, 6, 8, 7, "iron"),
-          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 9, "lightning"),
-          player("えんじ", "out", "speed", 150, 110, 9, 8, 11, 9, "boomerang"),
-          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 9, "boost")
+          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 8, "boost"),
+          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 8, "lightning"),
+          player("しょう", "inner", "speed", 150, 110, 9, 8, 10, 7, "boomerang"),
+          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 8, "lightning"),
+          player("だいち", "inner", "power", 250, 150, 13, 7, 9, 8, "iron"),
+          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 7, "lightning"),
+          player("えんじ", "out", "speed", 150, 110, 9, 8, 9, 7, "boomerang"),
+          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 7, "boost")
         ]
       },
       {
@@ -614,17 +617,17 @@ class DodgeballGame {
         uniformEmblem: "usaStripes",
         maxHp: 140,
         maxStamina: 100,
-        stats: { power: 11, speed: 11, jump: 11, technique: 9 },
+        stats: { power: 10, speed: 10, jump: 11, technique: 8 },
         cpuProfile: "americanBigBalls",
         players: [
-          player("\u30c8\u30e0", "inner", "speed", 140, 100, 11, 12, 14, 9, "triple"),
-          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 14, 9, 8, 10, "iron"),
-          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 11, 16, "triple", { uniformEmblem: "joeBib" }),
-          player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 11, 11, 10, 9, "boomerang"),
-          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 10, 13, 9, 10, "boost"),
-          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 11, 8, 9, 11, "lightning"),
-          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 14, 7, 10, 9, "triple"),
-          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 10, 9, 13, 10, "boomerang")
+          player("\u30c8\u30e0", "inner", "speed", 140, 100, 9, 12, 13, 8, "triple"),
+          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 11, 9, 8, 7, "iron"),
+          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 11, "triple", { uniformEmblem: "joeBib" }),
+          player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 10, 11, 10, 8, "boomerang"),
+          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 8, 13, 9, 8, "boost"),
+          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "lightning"),
+          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "triple"),
+          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "boomerang")
         ]
       }
     ];
@@ -1129,6 +1132,7 @@ class DodgeballGame {
     this.resolvePlayerCollisions();
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
+    this.updateBoostPresentation();
     this.updateTripleBalls(delta);
     this.autoPickupLooseBall();
     this.resetUnreachableOutfieldBall();
@@ -1138,6 +1142,7 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.leftTeam);
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
+    this.handleBoostShotExit();
     this.handleTripleBallHits();
     this.ensureBallIsPlayable();
     this.checkGameOver();
@@ -1186,7 +1191,7 @@ class DodgeballGame {
         radius: GAME_CONFIG.ball.radius * 0.88,
         team: actor.team,
         thrower: actor,
-        power: actor.throwPower * Math.max(0.7, multiplier) * 0.16,
+        power: actor.throwPower * Math.max(0.7, multiplier) * 0.2,
         life: 1.85,
         spin: 0,
         hitPlayerIds: new Set()
@@ -2048,18 +2053,19 @@ class DodgeballGame {
 
   getShotMultiplier(actor, aim, chargeRatio = 0, aerialCombo = false) {
     const movingTowardThrow = actor.vx * aim.x + actor.vy * aim.y > actor.speed * 0.35;
-    const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 : 0;
+    const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 * 0.8 : 0;
     const powerBonus = ((actor.stats?.power || 5) - 5) * 0.04;
     const speedBonus = ((actor.stats?.speed || 5) - 5) * 0.025;
     const jumpStatBonus = actor.jumpZ > 0 ? ((actor.stats?.jump || 5) - 5) * 0.035 : 0;
-    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.3, actor.jumpZ / 430 + jumpStatBonus * 0.55) : 0;
-    const chargeBonus = chargeRatio * 0.55;
+    const jumpBonus = actor.jumpZ > 0 ? Math.min(0.3, actor.jumpZ / 430 + jumpStatBonus * 0.55) * 0.7 : 0;
+    const chargeBonus = chargeRatio * 0.55 * 0.6;
     const aerialBonus = aerialCombo ? 0.2 : 0;
     return Math.max(0.7, Math.min(2.15, 0.7 + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
   }
 
   getSpecialShotType(actor, multiplier) {
     if (!this.hasFullSpirit(actor.team)) return null;
+    if ((multiplier || 0) <= 1.2) return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";
@@ -2261,6 +2267,7 @@ class DodgeballGame {
     for (const catcher of team) {
       if (catcher.defeated || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
       const friendly = catcher.team === this.ball.thrower.team;
+      if (friendly && this.ball.specialShotType === "boomerang") continue;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
       if (!this.canManualCatch(catcher, friendly)) {
@@ -2309,10 +2316,27 @@ class DodgeballGame {
     const timing = Math.max(0, 1 - visualDistance / 250);
     const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
     const facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
-    const techniqueBonus = (technique - 5) * 0.075;
-    const expertCloseCatchBonus = technique >= 7 && facingQuality === "front" && visualDistance < 170 ? 0.16 : 0;
-    const specialCatchPenalty = this.ball.specialShotType === "iron" ? 0.34 : 1;
-    const chance = Math.max(0.06, Math.min(0.98, (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) * distanceFactor * facingFactor * specialCatchPenalty));
+    const techniqueAboveBase = Math.max(0, Math.min(20, technique) - 5);
+    const techniqueBonus = Math.min(5, techniqueAboveBase) * 0.04 + Math.max(0, techniqueAboveBase - 5) * 0.018;
+    const expertCloseCatchBonus = technique >= 10 && facingQuality === "front" && visualDistance < 170
+      ? 0.08 + Math.min(0.04, Math.max(0, technique - 10) * 0.004)
+      : 0;
+    const throwerPower = Math.max(1, Math.min(20, thrower?.stats?.power || 5));
+    const throwerPowerAboveBase = Math.max(0, throwerPower - 5);
+    const throwerPowerPenalty = 1 - (
+      Math.min(5, throwerPowerAboveBase) * 0.01 +
+      Math.max(0, throwerPowerAboveBase - 5) * 0.007
+    );
+    const shotPowerRatio = Math.max(0, (this.ball.power || 20) / 20 - 1);
+    const shotPowerPenalty = 1 - Math.min(0.38, shotPowerRatio * 0.18);
+    const specialCatchPenalty = this.ball.specialShotType === "iron"
+      ? 0.3
+      : this.ball.specialShotType ? 0.5 : 1;
+    const normalChance = Math.max(0.03, Math.min(0.98,
+      (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) *
+      distanceFactor * facingFactor * throwerPowerPenalty * shotPowerPenalty
+    ));
+    const chance = normalChance * specialCatchPenalty;
     if (Math.random() <= chance) return true;
 
     if (this.ball.specialShotType === "iron") {
@@ -2394,7 +2418,11 @@ class DodgeballGame {
     const facingBonus = isEnemyShot
       ? facingQuality === "front" ? 38 : facingQuality === "side" ? 14 : -26
       : 0;
-    const techniqueBonus = isEnemyShot ? Math.max(0, (catcher.stats?.technique || 5) - 5) * 6 : 0;
+    const technique = Math.max(1, Math.min(20, catcher.stats?.technique || 5));
+    const techniqueAboveBase = Math.max(0, technique - 5);
+    const techniqueBonus = isEnemyShot
+      ? Math.min(5, techniqueAboveBase) * 4 + Math.max(0, techniqueAboveBase - 5) * 2
+      : 0;
     const inflateX = isEnemyShot ? 52 + facingBonus + techniqueBonus : isPassCut ? 72 : 96;
     const inflateY = (isEnemyShot ? 54 + facingBonus * 0.45 + techniqueBonus : isPassCut ? 64 : 76) + jumpBonus;
     return {
@@ -2435,7 +2463,7 @@ class DodgeballGame {
           target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 1.2;
         }
         if (specialType === "soul") {
-          this.healTeam(this.ball.thrower.team, 5);
+          this.healTeamByMaxHpRatio(this.ball.thrower.team, 0.1);
         }
         this.spawnEffect(this.ball.x, ballY, this.getSpecialHitColor(specialType), specialType ? "special" : "hit");
         this.spawnDamageNumber(target, damage);
@@ -2478,19 +2506,44 @@ class DodgeballGame {
   }
 
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
-    if (specialType === "triple") {
-      return baseDamage * 1.34;
+    if (specialType === "lightning" || specialType === "triple" || specialType === "boomerang") {
+      return baseDamage * 1.7;
     }
     if (specialType === "boost") {
-      return baseDamage * (1 + Math.min(0.55, travelDistance / 1900 * 0.55));
+      return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
     }
     if (specialType === "iron") {
-      return baseDamage * 1.08;
+      return baseDamage * 2.5;
     }
-    if (specialType === "boomerang") {
-      return baseDamage * 0.86;
+    if (specialType === "soul") {
+      return baseDamage * 1.2;
     }
     return baseDamage;
+  }
+
+  handleBoostShotExit() {
+    if (!this.ball.isFlying || this.ball.kind !== "shoot" || this.ball.specialShotType !== "boost") return;
+
+    const margin = 260;
+    const outside = (
+      this.ball.x < this.ballBounds.x - margin ||
+      this.ball.x > this.ballBounds.x + this.ballBounds.w + margin ||
+      this.ball.y < this.ballBounds.y - margin ||
+      this.ball.y > this.ballBounds.y + this.ballBounds.h + margin
+    );
+    if (!outside) return;
+
+    const throwerTeam = this.ball.thrower?.team;
+    const receiver = throwerTeam ? this.findNearestOutfielder(throwerTeam, this.ball.x, this.ball.y) : null;
+    if (receiver) {
+      this.ball.pickUp(receiver);
+      receiver.throwLockTimer = Math.max(receiver.throwLockTimer, 0.2);
+      this.setControlledMember(receiver.team, receiver);
+      this.spawnEffect(receiver.x, receiver.y - 58, "#ffb347", "catch");
+      return;
+    }
+
+    this.releaseBallAt(GAME_CONFIG.court.centerX, GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55, "loose");
   }
 
   addSpirit(team, amount) {
@@ -2528,10 +2581,22 @@ class DodgeballGame {
     }
   }
 
+  healTeamByMaxHpRatio(teamName, ratio) {
+    const team = teamName === "left" ? this.leftTeam : this.rightTeam;
+    for (const member of team) {
+      if (member.defeated || member.hp <= 0) continue;
+      const before = member.hp;
+      member.hp = Math.min(member.maxHp, member.hp + member.maxHp * ratio);
+      if (member.hp > before) {
+        this.spawnEffect(member.x, member.y - member.jumpZ - 88, "#ffc4e5", "heal");
+      }
+    }
+  }
+
   applyLightningSplash(primaryTarget, baseDamage) {
     const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     const splashRadius = 285;
-    const splashDamage = Math.max(1, baseDamage * 0.026);
+    const splashDamage = Math.max(1, baseDamage * 0.2);
     for (const enemy of enemies) {
       if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
       const distance = Math.hypot(enemy.x - primaryTarget.x, enemy.y - primaryTarget.y);
@@ -2556,7 +2621,7 @@ class DodgeballGame {
     if (specialType === "lightning") return "#8ffcff";
     if (specialType === "iron") return "#aeb4bf";
     if (specialType === "boomerang") return "#a8ff6b";
-    if (specialType === "soul") return "#bdf8ff";
+    if (specialType === "soul") return "#ffc4e5";
     return "#ffe46a";
   }
 
@@ -2886,6 +2951,77 @@ class DodgeballGame {
     this.effects.push({ x, y, color, type, life: 0.32, maxLife: 0.32 });
   }
 
+  updateBoostPresentation() {
+    const boosting = this.ball?.isFlying && this.ball.kind === "shoot" && this.ball.specialShotType === "boost";
+    if (!boosting) {
+      this.boostAudioStage = 0;
+      return;
+    }
+
+    const elapsed = this.ball.boostElapsed;
+    const stage = elapsed >= 0.95 ? 4 : elapsed >= 0.68 ? 3 : elapsed >= 0.42 ? 2 : elapsed >= 0.2 ? 1 : 0;
+    if (stage <= this.boostAudioStage) return;
+
+    this.boostAudioStage = stage;
+    this.effects.push({
+      x: this.ball.x,
+      y: this.ball.y - this.ball.z,
+      color: stage >= 4 ? "#fff36a" : "#ff7a1f",
+      type: "boostBurst",
+      life: 0.42,
+      maxLife: 0.42
+    });
+    this.playBoostBurst(stage);
+  }
+
+  playBoostBurst(stage) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    try {
+      if (!this.audioContext) this.audioContext = new AudioContextClass();
+      if (this.audioContext.state === "suspended") {
+        this.audioContext.resume().then(() => this.playBoostBurst(stage)).catch(() => {});
+        return;
+      }
+
+      const context = this.audioContext;
+      const now = context.currentTime;
+      const duration = 0.16 + stage * 0.035;
+      const gain = context.createGain();
+      const oscillator = context.createOscillator();
+      oscillator.type = "sawtooth";
+      oscillator.frequency.setValueAtTime(72 + stage * 28, now);
+      oscillator.frequency.exponentialRampToValueAtTime(38 + stage * 12, now + duration);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.08 + stage * 0.025, now + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(now);
+      oscillator.stop(now + duration);
+
+      const noiseLength = Math.floor(context.sampleRate * duration);
+      const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
+      const noiseData = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noiseLength; i += 1) {
+        noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseLength);
+      }
+      const noise = context.createBufferSource();
+      const filter = context.createBiquadFilter();
+      const noiseGain = context.createGain();
+      filter.type = "lowpass";
+      filter.frequency.value = 420 + stage * 180;
+      noiseGain.gain.setValueAtTime(0.0001, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.045 + stage * 0.018, now + 0.012);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      noise.buffer = noiseBuffer;
+      noise.connect(filter).connect(noiseGain).connect(context.destination);
+      noise.start(now);
+    } catch (error) {
+      this.audioContext = null;
+    }
+  }
+
   spawnDamageNumber(target, amount) {
     this.effects.push({
       x: target.x + target.facing * -34,
@@ -2893,8 +3029,8 @@ class DodgeballGame {
       color: "#ff3d2f",
       type: "damageNumber",
       text: `-${Math.round(amount)}`,
-      life: 0.75,
-      maxLife: 0.75
+      life: 0.95,
+      maxLife: 0.95
     });
   }
 
@@ -4312,27 +4448,29 @@ class DodgeballGame {
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.textAlign = "center";
-        context.font = "bold 28px Meiryo, sans-serif";
-        context.lineWidth = 5;
+        context.font = "bold 48px Meiryo, sans-serif";
+        context.lineWidth = 8;
         context.strokeStyle = "rgba(38, 50, 65, 0.86)";
         context.fillStyle = effect.color;
-        context.strokeText(effect.text, effect.x, effect.y - progress * 42);
-        context.fillText(effect.text, effect.x, effect.y - progress * 42);
+        context.strokeText(effect.text, effect.x, effect.y - progress * 58);
+        context.fillText(effect.text, effect.x, effect.y - progress * 58);
         context.restore();
         continue;
       }
-      const radius = effect.type === "special"
+      const radius = effect.type === "boostBurst"
+        ? 34 + progress * 126
+        : effect.type === "special"
         ? 30 + progress * 86
         : effect.type === "hit" ? 22 + progress * 58 : 24 + progress * 24;
       context.save();
       context.globalAlpha = 1 - progress;
       context.strokeStyle = effect.color;
-      context.lineWidth = effect.type === "special" ? 9 : effect.type === "hit" || effect.type === "catchStrong" ? 7 : 4;
+      context.lineWidth = effect.type === "boostBurst" ? 12 : effect.type === "special" ? 9 : effect.type === "hit" || effect.type === "catchStrong" ? 7 : 4;
       context.beginPath();
       context.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
       context.stroke();
-      if (effect.type === "hit" || effect.type === "catchStrong" || effect.type === "special") {
-        const count = effect.type === "catchStrong" ? 12 : effect.type === "special" ? 14 : 8;
+      if (effect.type === "hit" || effect.type === "catchStrong" || effect.type === "special" || effect.type === "boostBurst") {
+        const count = effect.type === "boostBurst" ? 20 : effect.type === "catchStrong" ? 12 : effect.type === "special" ? 14 : 8;
         for (let i = 0; i < count; i += 1) {
           const angle = (Math.PI * 2 * i) / count;
           context.beginPath();

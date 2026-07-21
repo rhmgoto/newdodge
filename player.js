@@ -167,7 +167,7 @@ class Player {
   }
 
   clampStat(value) {
-    return Math.max(1, Math.min(10, Number(value) || 5));
+    return Math.max(1, Math.min(20, Number(value) || 5));
   }
 
   getStatScale(name, step) {
@@ -292,7 +292,7 @@ class Player {
   }
 
   jump(config) {
-    if (this.defeated || this.downTimer > 0 || this.jumpZ > 0) return;
+    if (this.defeated || this.downTimer > 0 || this.jumpZ > 0 || this.jumpVelocity > 0) return;
     this.jumpVelocity = config.jumpVelocity * this.getStatScale("jump", 0.08);
     this.state = "jumping";
   }

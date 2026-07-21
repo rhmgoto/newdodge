@@ -103,6 +103,13 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (
+      plan.type.includes("jump") &&
+      !plan.jumpAttempted &&
+      (holder.cpuJumpAttackCooldownUntil || 0) > Date.now()
+    ) {
+      plan.type = "normal-shot";
+    }
     if (plan.type === "pass-chain") {
       this.moveToHome(command, holder);
       if (this.throwTimer <= 0) {
@@ -155,8 +162,9 @@ class CPUController {
     }
 
     if (plan.type === "jump-strong-shot" || plan.type === "charge-jump-shot") {
-      const target = this.nearestActiveOpponent(holder);
-      if (target) this.facePoint(command, holder, target.x, target.y);
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      if (grounded) this.moveToward(command, holder, plan.x, plan.y);
+      else this.stop(command);
       if (this.hasStaleApexChargePlan(plan)) {
         this.resetHolderPlanSoon();
         return;
@@ -171,19 +179,26 @@ class CPUController {
       }
       if (
         plan.chargeStarted &&
-        holder.jumpZ <= 0 &&
-        holder.jumpVelocity <= 0 &&
+        grounded &&
         Date.now() - (plan.startedAt || 0) > Math.max(220, (plan.chargeTime - 0.72) * 1000)
       ) {
+        if (plan.jumpAttempted) {
+          if (Date.now() - plan.jumpStartedAt > 450) this.resetHolderPlanSoon();
+          return;
+        }
         command.jump = true;
+        plan.jumpAttempted = true;
+        plan.jumpStartedAt = Date.now();
+        holder.cpuJumpAttackCooldownUntil = Date.now() + 2200;
       }
       return;
     }
 
     if (plan.type === "dash-jump-strong-shot") {
-      const target = this.nearestActiveOpponent(holder);
-      if (target) this.moveToward(command, holder, target.x, target.y);
-      command.dash = true;
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      if (grounded) this.moveToward(command, holder, plan.x, plan.y);
+      else this.stop(command);
+      command.dash = grounded;
       if (this.hasStaleApexChargePlan(plan)) {
         this.resetHolderPlanSoon();
         return;
@@ -198,11 +213,17 @@ class CPUController {
       }
       if (
         plan.chargeStarted &&
-        holder.jumpZ <= 0 &&
-        holder.jumpVelocity <= 0 &&
+        grounded &&
         Date.now() - (plan.startedAt || 0) > Math.max(260, (plan.chargeTime - 0.7) * 1000)
       ) {
+        if (plan.jumpAttempted) {
+          if (Date.now() - plan.jumpStartedAt > 450) this.resetHolderPlanSoon();
+          return;
+        }
         command.jump = true;
+        plan.jumpAttempted = true;
+        plan.jumpStartedAt = Date.now();
+        holder.cpuJumpAttackCooldownUntil = Date.now() + 2200;
       }
       return;
     }
@@ -220,13 +241,31 @@ class CPUController {
     }
 
     if (plan.type === "jump-shot") {
-      const target = this.nearestActiveOpponent(holder);
-      if (target) this.moveToward(command, holder, target.x, target.y);
-      if (holder.jumpZ <= 0 && holder.jumpVelocity <= 0) command.jump = true;
+      const now = Date.now();
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      if (!plan.startedAt) plan.startedAt = now;
+      if (grounded) {
+        if (plan.jumpAttempted) {
+          if (now - plan.jumpStartedAt > 450) this.resetHolderPlanSoon();
+          return;
+        }
+        this.moveToward(command, holder, plan.x, plan.y);
+        const reachedAttackPoint = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 64;
+        if (reachedAttackPoint || now - plan.startedAt > 850) {
+          command.jump = true;
+          plan.jumpAttempted = true;
+          plan.jumpStartedAt = now;
+          holder.cpuJumpAttackCooldownUntil = now + 2200;
+        }
+      } else {
+        this.stop(command);
+      }
       if (this.isNearJumpApex(holder) && this.throwTimer <= 0) {
         command.shoot = true;
         this.throwTimer = 0.5 + Math.random() * 0.22;
         this.holderPlan = null;
+      } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 1700) {
+        this.resetHolderPlanSoon();
       }
       return;
     }
@@ -446,7 +485,9 @@ class CPUController {
       y: holder.y,
       chargeTime,
       chargeStarted: false,
-      startedAt: 0
+      startedAt: 0,
+      jumpAttempted: false,
+      jumpStartedAt: 0
     };
     return this.holderPlan;
   }

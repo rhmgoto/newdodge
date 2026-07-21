@@ -26,6 +26,7 @@ class Ball {
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
+    this.boostFlightZ = 0;
     this.hitPlayerIds = new Set();
     this.isFlying = false;
     this.isLoose = true;
@@ -34,6 +35,8 @@ class Ball {
     this.spin = 0;
     this.passTime = 0;
     this.passDuration = 0;
+    this.passStartZ = 0;
+    this.passArcHeight = 0;
   }
 
   update(delta, bounds) {
@@ -59,20 +62,26 @@ class Ball {
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
 
+    const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
     if (this.isFlying) {
-      if (this.kind !== "pass") {
+      if (straightBoostFlight) {
+        this.z = this.boostFlightZ;
+        this.vz = 0;
+      } else if (this.kind !== "pass") {
         const airDrag = this.specialShotType ? 0.994 : 0.996;
         this.vx *= Math.pow(airDrag, delta * 60);
         this.vy *= Math.pow(airDrag, delta * 60);
+        this.vz -= this.config.gravity * delta;
+      } else {
+        this.vz -= this.config.gravity * delta;
       }
-      this.vz -= this.config.gravity * delta;
     } else {
       this.vx *= Math.pow(0.80, delta * 60);
       this.vy *= Math.pow(0.80, delta * 60);
       this.vz -= this.config.gravity * delta;
     }
 
-    if (this.z <= 0) {
+    if (!straightBoostFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -90,6 +99,8 @@ class Ball {
         this.drop();
       }
     }
+
+    if (straightBoostFlight) return;
 
     if (this.x < bounds.x + this.radius) {
       this.x = bounds.x + this.radius;
@@ -137,6 +148,7 @@ class Ball {
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
+    this.boostFlightZ = 0;
     this.hitPlayerIds.clear();
     player.hasBall = true;
   }
@@ -161,17 +173,23 @@ class Ball {
     this.x = actor.x + actor.facing * 42;
     this.y = actor.y - 42;
     this.z = actor.jumpZ + 28;
+    if (this.specialShotType === "boost") {
+      this.z = 28;
+    }
     this.passTime = 0;
     this.passDuration = 0;
     this.radius = this.baseRadius;
     if (this.specialShotType === "iron") {
       this.radius = this.baseRadius * 1.2;
+    } else if (this.specialShotType === "soul") {
+      this.radius = this.baseRadius * 2;
     }
     this.travelDistance = 0;
     this.returning = false;
     this.boomerangCurveSign = aimVector?.y >= 0 ? 1 : -1;
     this.boomerangStartDistance = target ? Math.hypot(target.x - actor.x, target.y - actor.y) : 900;
     this.boostElapsed = 0;
+    this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
     this.hitPlayerIds.clear();
 
     if (kind === "pass") {
@@ -195,8 +213,19 @@ class Ball {
     const speed = kind === "shoot" ? shootBaseSpeed * speedRatio : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
-    this.vx = (dx / length) * speed + actor.vx * moveBonus;
-    this.vy = (dy / length) * speed + actor.vy * moveBonus;
+    const directX = dx / length;
+    const directY = dy / length;
+    if (this.specialShotType === "boomerang") {
+      const angle = this.boomerangCurveSign * Math.PI * 0.1;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const risingSpeed = speed * 0.58;
+      this.vx = (directX * cos - directY * sin) * risingSpeed + actor.vx * moveBonus;
+      this.vy = (directX * sin + directY * cos) * risingSpeed + actor.vy * moveBonus;
+    } else {
+      this.vx = directX * speed + actor.vx * moveBonus;
+      this.vy = directY * speed + actor.vy * moveBonus;
+    }
     if (kind === "shoot" && target) {
       const trajectorySpeed = this.specialShotType === "boost"
         ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
@@ -210,6 +239,9 @@ class Ball {
           ? 70 + Math.max(0, throwMultiplier - 0.7) * 45
           : 110 + Math.max(0, throwMultiplier - 0.7) * 34;
       this.vz = Math.max(-80, Math.min(610, solvedVz + arcLift));
+      if (this.specialShotType === "boomerang") {
+        this.vz = Math.max(this.vz, 620 + actor.jumpZ * 0.12);
+      }
     } else {
       this.vz = kind === "shoot"
         ? 470 + Math.max(0, throwMultiplier - 0.7) * (this.specialShotType ? 120 : 82) + actor.jumpZ * 0.12
@@ -245,36 +277,32 @@ class Ball {
         this.vy = directionY * targetSpeed;
       }
     }
-    if (this.specialShotType === "boomerang" && this.thrower && !this.thrower.defeated) {
+    if (this.specialShotType === "boomerang" && this.target && !this.target.defeated) {
       if (!this.returning) {
         const speed = Math.hypot(this.vx, this.vy) || 1;
-        const sideForce = Math.min(360, 130 + this.travelDistance * 0.22) * this.boomerangCurveSign;
+        const sideForce = Math.min(260, 90 + this.travelDistance * 0.12) * this.boomerangCurveSign;
         const sideX = -this.vy / speed;
         const sideY = this.vx / speed;
         this.vx += sideX * sideForce * delta;
         this.vy += sideY * sideForce * delta;
       }
-      const passedTarget = this.target && ((this.vx >= 0 && this.x > this.target.x + 170) || (this.vx < 0 && this.x < this.target.x - 170));
-      if (!this.returning && (passedTarget || this.travelDistance > 1250)) {
+      const reachedTurningAltitude = this.z >= 320 || (this.z > 180 && this.vz <= 100);
+      if (!this.returning && reachedTurningAltitude && this.travelDistance > 160) {
         this.returning = true;
-        this.target = this.thrower;
         this.hitPlayerIds.clear();
       }
       if (this.returning) {
-        const dx = this.thrower.x - this.x;
-        const dy = this.thrower.y - 42 - this.y;
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - 38 - this.y;
         const length = Math.hypot(dx, dy) || 1;
         const speed = Math.max(760, Math.hypot(this.vx, this.vy));
-        const arcStrength = Math.min(1120, 640 + length * 0.68) * this.boomerangCurveSign;
+        const approachScale = Math.min(1, length / 420);
+        const arcStrength = Math.min(820, 360 + length * 0.42) * this.boomerangCurveSign * approachScale;
         const desiredX = (dx / length) * speed + (-dy / length) * arcStrength;
         const desiredY = (dy / length) * speed + (dx / length) * arcStrength;
-        const turn = Math.min(1, delta * 4.5);
+        const turn = Math.min(1, delta * 4.2);
         this.vx += (desiredX - this.vx) * turn;
         this.vy += (desiredY - this.vy) * turn;
-        if (Math.hypot(dx, dy) < this.boomerangStartDistance * 0.72) {
-          this.drop();
-          return;
-        }
       }
     }
   }
@@ -286,6 +314,10 @@ class Ball {
     }
     if (this.specialShotType === "boost") {
       return 0.35;
+    }
+
+    if (this.specialShotType === "soul") {
+      return Math.min(2.4, (1.25 + t * 0.3) * 1.5);
     }
 
     const specialBase = this.specialShotType === "lightning"
@@ -300,13 +332,13 @@ class Ball {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
     const outfieldPass = actor.role === "out" || target.role === "out";
-    const speedBoost = outfieldPass ? 1.3 : 1;
-    const arcBoost = outfieldPass ? 2.84 : 2;
-    catchPoint.z += (208 + Math.max(0, passMultiplier - 1) * 338) * arcBoost;
-    this.passDuration = Math.max(0.62, Math.min(1.95, distance / Math.max(1, this.config.passSpeed * speedBoost * (0.95 + passMultiplier * 0.24))));
+    const speedBoost = outfieldPass ? 1.18 : 1;
+    this.passStartZ = this.z;
+    this.passArcHeight = (outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150;
+    this.passDuration = Math.max(0.92, Math.min(2.2, distance / Math.max(1, this.config.passSpeed * speedBoost * (0.88 + passMultiplier * 0.2))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
-    this.vz = (catchPoint.z - this.z + 0.5 * this.config.gravity * this.passDuration * this.passDuration) / this.passDuration;
+    this.vz = (catchPoint.z - this.z) / this.passDuration + (4 * this.passArcHeight) / this.passDuration;
   }
 
   adjustPassTrajectory(delta) {
@@ -314,11 +346,14 @@ class Ball {
     const catchPoint = this.getPassCatchPoint(this.target);
     const desiredVx = (catchPoint.x - this.x) / remaining;
     const desiredVy = (catchPoint.y - this.y) / remaining;
-    const desiredVz = (catchPoint.z - this.z + 0.5 * this.config.gravity * remaining * remaining) / remaining;
+    const progress = Math.max(0, Math.min(1, this.passTime / Math.max(0.01, this.passDuration)));
+    const baseZ = this.passStartZ + (catchPoint.z - this.passStartZ) * progress;
+    const desiredZ = baseZ + 4 * this.passArcHeight * progress * (1 - progress);
+    const desiredVz = (desiredZ - this.z) / Math.max(0.001, delta);
     const follow = Math.min(1, delta * 5.5);
     this.vx += (desiredVx - this.vx) * follow;
     this.vy += (desiredVy - this.vy) * follow;
-    this.vz += (desiredVz - this.vz) * follow;
+    this.vz = desiredVz;
   }
 
   getPassCatchPoint(target) {
@@ -353,6 +388,7 @@ class Ball {
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
+    this.boostFlightZ = 0;
     this.hitPlayerIds.clear();
   }
 
@@ -377,6 +413,7 @@ class Ball {
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
+    this.boostFlightZ = 0;
     this.hitPlayerIds.clear();
   }
 
@@ -386,7 +423,7 @@ class Ball {
     if (this.specialShotType === "lightning") return "#66f6ff";
     if (this.specialShotType === "iron") return "#7e8592";
     if (this.specialShotType === "boomerang") return "#ffe36a";
-    if (this.specialShotType === "soul") return "#bdf8ff";
+    if (this.specialShotType === "soul") return "#ffc4e5";
     return "#ffe46a";
   }
 
@@ -424,6 +461,34 @@ class Ball {
       context.lineTo(this.x + tailX * (82 + intensity * 62), drawY + tailY * (82 + intensity * 62));
       context.stroke();
       if (this.specialShotType === "boost") {
+        const gear = this.boostElapsed >= 0.95 ? 4 : this.boostElapsed >= 0.68 ? 3 : this.boostElapsed >= 0.42 ? 2 : this.boostElapsed >= 0.2 ? 1 : 0;
+        const flameLength = 90 + gear * 42 + Math.sin(performance.now() / 24) * 18;
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = 0.82;
+        context.fillStyle = gear >= 3 ? "#fff7a0" : "#ff9b35";
+        context.beginPath();
+        context.moveTo(this.x + tailX * 18 + tailY * 18, drawY + tailY * 18 - tailX * 18);
+        context.lineTo(this.x + tailX * flameLength, drawY + tailY * flameLength);
+        context.lineTo(this.x + tailX * 18 - tailY * 18, drawY + tailY * 18 + tailX * 18);
+        context.closePath();
+        context.fill();
+
+        context.globalAlpha = 0.58;
+        context.fillStyle = "#ff4d16";
+        for (let i = 0; i < 7; i += 1) {
+          const distance = 38 + i * (18 + gear * 4);
+          const spread = Math.sin(this.spin * 0.3 + i * 2.1) * (12 + i * 2);
+          context.beginPath();
+          context.arc(
+            this.x + tailX * distance + tailY * spread,
+            drawY + tailY * distance - tailX * spread,
+            8 + gear * 2 + i * 1.4,
+            0,
+            Math.PI * 2
+          );
+          context.fill();
+        }
+
         context.globalAlpha = 0.72;
         context.strokeStyle = "#fff06a";
         context.lineWidth = 4 + intensity * 5;
@@ -452,7 +517,7 @@ class Ball {
       }
       if (this.specialShotType === "soul") {
         context.globalAlpha = 0.8;
-        context.strokeStyle = "#dffcff";
+        context.strokeStyle = "#ffe3f3";
         context.lineWidth = 5 + intensity * 5;
         for (let i = 0; i < 3; i += 1) {
           const offset = (i - 1) * 18;
@@ -507,14 +572,14 @@ class Ball {
       }
       if (this.specialShotType === "soul") {
         context.globalAlpha = 0.78;
-        context.strokeStyle = "#dffcff";
+        context.strokeStyle = "#ffe3f3";
         context.lineWidth = 4;
         for (let i = 0; i < 3; i += 1) {
           context.beginPath();
           context.arc(0, 0, this.radius + 14 + i * 12, this.spin + i, this.spin + i + Math.PI * 1.25);
           context.stroke();
         }
-        context.fillStyle = "rgba(189,248,255,0.28)";
+        context.fillStyle = "rgba(255,190,225,0.3)";
         context.beginPath();
         context.arc(0, 0, this.radius + 18, 0, Math.PI * 2);
         context.fill();
@@ -525,13 +590,13 @@ class Ball {
     if (this.specialShotType === "soul") {
       const orb = context.createRadialGradient(-this.radius * 0.35, -this.radius * 0.35, 4, 0, 0, this.radius);
       orb.addColorStop(0, "#ffffff");
-      orb.addColorStop(0.45, "#bdf8ff");
-      orb.addColorStop(1, "#4eb7ff");
+      orb.addColorStop(0.45, "#ffd1e8");
+      orb.addColorStop(1, "#ff78b7");
       context.fillStyle = orb;
       context.beginPath();
       context.arc(0, 0, this.radius * 1.08, 0, Math.PI * 2);
       context.fill();
-      context.strokeStyle = "#eaffff";
+      context.strokeStyle = "#fff0f8";
       context.lineWidth = 4;
       context.beginPath();
       context.arc(0, 0, this.radius * 1.22, 0, Math.PI * 2);
