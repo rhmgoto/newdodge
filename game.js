@@ -448,7 +448,7 @@ class DodgeballGame {
       const cpuPlayer = getCpuPlayer(index);
       return makePlayer({
         id: `${prefix}-inner-${index + 1}`,
-        name: cpuPlayer?.name || cpuTeam?.innerNames?.[index] || `${prefix}-inner-${index + 1}`,
+        name: cpuPlayer?.name || teamDefinition?.innerNames?.[index] || `${prefix}-inner-${index + 1}`,
         role: "inner",
         zone: innerZone,
         x: position.x,
@@ -472,7 +472,7 @@ class DodgeballGame {
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + topArea.h * 0.45,
-        name: getCpuPlayer(5)?.name || cpuTeam?.outNames?.[0] || `${prefix}-out-top`,
+        name: getCpuPlayer(5)?.name || teamDefinition?.outNames?.[0] || `${prefix}-out-top`,
         characterType: getCpuPlayer(5)?.characterType || (teamDefinition?.isCustom ? selectedTypes[5] : teamDefinition?.characterType) || selectedTypes[5],
         maxHp: getCpuPlayer(5)?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: getCpuPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
@@ -485,7 +485,7 @@ class DodgeballGame {
       }),
       makePlayer({
         id: `${prefix}-out-bottom`,
-        name: getCpuPlayer(6)?.name || cpuTeam?.outNames?.[1] || `${prefix}-out-bottom`,
+        name: getCpuPlayer(6)?.name || teamDefinition?.outNames?.[1] || `${prefix}-out-bottom`,
         role: "out",
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
@@ -502,7 +502,7 @@ class DodgeballGame {
       }),
       makePlayer({
         id: `${prefix}-out-side`,
-        name: getCpuPlayer(7)?.name || cpuTeam?.outNames?.[2] || `${prefix}-out-side`,
+        name: getCpuPlayer(7)?.name || teamDefinition?.outNames?.[2] || `${prefix}-out-side`,
         role: "out",
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
@@ -686,6 +686,8 @@ class DodgeballGame {
         isCustom: true,
         defaultSide: "left",
         characterType: "normal",
+        innerNames: ["\u3042\u304a", "\u3050\u3093\u3058\u3087\u3046", "\u3053\u304a\u308a", "\u3046\u307f", "\u305d\u3089"],
+        outNames: ["\u30d6\u30eb\u30fc", "\u30a2\u30af\u30a2", "\u30aa\u30fc\u30b7\u30e3\u30f3"],
         uniformColor: "#0057ff",
         pantsColor: "#0057ff",
         trimColor: "#f6fbff",
@@ -701,6 +703,8 @@ class DodgeballGame {
         isCustom: true,
         defaultSide: "right",
         characterType: "normal",
+        innerNames: ["\u3042\u304b", "\u3057\u3093\u304f", "\u3082\u307f\u3058", "\u308c\u3063\u304b", "\u307b\u3080\u3089"],
+        outNames: ["\u3050\u308c\u3093", "\u3079\u306b", "\u304b\u3048\u3093"],
         uniformColor: "#f01818",
         pantsColor: "#f01818",
         trimColor: "#fff0cf",
@@ -730,6 +734,13 @@ class DodgeballGame {
     const teams = this.getSelectableTeams();
     const index = this.selectedTeamIndices?.[team] ?? (team === "left" ? 0 : 1);
     return teams[((index % teams.length) + teams.length) % teams.length] || teams[0];
+  }
+
+  getTeamSlotName(team, slot) {
+    if (!team) return "";
+    return slot < 5
+      ? team.innerNames?.[slot] || ""
+      : team.outNames?.[slot - 5] || "";
   }
 
   getCpuTeamForSide(team) {
@@ -3300,6 +3311,14 @@ class DodgeballGame {
     context.strokeText("モードセレクト", centerX, 155);
     context.fillText("モードセレクト", centerX, 155);
 
+    context.fillStyle = "#dff8ff";
+    context.fillRect(centerX - 430, 92, 860, 92);
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.font = "bold 58px Meiryo, sans-serif";
+    context.strokeText("\u3076\u3063\u3068\u3073\u30c9\u30c3\u30b8\u30fc\u30ba", centerX, 155);
+    context.fillText("\u3076\u3063\u3068\u3073\u30c9\u30c3\u30b8\u30fc\u30ba", centerX, 155);
+
     const modes = [
       { label: "一人用", note: "1P vs CPU" },
       { label: "二人用", note: "2P対戦" }
@@ -3842,6 +3861,7 @@ class DodgeballGame {
     const context = this.context;
     const teams = this.getSelectableTeams();
     const selectedIndex = this.selectedTeamIndices[side] ?? 0;
+    const selectedTeam = teams[selectedIndex] || teams[0];
     context.save();
     context.textAlign = "left";
     context.fillStyle = color;
@@ -3851,23 +3871,50 @@ class DodgeballGame {
     context.fillStyle = active ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
     context.strokeStyle = active ? "#263241" : "rgba(38,50,65,0.36)";
     context.lineWidth = active ? 5 : 2;
-    this.roundRect(context, x, y, width, 126, 8);
+    this.roundRect(context, x, y, width, 58, 8);
     context.fill();
     context.stroke();
 
-    context.font = "bold 18px Meiryo, sans-serif";
-    for (let i = 0; i < teams.length; i += 1) {
-      const rowX = x + 16 + (i % 2) * 278;
-      const rowY = y + 38 + Math.floor(i / 2) * 38;
-      const rowSelected = i === selectedIndex;
-      context.fillStyle = rowSelected ? "rgba(255,216,61,0.9)" : "rgba(255,255,255,0.65)";
-      context.strokeStyle = rowSelected ? "#263241" : "rgba(38,50,65,0.22)";
-      context.lineWidth = rowSelected ? 4 : 1;
-      this.roundRect(context, rowX, rowY - 24, 258, 30, 6);
+    const drawFittedName = (text, textX, textY, maxWidth, maxSize = 26, minSize = 20) => {
+      let size = maxSize;
+      context.font = `bold ${size}px Meiryo, sans-serif`;
+      while (size > minSize && context.measureText(text).width > maxWidth) {
+        size -= 1;
+        context.font = `bold ${size}px Meiryo, sans-serif`;
+      }
+      context.fillText(text, textX, textY);
+    };
+
+    context.fillStyle = "#263241";
+    drawFittedName(selectedTeam?.name || "", x + 20, y + 38, width - 82, 28, 21);
+    context.textAlign = "center";
+    context.font = "bold 28px Meiryo, sans-serif";
+    context.fillText(active ? "▲" : "▼", x + width - 34, y + 39);
+
+    if (active) {
+      const listY = y + 64;
+      const rowHeight = 38;
+      const visibleCount = Math.min(5, teams.length);
+      const start = Math.max(0, Math.min(selectedIndex - 2, teams.length - visibleCount));
+      context.textAlign = "left";
+      context.fillStyle = "rgba(255,255,255,0.94)";
+      context.strokeStyle = "#263241";
+      context.lineWidth = 3;
+      this.roundRect(context, x, listY, width, visibleCount * rowHeight + 12, 8);
       context.fill();
       context.stroke();
-      context.fillStyle = "#263241";
-      context.fillText(teams[i].name, rowX + 10, rowY - 3);
+      for (let n = 0; n < visibleCount; n += 1) {
+        const i = start + n;
+        const rowY = listY + 10 + n * rowHeight;
+        const rowSelected = i === selectedIndex;
+        if (rowSelected) {
+          context.fillStyle = "rgba(255,216,61,0.9)";
+          this.roundRect(context, x + 10, rowY, width - 20, rowHeight - 6, 6);
+          context.fill();
+        }
+        context.fillStyle = "#263241";
+        drawFittedName(teams[i].name, x + 24, rowY + 25, width - 48, 22, 18);
+      }
     }
     context.restore();
   }
@@ -3970,9 +4017,9 @@ class DodgeballGame {
 
   drawPlayableTeamSelectSide(side, x, title, color) {
     const team = this.getSelectedTeamForSide(side);
-    this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
     const editable = Boolean(team?.isCustom && this.teamSelectionConfirmed?.[side]);
     this.drawTeamPlayerCards(side, team, x, 264, color, editable);
+    this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
   }
 
   drawEditableTeamCards(side, x, y, color) {
@@ -4006,7 +4053,7 @@ class DodgeballGame {
       const roleLabel = editable
         ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
         : `${player?.position === "out" ? "外" : "内"} ${player?.name || ""}`;
-      const title = editable ? definition.label : player?.name || definition.label;
+      const title = editable ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
       const previewStyle = editable ? null : {
         ...team,
@@ -4085,7 +4132,7 @@ class DodgeballGame {
       const roleLabel = editable
         ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
         : (player?.position === "out" ? "外野" : "内野");
-      const title = editable ? definition.label : player?.name || definition.label;
+      const title = editable ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
       const previewStyle = editable ? null : {
         ...team,
