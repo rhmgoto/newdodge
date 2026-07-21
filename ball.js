@@ -1,3 +1,5 @@
+const TSUTENKAKU_HOLD_TIME = 1.5;
+
 class Ball {
   constructor(config) {
     this.config = config;
@@ -80,6 +82,20 @@ class Ball {
     }
 
     this.updateSpecialShot(delta);
+
+    if (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      this.specialShotType === "tsutenkaku" &&
+      this.tsutenkakuPhase === "hold"
+    ) {
+      this.z = this.tsutenkakuPeakZ;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      this.spin += delta * 3.2;
+      return;
+    }
 
     const lastX = this.x;
     const lastY = this.y;
@@ -253,7 +269,8 @@ class Ball {
     const shootBaseSpeed = kind === "shoot" && this.specialShotType
       ? this.config.specialShootSpeed || this.config.shootSpeed
       : this.config.shootSpeed;
-    const speed = kind === "shoot" ? shootBaseSpeed * speedRatio : this.config.passSpeed;
+    const specialSpeedScale = this.specialShotType === "slap" ? 1.2 : 1;
+    const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     if (this.specialShotType === "lightning") {
@@ -444,7 +461,7 @@ class Ball {
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
       const initialSpeed = this.slapInitialSpeed || currentSpeed;
-      const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 520));
+      const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 650));
       this.vx = directionX * targetSpeed;
       this.vy = directionY * targetSpeed;
       this.z = this.slapFlightZ;
@@ -484,16 +501,29 @@ class Ball {
     if (this.tsutenkakuPhase === "rise") {
       this.tsutenkakuElapsed += delta;
       if (this.z >= this.tsutenkakuPeakZ || this.vz <= 0 || this.tsutenkakuElapsed > 0.78) {
-        this.tsutenkakuPhase = "dive";
-        const dx = this.tsutenkakuTargetX - this.x;
-        const dy = this.tsutenkakuTargetY - this.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const diveTime = Math.max(0.32, Math.min(0.68, distance / 980));
-        this.vx = dx / diveTime;
-        this.vy = dy / diveTime;
-        this.vz = (this.tsutenkakuTargetZ - this.z) / diveTime;
+        this.tsutenkakuPhase = "hold";
+        this.tsutenkakuElapsed = 0;
+        this.z = this.tsutenkakuPeakZ;
+        this.vx = 0;
+        this.vy = 0;
+        this.vz = 0;
       }
       return;
+    }
+
+    if (this.tsutenkakuPhase === "hold") {
+      this.tsutenkakuElapsed += delta;
+      if (this.tsutenkakuElapsed < TSUTENKAKU_HOLD_TIME) return;
+
+      this.tsutenkakuPhase = "dive";
+      this.tsutenkakuElapsed = 0;
+      const dx = this.tsutenkakuTargetX - this.x;
+      const dy = this.tsutenkakuTargetY - this.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const diveTime = Math.max(0.32, Math.min(0.68, distance / 980));
+      this.vx = dx / diveTime;
+      this.vy = dy / diveTime;
+      this.vz = (this.tsutenkakuTargetZ - this.z) / diveTime;
     }
 
     if (this.tsutenkakuPhase !== "dive") return;
@@ -765,17 +795,20 @@ class Ball {
           context.stroke();
         }
       }
-      if (this.specialShotType === "tsutenkaku") {
-        context.globalAlpha = 0.86;
-        context.strokeStyle = "#fff4a8";
-        context.lineWidth = 5 + intensity * 5;
+      if (this.specialShotType === "tsutenkaku" && this.tsutenkakuPhase === "dive") {
+        context.globalAlpha = 0.92;
+        context.shadowColor = "#ffd83d";
+        context.shadowBlur = 18 + intensity * 18;
+        context.strokeStyle = "#fff06a";
+        context.lineWidth = 8 + intensity * 7;
         context.beginPath();
-        context.moveTo(this.x, drawY + 18);
-        context.lineTo(this.x, drawY + 150 + intensity * 80);
+        context.moveTo(this.x, drawY - 28);
+        context.lineTo(this.x, drawY - 210 - intensity * 110);
         context.stroke();
-        context.fillStyle = "rgba(255,216,61,0.45)";
+        context.shadowBlur = 0;
+        context.fillStyle = "rgba(255,216,61,0.58)";
         context.beginPath();
-        context.arc(this.x, drawY + 18, 22 + intensity * 18, 0, Math.PI * 2);
+        context.arc(this.x, drawY, 25 + intensity * 21, 0, Math.PI * 2);
         context.fill();
       }
       context.strokeStyle = "rgba(255,255,255,0.72)";

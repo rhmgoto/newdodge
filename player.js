@@ -353,6 +353,12 @@ class Player {
       return;
     }
 
+    if (duration <= 0) {
+      this.applyVisualDirection(nextDirection);
+      this.cancelPendingTurn();
+      return;
+    }
+
     const opposite = {
       left: "right",
       right: "left",

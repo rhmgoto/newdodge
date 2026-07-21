@@ -6,16 +6,17 @@ const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
+const SPECIAL_SHOT_ANTICIPATION_TIME = 0.7;
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.3, areaScale: 1, chanceScale: 1, perfectTiming: 0.42 },
-  soul: { duration: 0.216, areaScale: 0.88, maxChance: 0.5, chanceScale: 0.51, perfectTiming: 0.5 },
-  triple: { duration: 0.198, areaScale: 0.82, maxChance: 0.4, chanceScale: 0.41, perfectTiming: 0.56 },
-  lightning: { duration: 0.18, areaScale: 0.78, maxChance: 0.35, chanceScale: 0.36, perfectTiming: 0.62 },
-  boomerang: { duration: 0.189, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64 },
-  boost: { duration: 0.162, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68 },
-  iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74 },
-  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 },
-  tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.28, chanceScale: 0.29, perfectTiming: 0.7 }
+  soul: { duration: 0.216, areaScale: 0.88, maxChance: 0.25, chanceScale: 0.255, perfectTiming: 0.5 },
+  triple: { duration: 0.198, areaScale: 0.82, maxChance: 0.2, chanceScale: 0.205, perfectTiming: 0.56 },
+  lightning: { duration: 0.18, areaScale: 0.78, maxChance: 0.175, chanceScale: 0.18, perfectTiming: 0.62 },
+  boomerang: { duration: 0.189, areaScale: 0.78, maxChance: 0.15, chanceScale: 0.155, perfectTiming: 0.64 },
+  boost: { duration: 0.162, areaScale: 0.72, maxChance: 0.125, chanceScale: 0.13, perfectTiming: 0.68 },
+  iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.09, chanceScale: 0.095, perfectTiming: 0.74 },
+  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.1, chanceScale: 0.105, perfectTiming: 0.72 },
+  tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.14, chanceScale: 0.145, perfectTiming: 0.7 }
 };
 
 const GAME_CONFIG = {
@@ -73,8 +74,8 @@ const GAME_CONFIG = {
     jumpVelocity: 630,
     jumpGravity: 920,
     dashSpeedMultiplier: 3.2,
-    turnDuration: 0.4,
-    turnSpeedMultiplier: 0.32,
+    turnDuration: 0,
+    turnSpeedMultiplier: 1,
     depthTop: 140,
     depthBottom: 1080,
     characterScale: 1.56,
@@ -1898,12 +1899,12 @@ class DodgeballGame {
         aim: charged.aim,
         shotMultiplier: multiplier,
         specialType,
-        timer: 0.2,
+        timer: SPECIAL_SHOT_ANTICIPATION_TIME,
         anticipation: true,
         aerialCombo: charged.aerialCombo
       };
-      actor.markThrowing(0.38, kind);
-      actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.26);
+      actor.markThrowing(SPECIAL_SHOT_ANTICIPATION_TIME + 0.18, kind);
+      actor.throwLockTimer = Math.max(actor.throwLockTimer, SPECIAL_SHOT_ANTICIPATION_TIME + 0.06);
       return true;
     }
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
@@ -1968,11 +1969,13 @@ class DodgeballGame {
     if (kind === "shoot") {
       this.pendingThrow.specialType = this.getSpecialShotType(actor, this.pendingThrow.shotMultiplier);
       if (this.pendingThrow.specialType) {
-        this.pendingThrow.timer += 0.2;
+        this.pendingThrow.timer += SPECIAL_SHOT_ANTICIPATION_TIME;
         this.pendingThrow.anticipation = true;
       }
     }
-    const throwDuration = kind === "shoot" ? 0.68 : 0.4;
+    const throwDuration = kind === "shoot"
+      ? 0.68 + (this.pendingThrow.anticipation ? SPECIAL_SHOT_ANTICIPATION_TIME - 0.2 : 0)
+      : 0.4;
     actor.markThrowing(throwDuration, kind);
     actor.throwLockTimer = Math.max(actor.throwLockTimer, throwDuration);
 
@@ -2768,16 +2771,16 @@ class DodgeballGame {
 
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
     if (specialType === "lightning" || specialType === "triple" || specialType === "boomerang") {
-      return baseDamage * 1.7;
+      return baseDamage * 2;
     }
     if (specialType === "boost") {
       return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
     }
     if (specialType === "iron") {
-      return baseDamage * 2.5;
+      return baseDamage * 3;
     }
     if (specialType === "tsutenkaku") {
-      return baseDamage * 1.9;
+      return baseDamage * 2;
     }
     if (specialType === "soul") {
       return baseDamage * 1.2;
@@ -4928,46 +4931,32 @@ class DodgeballGame {
   drawSpecialAnticipationEffect() {
     if (!this.pendingThrow || !this.pendingThrow.anticipation || !this.pendingThrow.specialType) return;
     const pending = this.pendingThrow;
-    if (pending.timer > 0.2) return;
+    if (pending.timer > SPECIAL_SHOT_ANTICIPATION_TIME) return;
     const actor = pending.actor;
     if (!actor || actor.defeated || this.ball.owner !== actor) return;
 
     const context = this.context;
     const pulse = 0.5 + Math.sin(performance.now() / 42) * 0.5;
-    const progress = Math.max(0, Math.min(1, 1 - pending.timer / 0.2));
-    const color = this.getSpecialHitColor(pending.specialType);
+    const progress = Math.max(0, Math.min(1, 1 - pending.timer / SPECIAL_SHOT_ANTICIPATION_TIME));
     const x = actor.x;
     const y = actor.y - actor.jumpZ - 66;
-    const radius = 46 + progress * 36 + pulse * 10;
 
     context.save();
-    context.globalAlpha = 0.32 + pulse * 0.34;
-    context.fillStyle = color;
+    context.globalAlpha = 0.2 + pulse * 0.18;
+    context.fillStyle = "#ff6f6f";
+    context.shadowColor = "#ff3d3d";
+    context.shadowBlur = 18 + progress * 10;
     context.beginPath();
-    context.ellipse(x, y + 12, radius * 0.7, radius * 1.08, 0, 0, Math.PI * 2);
+    context.ellipse(x, y + 14, 39 + pulse * 4, 69 + pulse * 5, 0, 0, Math.PI * 2);
     context.fill();
 
-    context.globalAlpha = 0.82;
-    context.strokeStyle = "#f3ffff";
-    context.lineWidth = 5 + progress * 5;
+    context.shadowBlur = 0;
+    context.globalAlpha = 0.58 + pulse * 0.2;
+    context.strokeStyle = "#ff9b9b";
+    context.lineWidth = 4 + progress * 3;
     context.beginPath();
-    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.ellipse(x, y + 14, 43 + progress * 7, 73 + progress * 8, 0, 0, Math.PI * 2);
     context.stroke();
-
-    context.fillStyle = "#ffffff";
-    for (let i = 0; i < 12; i += 1) {
-      const angle = performance.now() / 120 + i * Math.PI / 6;
-      const sparkRadius = radius * (0.72 + (i % 4) * 0.08);
-      context.beginPath();
-      context.arc(
-        x + Math.cos(angle) * sparkRadius,
-        y + Math.sin(angle) * sparkRadius,
-        3 + pulse * 3,
-        0,
-        Math.PI * 2
-      );
-      context.fill();
-    }
     context.restore();
   }
 
