@@ -533,6 +533,7 @@ class CPUController {
     if (!this.ball.isLoose || this.ball.owner || this.ball.isFlying) return false;
     const area = this.config.areas ? this.config.areas[member.zone] : null;
     if (!area) return false;
+    if (member.role === "out" && this.isLooseBallInTeamOutfield()) return true;
     const margin = member.role === "inner" ? 120 : 150;
     const inOwnZone = (
       this.ball.x >= area.x - margin &&
@@ -542,6 +543,25 @@ class CPUController {
     );
     const nearby = Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < (member.role === "inner" ? 760 : 980);
     return inOwnZone || nearby;
+  }
+
+  isLooseBallInTeamOutfield() {
+    const zones = this.teamName === "left"
+      ? ["rightTopOut", "rightBottomOut", "rightSideOut"]
+      : ["leftTopOut", "leftBottomOut", "leftSideOut"];
+    const margin = 60;
+
+    return zones.some((zone) => {
+      const area = this.config.areas?.[zone];
+      if (!area) return false;
+      const bounds = this.getAreaBounds(area);
+      return (
+        this.ball.x >= bounds.x - margin &&
+        this.ball.x <= bounds.x + bounds.w + margin &&
+        this.ball.y >= bounds.y - margin &&
+        this.ball.y <= bounds.y + bounds.h + margin
+      );
+    });
   }
 
   getFriendlyFlyingShotChaser() {

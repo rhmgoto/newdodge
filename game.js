@@ -131,8 +131,10 @@ class DodgeballGame {
     this.lastRuntimeError = null;
     this.runtimeErrorCount = 0;
     this.effects = [];
-    this.audioContext = null;
-    this.boostAudioStage = 0;
+    this.boostEffectStage = 0;
+    this.looseOutfieldRecoveryTimer = 0;
+    this.lastLooseOutfieldBallPosition = null;
+    this.lastLooseOutfieldReceiverDistance = Infinity;
     this.message = "READY";
     this.setupMatch();
     requestAnimationFrame((time) => this.loop(time));
@@ -152,7 +154,10 @@ class DodgeballGame {
     this.controlledPlayerId = "left-inner-1";
     this.controlledRightPlayerId = "right-inner-1";
     this.ball = new Ball(GAME_CONFIG.ball);
-    this.boostAudioStage = 0;
+    this.boostEffectStage = 0;
+    this.looseOutfieldRecoveryTimer = 0;
+    this.lastLooseOutfieldBallPosition = null;
+    this.lastLooseOutfieldReceiverDistance = Infinity;
     this.ball.x = court.centerX;
     this.ball.y = court.y + court.h * 0.55;
     this.cpuControllerLeft = this.gameMode === "watch"
@@ -1144,7 +1149,7 @@ class DodgeballGame {
     this.updateBoostPresentation();
     this.updateTripleBalls(delta);
     this.autoPickupLooseBall();
-    this.resetUnreachableOutfieldBall();
+    this.resetUnreachableOutfieldBall(delta);
     this.handleManualCatch(this.leftTeam);
     this.handleManualCatch(this.rightTeam);
     this.handlePassReceives();
@@ -1375,10 +1380,16 @@ class DodgeballGame {
   }
 
   getMoveArea(member, isControlled) {
-    if (isControlled && member.role === "out") {
+    if (member.role === "out" && (isControlled || this.isTeamOutfieldLooseBall(member.team))) {
       return this.getTeamOutfieldArea(member.team);
     }
     return this.areas[member.zone];
+  }
+
+  isTeamOutfieldLooseBall(team) {
+    if (!this.ball?.isLoose || this.ball.owner || this.ball.isFlying) return false;
+    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
+    return territory?.team === team && territory.role === "out";
   }
 
   getTeamOutfieldArea(team) {
@@ -1511,8 +1522,19 @@ class DodgeballGame {
     const pickupDistance = this.ball.hasBounced && !this.ball.isFlying
       ? GAME_CONFIG.battle.rollingPickupDistance
       : GAME_CONFIG.battle.pickupDistance;
-    for (const member of this.players) {
-      if (member.defeated) continue;
+    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
+    const candidates = this.players
+      .filter((member) => {
+        if (member.defeated) return false;
+        if (!territory) return this.isPointInsideArea(this.ball.x, this.ball.y, 0, this.getMoveArea(member, false));
+        return member.team === territory.team && member.role === territory.role;
+      })
+      .sort((a, b) => (
+        Math.hypot(a.x - this.ball.x, a.y - this.ball.y) -
+        Math.hypot(b.x - this.ball.x, b.y - this.ball.y)
+      ));
+
+    for (const member of candidates) {
       if (this.ball.canBePickedUpBy(member, pickupDistance)) {
         this.ball.pickUp(member);
         this.setControlledMember(member.team, member);
@@ -1521,11 +1543,49 @@ class DodgeballGame {
     }
   }
 
-  resetUnreachableOutfieldBall() {
-    if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) return;
+  getLooseBallTerritory(x, y) {
+    const leftInnerBounds = this.getTrapezoidBoundsAtY(this.areas.leftInner.trapezoid, y);
+    const rightInnerBounds = this.getTrapezoidBoundsAtY(this.areas.rightInner.trapezoid, y);
+    if (
+      leftInnerBounds &&
+      rightInnerBounds &&
+      x >= leftInnerBounds.left - 24 &&
+      x <= rightInnerBounds.right + 24
+    ) {
+      return x < GAME_CONFIG.court.centerX
+        ? { team: "left", role: "inner" }
+        : { team: "right", role: "inner" };
+    }
+
+    if (this.isPointInsideArea(x, y, 0, this.getTeamOutfieldArea("left"))) {
+      return { team: "left", role: "out" };
+    }
+    if (this.isPointInsideArea(x, y, 0, this.getTeamOutfieldArea("right"))) {
+      return { team: "right", role: "out" };
+    }
+
+    const nearbyOutfield = this.getOutfieldSideForBall(x, y);
+    if (nearbyOutfield) {
+      return { team: nearbyOutfield.team, role: "out" };
+    }
+    return null;
+  }
+
+  resetUnreachableOutfieldBall(delta = 0) {
+    if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) {
+      this.looseOutfieldRecoveryTimer = 0;
+      this.lastLooseOutfieldBallPosition = null;
+      this.lastLooseOutfieldReceiverDistance = Infinity;
+      return;
+    }
 
     const outfield = this.getOutfieldSideForBall(this.ball.x, this.ball.y);
-    if (!outfield) return;
+    if (!outfield) {
+      this.looseOutfieldRecoveryTimer = 0;
+      this.lastLooseOutfieldBallPosition = null;
+      this.lastLooseOutfieldReceiverDistance = Infinity;
+      return;
+    }
 
     const outerLimit = outfield.side === "right"
       ? this.areas.rightSideOut.x + this.areas.rightSideOut.w + 18
@@ -1538,6 +1598,17 @@ class DodgeballGame {
 
     const nearestOutfielderDistance = Math.hypot(receiver.x - this.ball.x, receiver.y - this.ball.y);
     const rollingFarAway = this.ball.hasBounced && Math.hypot(this.ball.vx, this.ball.vy) < 90 && nearestOutfielderDistance > 520;
+    const previous = this.lastLooseOutfieldBallPosition;
+    const moved = previous ? Math.hypot(this.ball.x - previous.x, this.ball.y - previous.y) : Infinity;
+    const ballSpeed = Math.hypot(this.ball.vx, this.ball.vy);
+    const settled = this.ball.hasBounced && ballSpeed < 55 && moved < 5;
+    const receiverApproaching = nearestOutfielderDistance < this.lastLooseOutfieldReceiverDistance - 2;
+    const stillOutOfReach = nearestOutfielderDistance > GAME_CONFIG.battle.rollingPickupDistance * 0.8;
+    this.looseOutfieldRecoveryTimer = settled && stillOutOfReach && !receiverApproaching
+      ? this.looseOutfieldRecoveryTimer + delta
+      : 0;
+    this.lastLooseOutfieldBallPosition = { x: this.ball.x, y: this.ball.y };
+    this.lastLooseOutfieldReceiverDistance = nearestOutfielderDistance;
     const screenMargin = 90;
     const outsideScreen = (
       this.ball.x < this.ballBounds.x + screenMargin ||
@@ -1546,15 +1617,36 @@ class DodgeballGame {
       this.ball.y > this.ballBounds.y + this.ballBounds.h - screenMargin
     );
 
-    if (!beyondSide && !beyondBottom && !beyondTop && !rollingFarAway && !outsideScreen) return;
+    const recoveryTimedOut = this.looseOutfieldRecoveryTimer >= 1.2;
+    if (!beyondSide && !beyondBottom && !beyondTop && !rollingFarAway && !outsideScreen && !recoveryTimedOut) return;
 
-    const area = this.areas[receiver.zone];
-    const point = this.clampPointToRect({ x: this.ball.x, y: this.ball.y }, area, receiver.radius);
+    const area = this.getTeamOutfieldArea(receiver.team);
+    const point = this.clampPointToArea({ x: this.ball.x, y: this.ball.y }, area, receiver.radius);
     receiver.x = point.x;
     receiver.y = point.y;
     this.ball.pickUp(receiver);
     this.setControlledMember(receiver.team, receiver);
+    this.looseOutfieldRecoveryTimer = 0;
+    this.lastLooseOutfieldBallPosition = null;
+    this.lastLooseOutfieldReceiverDistance = Infinity;
     this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
+  }
+
+  clampPointToArea(point, area, radius) {
+    const rects = area?.rects || (area ? [area] : []);
+    let best = point;
+    let bestDistance = Infinity;
+
+    for (const rect of rects) {
+      const candidate = this.clampPointToRect(point, rect, radius);
+      const distance = Math.hypot(point.x - candidate.x, point.y - candidate.y);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+
+    return best;
   }
 
   ensureBallIsPlayable() {
@@ -3039,15 +3131,15 @@ class DodgeballGame {
   updateBoostPresentation() {
     const boosting = this.ball?.isFlying && this.ball.kind === "shoot" && this.ball.specialShotType === "boost";
     if (!boosting) {
-      this.boostAudioStage = 0;
+      this.boostEffectStage = 0;
       return;
     }
 
     const elapsed = this.ball.boostElapsed;
     const stage = elapsed >= 0.95 ? 4 : elapsed >= 0.68 ? 3 : elapsed >= 0.42 ? 2 : elapsed >= 0.2 ? 1 : 0;
-    if (stage <= this.boostAudioStage) return;
+    if (stage <= this.boostEffectStage) return;
 
-    this.boostAudioStage = stage;
+    this.boostEffectStage = stage;
     this.effects.push({
       x: this.ball.x,
       y: this.ball.y - this.ball.z,
@@ -3056,55 +3148,6 @@ class DodgeballGame {
       life: 0.42,
       maxLife: 0.42
     });
-    this.playBoostBurst(stage);
-  }
-
-  playBoostBurst(stage) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    try {
-      if (!this.audioContext) this.audioContext = new AudioContextClass();
-      if (this.audioContext.state === "suspended") {
-        this.audioContext.resume().then(() => this.playBoostBurst(stage)).catch(() => {});
-        return;
-      }
-
-      const context = this.audioContext;
-      const now = context.currentTime;
-      const duration = 0.16 + stage * 0.035;
-      const gain = context.createGain();
-      const oscillator = context.createOscillator();
-      oscillator.type = "sawtooth";
-      oscillator.frequency.setValueAtTime(72 + stage * 28, now);
-      oscillator.frequency.exponentialRampToValueAtTime(38 + stage * 12, now + duration);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.08 + stage * 0.025, now + 0.018);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start(now);
-      oscillator.stop(now + duration);
-
-      const noiseLength = Math.floor(context.sampleRate * duration);
-      const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
-      const noiseData = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < noiseLength; i += 1) {
-        noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseLength);
-      }
-      const noise = context.createBufferSource();
-      const filter = context.createBiquadFilter();
-      const noiseGain = context.createGain();
-      filter.type = "lowpass";
-      filter.frequency.value = 420 + stage * 180;
-      noiseGain.gain.setValueAtTime(0.0001, now);
-      noiseGain.gain.exponentialRampToValueAtTime(0.045 + stage * 0.018, now + 0.012);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      noise.buffer = noiseBuffer;
-      noise.connect(filter).connect(noiseGain).connect(context.destination);
-      noise.start(now);
-    } catch (error) {
-      this.audioContext = null;
-    }
   }
 
   spawnDamageNumber(target, amount) {
