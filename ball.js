@@ -27,6 +27,22 @@ class Ball {
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
+    this.slapInitialSpeed = 0;
+    this.slapFlightZ = 0;
+    this.lightningZigzagActive = false;
+    this.lightningElapsed = 0;
+    this.lightningDuration = 0;
+    this.lightningStartX = 0;
+    this.lightningStartY = 0;
+    this.lightningStartZ = 0;
+    this.lightningTargetX = 0;
+    this.lightningTargetY = 0;
+    this.lightningTargetZ = 0;
+    this.lightningAmplitude = 0;
+    this.lightningProgress = 0;
+    this.lightningImpactTimer = 0;
+    this.lightningImpactPending = false;
+    this.lightningTrail = [];
     this.hitPlayerIds = new Set();
     this.isFlying = false;
     this.isLoose = true;
@@ -47,6 +63,11 @@ class Ball {
       return;
     }
 
+    if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
+      this.updateLightningZigzag(delta);
+      return;
+    }
+
     if (this.isFlying && this.kind === "pass" && this.target && !this.target.defeated) {
       this.passTime += delta;
       this.adjustPassTrajectory(delta);
@@ -63,9 +84,13 @@ class Ball {
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
 
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
+    const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     if (this.isFlying) {
       if (straightBoostFlight) {
         this.z = this.boostFlightZ;
+        this.vz = 0;
+      } else if (straightSlapFlight) {
+        this.z = this.slapFlightZ;
         this.vz = 0;
       } else if (this.kind !== "pass") {
         const airDrag = this.specialShotType ? 0.994 : 0.996;
@@ -81,7 +106,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -149,6 +174,9 @@ class Ball {
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
+    this.slapInitialSpeed = 0;
+    this.slapFlightZ = 0;
+    this.clearLightningZigzag();
     this.hitPlayerIds.clear();
     player.hasBall = true;
   }
@@ -175,6 +203,8 @@ class Ball {
     this.z = actor.jumpZ + 28;
     if (this.specialShotType === "boost") {
       this.z = 28;
+    } else if (this.specialShotType === "slap") {
+      this.z = Math.min(76, 42 + actor.jumpZ * 0.18);
     }
     this.passTime = 0;
     this.passDuration = 0;
@@ -183,6 +213,8 @@ class Ball {
       this.radius = this.baseRadius * 1.2;
     } else if (this.specialShotType === "soul") {
       this.radius = this.baseRadius * 2;
+    } else if (this.specialShotType === "slap") {
+      this.radius = this.baseRadius * 1.98;
     }
     this.travelDistance = 0;
     this.returning = false;
@@ -190,6 +222,9 @@ class Ball {
     this.boomerangStartDistance = target ? Math.hypot(target.x - actor.x, target.y - actor.y) : 900;
     this.boostElapsed = 0;
     this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
+    this.slapInitialSpeed = 0;
+    this.slapFlightZ = this.specialShotType === "slap" ? this.z : 0;
+    this.clearLightningZigzag();
     this.hitPlayerIds.clear();
 
     if (kind === "pass") {
@@ -212,6 +247,32 @@ class Ball {
       : this.config.shootSpeed;
     const speed = kind === "shoot" ? shootBaseSpeed * speedRatio : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
+
+    if (this.specialShotType === "lightning") {
+      const targetGroundY = target ? target.y : targetY + 38;
+      const targetZ = target ? (target.jumpZ || 0) + 52 : 52;
+      const distance = Math.hypot(targetX - this.x, targetGroundY - this.y);
+      const normalDuration = Math.max(0.72, Math.min(1.35, distance / Math.max(760, speed * 0.9)));
+      this.lightningZigzagActive = true;
+      this.lightningElapsed = 0;
+      this.lightningDuration = normalDuration / 0.4;
+      this.lightningStartX = this.x;
+      this.lightningStartY = this.y;
+      this.lightningStartZ = this.z;
+      this.lightningTargetX = targetX;
+      this.lightningTargetY = targetGroundY;
+      this.lightningTargetZ = targetZ;
+      this.lightningAmplitude = Math.max(150, Math.min(260, 110 + distance * 0.09));
+      this.lightningProgress = 0;
+      this.lightningImpactTimer = 0;
+      this.lightningImpactPending = false;
+      this.lightningTrail = [{ x: this.x, y: this.y - this.z }];
+      this.catchable = true;
+      this.vx = targetX >= this.x ? 0.001 : -0.001;
+      this.vy = 0;
+      this.vz = 0;
+      return true;
+    }
 
     const directX = dx / length;
     const directY = dy / length;
@@ -250,7 +311,70 @@ class Ball {
         this.vz = Math.max(160, this.vz * 0.45);
       }
     }
+    if (this.specialShotType === "slap") {
+      this.slapInitialSpeed = Math.hypot(this.vx, this.vy);
+      this.slapFlightZ = this.z;
+      this.vz = 0;
+    }
     return true;
+  }
+
+  clearLightningZigzag() {
+    this.lightningZigzagActive = false;
+    this.lightningElapsed = 0;
+    this.lightningProgress = 0;
+    this.lightningImpactTimer = 0;
+    this.lightningImpactPending = false;
+    this.lightningTrail = [];
+  }
+
+  updateLightningZigzag(delta) {
+    if (this.lightningProgress >= 1) {
+      this.x = this.lightningTargetX;
+      this.y = this.lightningTargetY;
+      this.z = this.lightningTargetZ;
+      this.catchable = true;
+      this.lightningImpactTimer -= delta;
+      if (this.lightningImpactTimer <= 0) this.drop();
+      return;
+    }
+
+    const previousX = this.x;
+    const previousY = this.y;
+    const previousZ = this.z;
+    this.lightningElapsed += delta;
+    const progress = Math.min(1, this.lightningElapsed / Math.max(0.01, this.lightningDuration));
+    const dx = this.lightningTargetX - this.lightningStartX;
+    const dy = this.lightningTargetY - this.lightningStartY;
+    const length = Math.hypot(dx, dy) || 1;
+    const sideX = -dy / length;
+    const sideY = dx / length;
+    const zigzag = (2 / Math.PI) * Math.asin(Math.sin(progress * Math.PI * 6));
+    const envelope = Math.pow(Math.sin(progress * Math.PI), 0.48);
+    const offset = zigzag * this.lightningAmplitude * envelope;
+    const baseX = this.lightningStartX + dx * progress;
+    const baseY = this.lightningStartY + dy * progress;
+    const baseZ = this.lightningStartZ + (this.lightningTargetZ - this.lightningStartZ) * progress;
+    this.x = baseX + sideX * offset;
+    this.y = baseY + sideY * offset;
+    this.z = baseZ + Math.sin(progress * Math.PI) * 115;
+    this.vx = (this.x - previousX) / Math.max(0.001, delta);
+    this.vy = (this.y - previousY) / Math.max(0.001, delta);
+    this.vz = (this.z - previousZ) / Math.max(0.001, delta);
+    this.travelDistance += Math.hypot(this.x - previousX, this.y - previousY);
+    this.spin += delta * 18;
+    this.lightningProgress = progress;
+    this.lightningTrail.push({ x: this.x, y: this.y - this.z });
+    if (this.lightningTrail.length > 16) this.lightningTrail.shift();
+
+    if (progress >= 1) {
+      this.x = this.lightningTargetX;
+      this.y = this.lightningTargetY;
+      this.z = this.lightningTargetZ;
+      this.lightningImpactTimer = 0.12;
+      this.lightningImpactPending = true;
+      this.lightningTrail.push({ x: this.x, y: this.y - this.z });
+    }
   }
 
   updateSpecialShot(delta) {
@@ -276,6 +400,17 @@ class Ball {
         this.vx = directionX * targetSpeed;
         this.vy = directionY * targetSpeed;
       }
+    }
+    if (this.specialShotType === "slap") {
+      const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+      const directionX = this.vx / currentSpeed;
+      const directionY = this.vy / currentSpeed;
+      const initialSpeed = this.slapInitialSpeed || currentSpeed;
+      const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 520));
+      this.vx = directionX * targetSpeed;
+      this.vy = directionY * targetSpeed;
+      this.z = this.slapFlightZ;
+      this.vz = 0;
     }
     if (this.specialShotType === "boomerang" && this.target && !this.target.defeated) {
       if (!this.returning) {
@@ -318,6 +453,10 @@ class Ball {
 
     if (this.specialShotType === "soul") {
       return Math.min(2.4, (1.25 + t * 0.3) * 1.5);
+    }
+
+    if (this.specialShotType === "slap") {
+      return Math.min(3.06, (1.42 + t * 0.24) * 1.8);
     }
 
     const specialBase = this.specialShotType === "lightning"
@@ -389,6 +528,9 @@ class Ball {
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
+    this.slapInitialSpeed = 0;
+    this.slapFlightZ = 0;
+    this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
 
@@ -414,6 +556,9 @@ class Ball {
     this.boomerangStartDistance = 900;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
+    this.slapInitialSpeed = 0;
+    this.slapFlightZ = 0;
+    this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
 
@@ -424,6 +569,7 @@ class Ball {
     if (this.specialShotType === "iron") return "#7e8592";
     if (this.specialShotType === "boomerang") return "#ffe36a";
     if (this.specialShotType === "soul") return "#ffc4e5";
+    if (this.specialShotType === "slap") return "#ffb07a";
     return "#ffe46a";
   }
 
@@ -436,6 +582,16 @@ class Ball {
 
   draw(context, debugMode) {
     if (this.owner) return;
+
+    if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
+      this.drawLightningZigzagBall(context, debugMode);
+      return;
+    }
+
+    if (this.isFlying && this.specialShotType === "slap") {
+      this.drawSlapShot(context, debugMode);
+      return;
+    }
 
     const drawY = this.y - this.z;
     const shotEffect = this.kind === "shoot" && this.isFlying ? Math.max(0, this.shotMultiplier - 0.92) : 0;
@@ -683,6 +839,186 @@ class Ball {
     context.stroke();
     context.restore();
 
+    if (debugMode) {
+      context.strokeStyle = "rgba(255,0,0,0.7)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  drawSlapShot(context, debugMode) {
+    const drawY = this.y - this.z;
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const directionX = this.vx / speed;
+    const directionY = this.vy / speed;
+    const angle = Math.atan2(this.vy, this.vx);
+    const pulse = 0.5 + Math.sin(this.spin * 2.4) * 0.5;
+
+    context.save();
+    context.fillStyle = "rgba(40, 28, 16, 0.24)";
+    context.beginPath();
+    context.ellipse(this.x + 4, this.y + 10, this.radius * 1.28, this.radius * 0.4, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.globalAlpha = 0.34 + pulse * 0.18;
+    context.strokeStyle = "#ff5a2a";
+    context.lineCap = "round";
+    for (let index = 0; index < 5; index += 1) {
+      const side = (index - 2) * 15;
+      const length = 105 + index * 13;
+      context.lineWidth = 13 - index * 1.2;
+      context.beginPath();
+      context.moveTo(
+        this.x - directionX * 24 - directionY * side,
+        drawY - directionY * 24 + directionX * side
+      );
+      context.lineTo(
+        this.x - directionX * length - directionY * side * 1.7,
+        drawY - directionY * length + directionX * side * 1.7
+      );
+      context.stroke();
+    }
+
+    context.globalAlpha = 1;
+    context.translate(this.x, drawY);
+    context.rotate(angle);
+    context.scale(1.5, 1.5);
+    context.strokeStyle = "#9d3d2d";
+    context.lineWidth = 6;
+    context.fillStyle = "#ffd1a3";
+    context.beginPath();
+    context.moveTo(-62, -24);
+    context.lineTo(-14, -34);
+    context.lineTo(3, 34);
+    context.lineTo(-58, 28);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    const palm = context.createRadialGradient(8, -16, 6, 10, 2, 58);
+    palm.addColorStop(0, "#ffe8cf");
+    palm.addColorStop(0.62, "#ffd1a3");
+    palm.addColorStop(1, "#e7a977");
+    context.fillStyle = palm;
+    context.beginPath();
+    context.ellipse(12, 0, 42, 48, 0.08, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = "#ffd1a3";
+    context.lineWidth = 18;
+    context.lineCap = "round";
+    const fingers = [
+      { x: 39, y: -35, length: 46 },
+      { x: 45, y: -18, length: 58 },
+      { x: 48, y: 0, length: 62 },
+      { x: 44, y: 18, length: 55 },
+      { x: 34, y: 34, length: 40 }
+    ];
+    for (const finger of fingers) {
+      context.beginPath();
+      context.moveTo(finger.x - 16, finger.y);
+      context.lineTo(finger.length, finger.y);
+      context.stroke();
+    }
+    context.strokeStyle = "#9d3d2d";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(12, 2, 22, -1.1, 1.1);
+    context.stroke();
+
+    context.strokeStyle = "#fff2b5";
+    context.lineWidth = 5;
+    context.globalAlpha = 0.72;
+    context.beginPath();
+    context.arc(14, 0, 58 + pulse * 8, -1.05, 1.05);
+    context.stroke();
+    context.restore();
+
+    if (debugMode) {
+      context.strokeStyle = "rgba(255,0,0,0.7)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  drawLightningZigzagBall(context, debugMode) {
+    const drawY = this.y - this.z;
+    const pulse = 0.5 + Math.sin(this.spin * 1.7) * 0.5;
+    context.save();
+    context.lineJoin = "miter";
+    context.lineCap = "square";
+
+    if (this.lightningTrail.length > 1) {
+      const traceTrail = () => {
+        context.beginPath();
+        context.moveTo(this.lightningTrail[0].x, this.lightningTrail[0].y);
+        for (let i = 1; i < this.lightningTrail.length; i += 1) {
+          context.lineTo(this.lightningTrail[i].x, this.lightningTrail[i].y);
+        }
+      };
+      context.globalAlpha = 0.5;
+      context.strokeStyle = "#42dfff";
+      context.lineWidth = 34;
+      traceTrail();
+      context.stroke();
+      context.globalAlpha = 0.96;
+      context.strokeStyle = "#ffd400";
+      context.lineWidth = 20;
+      traceTrail();
+      context.stroke();
+      context.globalAlpha = 1;
+      context.strokeStyle = "#fffbd1";
+      context.lineWidth = 6;
+      traceTrail();
+      context.stroke();
+    }
+
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.34 + pulse * 0.28;
+    context.fillStyle = "#42dfff";
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius * (1.8 + pulse * 0.28), 0, Math.PI * 2);
+    context.fill();
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+    context.fillStyle = "#f06a32";
+    context.strokeStyle = "#ffd400";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius * 1.05, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.strokeStyle = "#fffbd1";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius * 0.82, 0, Math.PI * 2);
+    context.stroke();
+
+    for (let i = 0; i < 5; i += 1) {
+      const angle = this.spin + i * Math.PI * 0.4;
+      const innerX = this.x + Math.cos(angle) * this.radius * 1.1;
+      const innerY = drawY + Math.sin(angle) * this.radius * 1.1;
+      context.strokeStyle = i % 2 === 0 ? "#ffd400" : "#63efff";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.moveTo(innerX, innerY);
+      context.lineTo(
+        this.x + Math.cos(angle + 0.22) * this.radius * 1.75,
+        drawY + Math.sin(angle + 0.22) * this.radius * 1.75
+      );
+      context.lineTo(
+        this.x + Math.cos(angle - 0.12) * this.radius * 2.25,
+        drawY + Math.sin(angle - 0.12) * this.radius * 2.25
+      );
+      context.stroke();
+    }
+
+    context.restore();
     if (debugMode) {
       context.strokeStyle = "rgba(255,0,0,0.7)";
       context.lineWidth = 2;

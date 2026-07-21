@@ -7,13 +7,14 @@ const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const CATCH_DIFFICULTY = {
-  normal: { duration: 0.36, areaScale: 1, maxChance: 0.98, chanceScale: 1, perfectTiming: 0.42, deflectTiming: 0.22, deflectBand: 0.34, deflectDamage: 0.25 },
-  soul: { duration: 0.24, areaScale: 0.88, maxChance: 0.5, chanceScale: 0.51, perfectTiming: 0.5, deflectTiming: 0.3, deflectBand: 0.28, deflectDamage: 0.25 },
-  triple: { duration: 0.22, areaScale: 0.82, maxChance: 0.4, chanceScale: 0.41, perfectTiming: 0.56, deflectTiming: 0.34, deflectBand: 0.24, deflectDamage: 0.32 },
-  lightning: { duration: 0.2, areaScale: 0.78, maxChance: 0.35, chanceScale: 0.36, perfectTiming: 0.62, deflectTiming: 0.4, deflectBand: 0.22, deflectDamage: 0.35 },
-  boomerang: { duration: 0.21, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64, deflectTiming: 0.42, deflectBand: 0.2, deflectDamage: 0.35 },
-  boost: { duration: 0.18, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68, deflectTiming: 0.46, deflectBand: 0.16, deflectDamage: 0.4 },
-  iron: { duration: 0.17, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74, deflectTiming: 0.52, deflectBand: 0.12, deflectDamage: 0.5 }
+  normal: { duration: 0.3, areaScale: 1, chanceScale: 1, perfectTiming: 0.42 },
+  soul: { duration: 0.216, areaScale: 0.88, maxChance: 0.5, chanceScale: 0.51, perfectTiming: 0.5 },
+  triple: { duration: 0.198, areaScale: 0.82, maxChance: 0.4, chanceScale: 0.41, perfectTiming: 0.56 },
+  lightning: { duration: 0.18, areaScale: 0.78, maxChance: 0.35, chanceScale: 0.36, perfectTiming: 0.62 },
+  boomerang: { duration: 0.189, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64 },
+  boost: { duration: 0.162, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68 },
+  iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74 },
+  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 }
 };
 
 const GAME_CONFIG = {
@@ -59,7 +60,7 @@ const GAME_CONFIG = {
   battle: {
     pickupDistance: 62,
     rollingPickupDistance: 210,
-    catchDuration: 0.36,
+    catchDuration: 0.3,
     catchWidth: 74,
     catchHeight: 92,
     duckDuration: 0.48,
@@ -166,7 +167,8 @@ class DodgeballGame {
         court,
         areas: this.areas,
         teamName: "left",
-        opponentName: "right"
+        opponentName: "right",
+        isSpiritReady: (team) => this.hasFullSpirit(team)
       })
       : null;
     this.cpuController = this.gameMode !== "versus"
@@ -175,7 +177,8 @@ class DodgeballGame {
         court,
         areas: this.areas,
         teamName: "right",
-        opponentName: "left"
+        opponentName: "left",
+        isSpiritReady: (team) => this.hasFullSpirit(team)
       })
       : null;
     this.effects = [];
@@ -642,6 +645,33 @@ class DodgeballGame {
           player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "lightning"),
           player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "triple"),
           player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "boomerang")
+        ]
+      },
+      {
+        id: "doskois",
+        name: "ドスコイズ",
+        description: "力自慢の力士が集合した重量級チーム",
+        characterType: "power",
+        innerNames: ["よこづな", "らいのふじ", "はりておう", "がんさい", "ごうのやま"],
+        outNames: ["だいふんか", "かいりきやま", "ちゃんこまる"],
+        uniformColor: "#ffd1a3",
+        pantsColor: "#ffd1a3",
+        trimColor: "#f0b67f",
+        hairColor: "#111318",
+        uniformEmblem: "sumo",
+        maxHp: 170,
+        maxStamina: 100,
+        stats: { power: 11, speed: 4, jump: 7, technique: 7 },
+        cpuProfile: "doskois",
+        players: [
+          player("よこづな", "inner", "power", 280, 100, 15, 7, 8, 8, "slap", { uniformEmblem: "sumoGold" }),
+          player("らいのふじ", "inner", "power", 170, 100, 11, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("はりておう", "inner", "power", 170, 100, 12, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("がんさい", "inner", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("ごうのやま", "inner", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("だいふんか", "out", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("かいりきやま", "out", "power", 170, 100, 12, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
+          player("ちゃんこまる", "out", "power", 170, 100, 9, 4, 8, 6, "slap", { uniformEmblem: "sumo" })
         ]
       }
     ];
@@ -1156,6 +1186,7 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.leftTeam);
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
+    this.handleLightningZigzagImpact();
     this.handleBoostShotExit();
     this.handleTripleBallHits();
     this.ensureBallIsPlayable();
@@ -1937,7 +1968,7 @@ class DodgeballGame {
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
         pending.actor.y - 48,
-        specialType ? "#66f6ff" : pending.kind === "shoot" ? "#ffe46a" : "#ffffff",
+        specialType ? this.getSpecialHitColor(specialType) : pending.kind === "shoot" ? "#ffe46a" : "#ffffff",
         specialType ? "special" : pending.kind
       );
     }
@@ -2271,6 +2302,11 @@ class DodgeballGame {
       if (joe && Math.random() < 0.68) return joe;
     }
 
+    if (actor.cpuProfile === "doskois" && actor.name !== "よこづな" && this.hasFullSpirit(actor.team)) {
+      const yokozuna = candidates.find((p) => p.name === "よこづな" && p.hp > 0);
+      if (yokozuna && Math.random() < 0.84) return yokozuna;
+    }
+
     const enemyCenterX = actor.team === "left"
       ? this.areas.rightInner.x + this.areas.rightInner.w * 0.5
       : this.areas.leftInner.x + this.areas.leftInner.w * 0.5;
@@ -2378,11 +2414,6 @@ class DodgeballGame {
         this.spawnCatchResultLabel(catcher, "MISS", "#ff806f");
         continue;
       }
-      if (catchResult === "deflect") {
-        this.handleImperfectCatch(catcher);
-        break;
-      }
-
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
       const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
       const caughtIronShot = caughtEnemyShot && this.ball.specialShotType === "iron";
@@ -2425,6 +2456,28 @@ class DodgeballGame {
     return this.getCatchDifficulty(catcher).duration;
   }
 
+  getNormalCatchMaxChance(technique) {
+    const value = Math.max(1, Math.min(20, technique || 5));
+    const points = [
+      { technique: 1, chance: 0.49 },
+      { technique: 5, chance: 0.65 },
+      { technique: 7, chance: 0.75 },
+      { technique: 10, chance: 0.82 },
+      { technique: 15, chance: 0.9 },
+      { technique: 20, chance: 0.94 }
+    ];
+
+    for (let index = 1; index < points.length; index += 1) {
+      const next = points[index];
+      if (value > next.technique) continue;
+      const previous = points[index - 1];
+      const ratio = (value - previous.technique) / (next.technique - previous.technique);
+      return previous.chance + (next.chance - previous.chance) * ratio;
+    }
+
+    return points[points.length - 1].chance;
+  }
+
   getManualCatchResult(catcher, friendly) {
     if (this.ball.kind === "pass") {
       return "perfect";
@@ -2465,43 +2518,17 @@ class DodgeballGame {
       (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) *
       distanceFactor * facingFactor * throwerPowerPenalty * shotPowerPenalty
     ));
-    const chance = Math.min(difficulty.maxChance, normalChance * difficulty.chanceScale);
+    const maxChance = this.ball.specialShotType
+      ? difficulty.maxChance
+      : this.getNormalCatchMaxChance(technique);
+    const chance = Math.min(maxChance, normalChance * difficulty.chanceScale);
 
     if (timing < difficulty.perfectTiming) {
-      const receptionEnding = catcher.catchTimer <= 0.055;
-      if (!receptionEnding || timing < difficulty.deflectTiming) return "wait";
+      if (catcher.catchTimer > 0.055) return "wait";
+      return "miss";
     }
 
-    const roll = Math.random();
-    if (timing >= difficulty.perfectTiming && roll <= chance) return "perfect";
-    if (roll <= Math.min(0.95, chance + difficulty.deflectBand)) return "deflect";
-    return "miss";
-  }
-
-  handleImperfectCatch(catcher) {
-    if (!this.ball?.isFlying || !this.ball.thrower) return;
-
-    const difficulty = this.getCatchDifficulty(catcher);
-    const specialType = this.ball.specialShotType;
-    const fullDamage = specialType
-      ? this.getSpecialShotDamage(this.ball.power || 20, specialType, this.ball.travelDistance)
-      : this.ball.power || 20;
-    const damage = Math.max(1, fullDamage * difficulty.deflectDamage);
-    const direction = this.ball.vx >= 0 ? 1 : -1;
-    const hpBefore = catcher.hp;
-    const damaged = catcher.takeDamage(damage, direction, GAME_CONFIG.battle, 0.42);
-    if (damaged) {
-      this.addSpiritForDamage(catcher.team, hpBefore, catcher.hp);
-      this.spawnDamageNumber(catcher, damage);
-    }
-    if (specialType === "iron") {
-      catcher.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.9;
-    }
-    catcher.catchTimer = 0;
-    catcher.throwLockTimer = Math.max(catcher.throwLockTimer, 0.25);
-    this.spawnEffect(catcher.x, catcher.y - 60, "#ffd166", "hit");
-    this.spawnCatchResultLabel(catcher, "BLOCK", "#ffd166");
-    this.spillFailedCatchBall(catcher);
+    return Math.random() <= chance ? "perfect" : "miss";
   }
 
   spawnCatchResultLabel(catcher, text, color) {
@@ -2514,34 +2541,6 @@ class DodgeballGame {
       life: 0.72,
       maxLife: 0.72
     });
-  }
-
-  spillFailedCatchBall(catcher) {
-    if (!this.ball || !this.ball.isFlying) return;
-    const incomingX = this.ball.vx;
-    const incomingY = this.ball.vy;
-    const speed = Math.hypot(incomingX, incomingY) || 1;
-    this.ball.owner = null;
-    this.ball.thrower = null;
-    this.ball.target = null;
-    this.ball.kind = "loose";
-    this.ball.isFlying = false;
-    this.ball.isLoose = true;
-    this.ball.catchable = false;
-    this.ball.hasBounced = true;
-    this.ball.z = 0;
-    this.ball.vx = (incomingX / speed) * 130 + (Math.random() - 0.5) * 80;
-    this.ball.vy = (incomingY / speed) * 130 + (Math.random() - 0.5) * 80;
-    this.ball.vz = 0;
-    this.ball.x = catcher.x + catcher.facing * 36;
-    this.ball.y = catcher.y - 22;
-    this.ball.shotMultiplier = 1;
-    this.ball.specialShot = false;
-    this.ball.specialShotType = null;
-    this.ball.radius = this.ball.baseRadius;
-    this.ball.travelDistance = 0;
-    this.ball.returning = false;
-    this.ball.hitPlayerIds?.clear();
   }
 
   isFacingIncomingBall(catcher) {
@@ -2634,7 +2633,8 @@ class DodgeballGame {
           if (target.hp > 0) {
             target.stun(0.55 + Math.max(0, (this.ball.shotMultiplier || 1) - 1.5) * 0.25);
           }
-          this.applyLightningSplash(target, damage);
+          this.applyLightningSplash(target, damage, this.ball.x, this.ball.y);
+          this.ball.lightningImpactPending = false;
         }
         if (specialType === "iron") {
           target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 1.2;
@@ -2642,7 +2642,12 @@ class DodgeballGame {
         if (specialType === "soul") {
           this.healTeamByMaxHpRatio(this.ball.thrower.team, 0.1);
         }
-        this.spawnEffect(this.ball.x, ballY, this.getSpecialHitColor(specialType), specialType ? "special" : "hit");
+        this.spawnEffect(
+          this.ball.x,
+          ballY,
+          this.getSpecialHitColor(specialType),
+          specialType === "slap" ? "slapImpact" : specialType ? "special" : "hit"
+        );
         this.spawnDamageNumber(target, damage);
         if (specialType === "boomerang") {
           this.ball.drop();
@@ -2682,6 +2687,19 @@ class DodgeballGame {
     this.tripleBalls = remaining;
   }
 
+  handleLightningZigzagImpact() {
+    if (
+      !this.ball.lightningImpactPending ||
+      this.ball.specialShotType !== "lightning" ||
+      !this.ball.thrower
+    ) return;
+
+    const damage = this.getSpecialShotDamage(this.ball.power, "lightning", this.ball.travelDistance);
+    this.ball.lightningImpactPending = false;
+    this.applyLightningSplash(null, damage, this.ball.lightningTargetX, this.ball.lightningTargetY);
+    this.spawnEffect(this.ball.lightningTargetX, this.ball.lightningTargetY - 48, "#ffd400", "special");
+  }
+
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
     if (specialType === "lightning" || specialType === "triple" || specialType === "boomerang") {
       return baseDamage * 1.7;
@@ -2694,6 +2712,10 @@ class DodgeballGame {
     }
     if (specialType === "soul") {
       return baseDamage * 1.2;
+    }
+    if (specialType === "slap") {
+      const distancePenalty = Math.min(1.75, Math.max(0, travelDistance) / 690);
+      return baseDamage * (2.8 - distancePenalty);
     }
     return baseDamage;
   }
@@ -2770,15 +2792,15 @@ class DodgeballGame {
     }
   }
 
-  applyLightningSplash(primaryTarget, baseDamage) {
+  applyLightningSplash(primaryTarget, baseDamage, centerX = primaryTarget?.x, centerY = primaryTarget?.y) {
     const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     const splashRadius = 285;
     const splashDamage = Math.max(1, baseDamage * 0.2);
     for (const enemy of enemies) {
       if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
-      const distance = Math.hypot(enemy.x - primaryTarget.x, enemy.y - primaryTarget.y);
+      const distance = Math.hypot(enemy.x - centerX, enemy.y - centerY);
       if (distance > splashRadius) continue;
-      const direction = enemy.x >= primaryTarget.x ? 1 : -1;
+      const direction = enemy.x >= centerX ? 1 : -1;
       const hpBefore = enemy.hp;
       if (enemy.takeDamage(splashDamage, direction, GAME_CONFIG.battle, 1.5)) {
         this.addSpiritForDamage(enemy.team, hpBefore, enemy.hp);
@@ -2799,6 +2821,7 @@ class DodgeballGame {
     if (specialType === "iron") return "#aeb4bf";
     if (specialType === "boomerang") return "#a8ff6b";
     if (specialType === "soul") return "#ffc4e5";
+    if (specialType === "slap") return "#ff6b35";
     return "#ffe46a";
   }
 
@@ -3179,6 +3202,7 @@ class DodgeballGame {
     if (specialType === "iron") return "IRON";
     if (specialType === "boomerang") return "BANANA";
     if (specialType === "soul") return "SOUL RECOVERY";
+    if (specialType === "slap") return "張り手シュート";
     return "";
   }
 
@@ -3248,7 +3272,7 @@ class DodgeballGame {
     this.drawTripleBalls(context);
     this.drawChargeEffect();
     this.drawSpecialAnticipationEffect();
-    this.drawCpuPlayerNames(context);
+    this.drawMatchPlayerNames(context);
     if (DEBUG_MODE) this.drawDebugAreas();
     context.restore();
 
@@ -3621,17 +3645,18 @@ class DodgeballGame {
     if (specialType === "iron") return "鉄";
     if (specialType === "boomerang") return "バ";
     if (specialType === "soul") return "魂";
+    if (specialType === "slap") return "張";
     return "-";
   }
 
-  drawCpuPlayerNames(context) {
+  drawMatchPlayerNames(context) {
     if (this.gameMode === "versus") return;
     context.save();
     context.textAlign = "left";
     context.textBaseline = "middle";
     context.font = "bold 18px Meiryo, sans-serif";
     context.lineWidth = 4;
-    const namedPlayers = this.gameMode === "watch" ? [...this.leftTeam, ...this.rightTeam] : this.rightTeam;
+    const namedPlayers = [...this.leftTeam, ...this.rightTeam];
     for (const player of namedPlayers) {
       if (!player || player.defeated || player.leaveTimer > GAME_CONFIG.battle.exitDelay) continue;
       const scale = player.lastDrawScale || 1;
@@ -3983,7 +4008,11 @@ class DodgeballGame {
         : `${player?.position === "out" ? "外" : "内"} ${player?.name || ""}`;
       const title = editable ? definition.label : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
-      const previewStyle = editable ? null : team;
+      const previewStyle = editable ? null : {
+        ...team,
+        ...player,
+        uniformEmblem: player?.uniformEmblem || team?.uniformEmblem
+      };
 
       context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
       context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
@@ -4058,7 +4087,11 @@ class DodgeballGame {
         : (player?.position === "out" ? "外野" : "内野");
       const title = editable ? definition.label : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
-      const previewStyle = editable ? null : team;
+      const previewStyle = editable ? null : {
+        ...team,
+        ...player,
+        uniformEmblem: player?.uniformEmblem || team?.uniformEmblem
+      };
 
       context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
       context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
@@ -4149,10 +4182,12 @@ class DodgeballGame {
     const suit = style?.uniformColor || (side === "left" ? "#0057ff" : "#f01818");
     const pants = style?.pantsColor || suit;
     const hair = style?.hairColor || "#f2c14e";
+    const sumoStyle = style?.uniformEmblem === "sumo" || style?.uniformEmblem === "sumoGold";
+    const legColor = sumoStyle ? "#ffd1a3" : pants;
     context.save();
     context.translate(x, y);
     context.scale(body.scaleX * scale, body.scaleY * scale);
-    context.strokeStyle = pants;
+    context.strokeStyle = legColor;
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = 11 * body.legWidth;
@@ -4174,10 +4209,29 @@ class DodgeballGame {
     context.lineTo(34, -28);
     context.lineTo(38, 0);
     context.stroke();
-    context.fillStyle = suit;
+    context.fillStyle = sumoStyle ? "#ffd1a3" : suit;
     context.beginPath();
     context.ellipse(0, -42, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
     context.fill();
+    if (sumoStyle) {
+      const gold = style?.uniformEmblem === "sumoGold";
+      const fundoshi = gold ? "#d9a719" : "#17191d";
+      context.fillStyle = fundoshi;
+      context.strokeStyle = gold ? "#8c6810" : "#08090b";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(0, -17, 29 * body.torsoX, 9, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(-11 * body.torsoX, -15);
+      context.lineTo(11 * body.torsoX, -15);
+      context.lineTo(8 * body.torsoX, 15);
+      context.lineTo(-8 * body.torsoX, 15);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
     if (style?.uniformEmblem === "usaStripes" || style?.uniformEmblem === "joeBib") {
       context.save();
       context.clip();
@@ -4243,7 +4297,25 @@ class DodgeballGame {
     context.quadraticCurveTo(0, -114, -24, -103);
     context.closePath();
     context.fill();
-    if (body.mage) {
+    if (sumoStyle) {
+      context.fillStyle = hair;
+      context.beginPath();
+      context.arc(0, -109, 27, Math.PI, Math.PI * 2);
+      context.lineTo(22, -104);
+      context.quadraticCurveTo(0, -115, -24, -103);
+      context.closePath();
+      context.fill();
+      context.strokeStyle = "rgba(0,0,0,0.35)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.ellipse(0, -128, 13, 8, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.arc(0, -137, 8, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    } else if (body.mage) {
       context.fillStyle = "#8a4a24";
       context.beginPath();
       context.arc(0, -112, 25, Math.PI, Math.PI * 2);
@@ -4595,6 +4667,40 @@ class DodgeballGame {
         context.fillStyle = effect.color;
         context.strokeText(effect.text, effect.x, effect.y - progress * 34);
         context.fillText(effect.text, effect.x, effect.y - progress * 34);
+        context.restore();
+        continue;
+      }
+      if (effect.type === "slapImpact") {
+        const radius = 42 + progress * 145;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.strokeStyle = "#ff4a22";
+        context.fillStyle = "rgba(255, 211, 154, 0.2)";
+        context.lineWidth = 14 - progress * 6;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.strokeStyle = "#fff2a8";
+        context.lineWidth = 7;
+        for (let index = 0; index < 18; index += 1) {
+          const angle = Math.PI * 2 * index / 18;
+          const inner = radius * 0.42;
+          const outer = radius * (index % 2 === 0 ? 1.18 : 0.88);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+        context.fillStyle = "#ffefb0";
+        context.strokeStyle = "#9d2d1f";
+        context.lineWidth = 8;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.font = "bold 82px Meiryo, sans-serif";
+        context.strokeText("張", 0, -8);
+        context.fillText("張", 0, -8);
         context.restore();
         continue;
       }

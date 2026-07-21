@@ -618,6 +618,8 @@ class Player {
       pants: this.pantsColor || this.uniformColor || teamColors.suit
     };
     const body = CHARACTER_TYPES[this.characterType] || CHARACTER_TYPES.normal;
+    const sumoStyle = this.isSumoStyle();
+    const legColor = sumoStyle ? PLAYER_MODEL.skin : colors.pants;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 1 : 0;
     const movingOnFoot = Math.hypot(this.vx, this.vy) > 15 && !crouch;
     const runAmount = movingOnFoot ? (this.isDashing ? 1.45 : 1) : 0;
@@ -751,14 +753,17 @@ class Player {
       context.rotate(-0.12);
     }
 
-    this.drawModelLimb(context, pose.backLeg, colors.pants, 11 * body.legWidth);
+    this.drawModelLimb(context, pose.backLeg, legColor, 11 * body.legWidth);
     this.drawModelLimb(context, pose.backArm, PLAYER_MODEL.skinShade, 9 * body.armWidth);
-    this.drawModelFoot(context, pose.backLeg[2], colors.pants);
+    if (sumoStyle) this.drawModelBareFoot(context, pose.backLeg[2]);
+    else this.drawModelFoot(context, pose.backLeg[2], colors.pants);
 
     this.drawModelTorso(context, 0, torsoY, colors, body);
 
-    this.drawModelLimb(context, pose.frontLeg, colors.pants, 12 * body.legWidth);
-    this.drawModelFoot(context, pose.frontLeg[2], colors.pants);
+    this.drawModelLimb(context, pose.frontLeg, legColor, 12 * body.legWidth);
+    if (sumoStyle) this.drawModelBareFoot(context, pose.frontLeg[2]);
+    else this.drawModelFoot(context, pose.frontLeg[2], colors.pants);
+    if (sumoStyle) this.drawSumoFundoshi(context, torsoY, body);
     this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10 * body.armWidth);
     if (body.mage) {
       this.drawMageSkirt(context, torsoY, colors);
@@ -811,6 +816,23 @@ class Player {
   }
 
   drawModelTorso(context, x, y, colors, body = CHARACTER_TYPES.normal) {
+    if (this.isSumoStyle()) {
+      const skin = context.createRadialGradient(x - 12, y - 18, 5, x, y, 48);
+      skin.addColorStop(0, "#ffe3c5");
+      skin.addColorStop(0.64, PLAYER_MODEL.skin);
+      skin.addColorStop(1, PLAYER_MODEL.skinShade);
+      context.fillStyle = skin;
+      context.beginPath();
+      context.ellipse(x, y, 31 * body.torsoX, 39 * body.torsoY, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "rgba(174, 91, 68, 0.58)";
+      context.beginPath();
+      context.arc(x - 14 * body.torsoX, y - 7, 2.4, 0, Math.PI * 2);
+      context.arc(x + 14 * body.torsoX, y - 7, 2.4, 0, Math.PI * 2);
+      context.fill();
+      return;
+    }
+
     context.fillStyle = colors.suit;
     context.beginPath();
     context.ellipse(x, y, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
@@ -840,6 +862,38 @@ class Player {
       context.arc(x, y - 3, Math.max(7, 10 * Math.min(body.torsoX, body.torsoY)), 0, Math.PI * 2);
       context.fill();
     }
+  }
+
+  isSumoStyle() {
+    return this.uniformEmblem === "sumo" || this.uniformEmblem === "sumoGold";
+  }
+
+  drawSumoFundoshi(context, torsoY, body) {
+    const gold = this.uniformEmblem === "sumoGold";
+    const baseColor = gold ? "#d9a719" : "#17191d";
+    const highlight = gold ? "#fff08a" : "#555b64";
+    const beltY = torsoY + 22 * body.torsoY;
+    context.fillStyle = baseColor;
+    context.strokeStyle = gold ? "#8c6810" : "#08090b";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(0, beltY, 29 * body.torsoX, 9, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-11 * body.torsoX, beltY + 1);
+    context.lineTo(11 * body.torsoX, beltY + 1);
+    context.lineTo(8 * body.torsoX, beltY + 29);
+    context.lineTo(-8 * body.torsoX, beltY + 29);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.strokeStyle = highlight;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-7 * body.torsoX, beltY - 3);
+    context.lineTo(14 * body.torsoX, beltY - 3);
+    context.stroke();
   }
 
   drawMageSkirt(context, torsoY, colors) {
@@ -942,6 +996,20 @@ class Player {
       context.fill();
     }
 
+    if (this.isSumoStyle()) {
+      context.fillStyle = hairColor;
+      context.strokeStyle = "rgba(0,0,0,0.35)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.ellipse(x, y - 30, 13, 8, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.arc(x, y - 39, 8, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
+
     if (direction === "up") {
       context.fillStyle = hairColor;
       context.beginPath();
@@ -995,6 +1063,16 @@ class Player {
     context.fill();
     context.fillStyle = PLAYER_MODEL.sole;
     context.fillRect(foot.x - 7, foot.y + 6, 22, 3);
+  }
+
+  drawModelBareFoot(context, foot) {
+    context.fillStyle = PLAYER_MODEL.skin;
+    context.strokeStyle = PLAYER_MODEL.skinShade;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(foot.x + 5, foot.y + 3, 15, 6, 0.08, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
   }
 
   drawHeldBall(context, scale) {

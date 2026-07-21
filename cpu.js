@@ -1,3 +1,18 @@
+const CPU_CLOSE_SHOT_DEFENSE = {
+  throwerDistance: 430,
+  ballDistance: 380,
+  urgentDistance: 190,
+  urgentDistancePerSpeed: 28,
+  baseDodgeChance: 0.52,
+  dodgeChancePerSpeed: 0.055,
+  targetedBonus: 0.08,
+  panicBonus: 0.08,
+  maxDodgeChance: 0.97,
+  baseSuccessChance: 0.58,
+  successChancePerSpeed: 0.06,
+  maxSuccessChance: 0.94
+};
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -320,6 +335,9 @@ class CPUController {
     if (holder.cpuProfile === "americanBigBalls") {
       return this.getAmericanBigBallsHolderPlan(holder);
     }
+    if (holder.cpuProfile === "doskois") {
+      return this.getDoskoisHolderPlan(holder);
+    }
 
     const roll = Math.random();
     let type = "normal-shot";
@@ -474,6 +492,39 @@ class CPUController {
     }
 
     return this.createHolderPlan(holder, type, 1.08 + Math.random() * 0.32);
+  }
+
+  getDoskoisHolderPlan(holder) {
+    const roll = Math.random();
+    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    let type = "dash-strong-shot";
+
+    if (holder.name === "よこづな") {
+      type = spiritReady
+        ? roll < 0.38 ? "dash-strong-shot"
+          : roll < 0.68 ? "jump-strong-shot"
+            : roll < 0.9 ? "charge-shot"
+              : "dash-jump-strong-shot"
+        : roll < 0.3 ? "dash-strong-shot"
+          : roll < 0.54 ? "charge-shot"
+            : roll < 0.76 ? "center-shot"
+              : roll < 0.9 ? "normal-shot"
+                : "pass-chain";
+    } else if (spiritReady) {
+      type = roll < 0.88 ? "pass-chain" : "dash-strong-shot";
+    } else if (holder.role === "out") {
+      type = roll < 0.5 ? "pass-chain"
+        : roll < 0.72 ? "dash-strong-shot"
+          : roll < 0.9 ? "charge-shot"
+            : "normal-shot";
+    } else {
+      type = roll < 0.42 ? "pass-chain"
+        : roll < 0.66 ? "dash-strong-shot"
+          : roll < 0.84 ? "charge-shot"
+            : "center-shot";
+    }
+
+    return this.createHolderPlan(holder, type, 1.14 + Math.random() * 0.28);
   }
 
   createHolderPlan(holder, type, chargeTime) {
@@ -700,8 +751,14 @@ class CPUController {
       const frontShot = this.isFrontShot(member);
       const nearShot = distance < 210;
       const closePanic = distance < 145;
-      const laneThreat = Math.abs(this.ball.y - member.y) < 105 + Math.max(0, speed - 5) * 9;
+      const targeted = this.ball.target === member;
+      const laneThreat = targeted || Math.abs(this.ball.y - member.y) < 105 + Math.max(0, speed - 5) * 9;
       const throwerDistance = this.ball.thrower ? Math.hypot(this.ball.thrower.x - member.x, this.ball.thrower.y - member.y) : distance;
+      const closeRangeThreat = (
+        throwerDistance < CPU_CLOSE_SHOT_DEFENSE.throwerDistance &&
+        distance < CPU_CLOSE_SHOT_DEFENSE.ballDistance &&
+        laneThreat
+      );
       const farShot = throwerDistance > 520 || distance > 260;
       const quickDefender = defenseStat >= 7;
       const readyToReact = frontShot && (farShot || (quickDefender && nearShot));
@@ -735,7 +792,15 @@ class CPUController {
       const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
       const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1);
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
-      if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
+      const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted);
+      if (closeRangeThreat && Math.random() < closeDodgeRoll) {
+        this.dodgeIncomingShot(command, member, true, {
+          speed,
+          jump,
+          closePanic,
+          closeRange: true
+        });
+      } else if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
         command.catch = true;
       } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
         this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, { speed, jump, closePanic });
@@ -750,12 +815,43 @@ class CPUController {
       if (member.defeated || member.role !== "inner") continue;
       const stats = member.stats || {};
       const defenseStat = Math.max(stats.technique || 5, stats.speed || 5, stats.jump || 5);
-      if (defenseStat < 7) continue;
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
-      const laneThreat = Math.abs(this.ball.y - member.y) < 126;
+      const speed = stats.speed || 5;
+      const targeted = this.ball.target === member;
+      const laneThreat = targeted || Math.abs(this.ball.y - member.y) < 126;
+      const throwerDistance = this.ball.thrower
+        ? Math.hypot(this.ball.thrower.x - member.x, this.ball.thrower.y - member.y)
+        : Infinity;
+      const urgentDistance = CPU_CLOSE_SHOT_DEFENSE.urgentDistance +
+        Math.max(0, speed - 5) * CPU_CLOSE_SHOT_DEFENSE.urgentDistancePerSpeed;
+      if (
+        throwerDistance < CPU_CLOSE_SHOT_DEFENSE.throwerDistance &&
+        distance < urgentDistance &&
+        laneThreat
+      ) return true;
+      if (defenseStat < 7) continue;
       if (distance < 230 && laneThreat) return true;
     }
     return false;
+  }
+
+  getCloseRangeDodgeChance(speed, distance, targeted) {
+    const speedBonus = (Math.max(1, Math.min(20, speed)) - 5) * CPU_CLOSE_SHOT_DEFENSE.dodgeChancePerSpeed;
+    const targetBonus = targeted ? CPU_CLOSE_SHOT_DEFENSE.targetedBonus : 0;
+    const panicBonus = distance < 170 ? CPU_CLOSE_SHOT_DEFENSE.panicBonus : 0;
+    return Math.max(0.32, Math.min(
+      CPU_CLOSE_SHOT_DEFENSE.maxDodgeChance,
+      CPU_CLOSE_SHOT_DEFENSE.baseDodgeChance + speedBonus + targetBonus + panicBonus
+    ));
+  }
+
+  getCloseRangeDodgeSuccessChance(speed, closePanic) {
+    const speedBonus = (Math.max(1, Math.min(20, speed)) - 5) * CPU_CLOSE_SHOT_DEFENSE.successChancePerSpeed;
+    const panicBonus = closePanic ? CPU_CLOSE_SHOT_DEFENSE.panicBonus : 0;
+    return Math.max(0.38, Math.min(
+      CPU_CLOSE_SHOT_DEFENSE.maxSuccessChance,
+      CPU_CLOSE_SHOT_DEFENSE.baseSuccessChance + speedBonus + panicBonus
+    ));
   }
 
   dodgeIncomingShot(command, member, readyToReact, traits = {}) {
@@ -764,9 +860,14 @@ class CPUController {
     const dodgeRoll = Math.random();
     const speedBias = Math.max(0, speed - 5) * 0.08;
     const jumpBias = Math.max(0, jump - 5) * 0.1;
-    if (dodgeRoll < 0.3 - Math.min(0.16, speedBias + jumpBias * 0.5)) {
+    const closeDodgeSuccess = traits.closeRange
+      ? this.getCloseRangeDodgeSuccessChance(speed, traits.closePanic)
+      : 0;
+    if (traits.closeRange && dodgeRoll < closeDodgeSuccess) {
       command.crouch = true;
-    } else if (dodgeRoll < 0.58 + jumpBias && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
+    } else if (!traits.closeRange && dodgeRoll < 0.3 - Math.min(0.16, speedBias + jumpBias * 0.5)) {
+      command.crouch = true;
+    } else if (dodgeRoll < (traits.closeRange ? closeDodgeSuccess + 0.12 : 0.58 + jumpBias) && member.jumpZ <= 0 && member.jumpVelocity <= 0) {
       command.jump = true;
     }
     const incomingSpeed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
