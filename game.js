@@ -2665,11 +2665,33 @@ class DodgeballGame {
           return;
         }
         if (specialType !== "boomerang" && specialType !== "iron") {
-          this.ball.bounceFromHit(-direction, damage / 20);
+          this.spillHitBallInDefenderCourt(target, direction, damage);
         }
       }
       break;
     }
+  }
+
+  spillHitBallInDefenderCourt(target, direction, damage) {
+    const area = this.areas[target.zone];
+    const rawPoint = {
+      x: target.x + direction * Math.min(44, Math.max(16, this.ball.radius * 1.2)),
+      y: target.y + (Math.random() - 0.5) * 46
+    };
+    const point = this.clampPointToArea(rawPoint, area, this.ball.radius + 20);
+    this.ball.x = point.x;
+    this.ball.y = point.y;
+    this.ball.z = Math.min(42, Math.max(0, target.jumpZ * 0.2));
+    this.ball.bounceFromHit(0, damage / 28);
+    const areaCenterX = area?.x + area?.w * 0.5 || target.x;
+    const towardAreaCenter = Math.sign(areaCenterX - point.x) || -direction || 1;
+    const speed = Math.max(80, Math.min(190, GAME_CONFIG.ball.hitBounceX * 0.34));
+    this.ball.vx = towardAreaCenter * speed;
+    this.ball.vy = (Math.random() - 0.5) * Math.max(60, GAME_CONFIG.ball.hitBounceY * 0.28);
+    this.ball.vz = Math.max(70, Math.min(135, damage * 1.4));
+    this.looseOutfieldRecoveryTimer = 0;
+    this.lastLooseOutfieldBallPosition = null;
+    this.lastLooseOutfieldReceiverDistance = Infinity;
   }
 
   handleTripleBallHits() {
