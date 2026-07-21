@@ -847,6 +847,16 @@ class Player {
       }
       context.restore();
     }
+    if (this.uniformEmblem === "osakaStripes" || this.uniformEmblem === "takoBib") {
+      context.save();
+      context.clip();
+      context.fillStyle = "#111318";
+      const stripeW = 8 * body.torsoX;
+      for (let sx = x - 28 * body.torsoX; sx <= x + 22 * body.torsoX; sx += 18 * body.torsoX) {
+        context.fillRect(sx, y - 39 * body.torsoY, stripeW, 78 * body.torsoY);
+      }
+      context.restore();
+    }
     if (this.uniformEmblem === "joeBib") {
       context.fillStyle = "#f7f7f2";
       this.roundRect(context, x - 14 * body.torsoX, y - 19 * body.torsoY, 28 * body.torsoX, 32 * body.torsoY, 4);
@@ -856,6 +866,15 @@ class Player {
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.fillText("J", x, y - 3);
+    } else if (this.uniformEmblem === "takoBib") {
+      context.fillStyle = "#f7f7f2";
+      this.roundRect(context, x - 14 * body.torsoX, y - 19 * body.torsoY, 28 * body.torsoX, 32 * body.torsoY, 4);
+      context.fill();
+      context.fillStyle = "#d92828";
+      context.font = "bold 14px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("T", x, y - 3);
     } else if (this.uniformEmblem === "hinomaru") {
       context.fillStyle = "#d92828";
       context.beginPath();

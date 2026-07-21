@@ -29,6 +29,12 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.tsutenkakuPhase = "none";
+    this.tsutenkakuElapsed = 0;
+    this.tsutenkakuTargetX = 0;
+    this.tsutenkakuTargetY = 0;
+    this.tsutenkakuTargetZ = 0;
+    this.tsutenkakuPeakZ = 0;
     this.lightningZigzagActive = false;
     this.lightningElapsed = 0;
     this.lightningDuration = 0;
@@ -176,6 +182,7 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
     player.hasBall = true;
@@ -224,6 +231,7 @@ class Ball {
     this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = this.specialShotType === "slap" ? this.z : 0;
+    this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
 
@@ -271,6 +279,23 @@ class Ball {
       this.vx = targetX >= this.x ? 0.001 : -0.001;
       this.vy = 0;
       this.vz = 0;
+      return true;
+    }
+
+    if (this.specialShotType === "tsutenkaku") {
+      const targetGroundY = target ? target.y : targetY + 38;
+      const targetZ = target ? (target.jumpZ || 0) + 44 : 44;
+      const distance = Math.hypot(targetX - this.x, targetGroundY - this.y);
+      this.tsutenkakuPhase = "rise";
+      this.tsutenkakuElapsed = 0;
+      this.tsutenkakuTargetX = targetX;
+      this.tsutenkakuTargetY = targetGroundY;
+      this.tsutenkakuTargetZ = targetZ;
+      this.tsutenkakuPeakZ = Math.max(720, this.z + 560 + Math.min(260, distance * 0.16));
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 1180;
+      this.catchable = true;
       return true;
     }
 
@@ -328,6 +353,15 @@ class Ball {
     this.lightningTrail = [];
   }
 
+  clearTsutenkakuDrop() {
+    this.tsutenkakuPhase = "none";
+    this.tsutenkakuElapsed = 0;
+    this.tsutenkakuTargetX = 0;
+    this.tsutenkakuTargetY = 0;
+    this.tsutenkakuTargetZ = 0;
+    this.tsutenkakuPeakZ = 0;
+  }
+
   updateLightningZigzag(delta) {
     if (this.lightningProgress >= 1) {
       this.x = this.lightningTargetX;
@@ -379,6 +413,10 @@ class Ball {
 
   updateSpecialShot(delta) {
     if (!this.isFlying || this.kind !== "shoot" || !this.specialShotType) return;
+    if (this.specialShotType === "tsutenkaku") {
+      this.updateTsutenkakuDrop(delta);
+      return;
+    }
     if (this.specialShotType === "boost") {
       this.boostElapsed += delta;
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
@@ -442,6 +480,37 @@ class Ball {
     }
   }
 
+  updateTsutenkakuDrop(delta) {
+    if (this.tsutenkakuPhase === "rise") {
+      this.tsutenkakuElapsed += delta;
+      if (this.z >= this.tsutenkakuPeakZ || this.vz <= 0 || this.tsutenkakuElapsed > 0.78) {
+        this.tsutenkakuPhase = "dive";
+        const dx = this.tsutenkakuTargetX - this.x;
+        const dy = this.tsutenkakuTargetY - this.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const diveTime = Math.max(0.32, Math.min(0.68, distance / 980));
+        this.vx = dx / diveTime;
+        this.vy = dy / diveTime;
+        this.vz = (this.tsutenkakuTargetZ - this.z) / diveTime;
+      }
+      return;
+    }
+
+    if (this.tsutenkakuPhase !== "dive") return;
+    const dx = this.tsutenkakuTargetX - this.x;
+    const dy = this.tsutenkakuTargetY - this.y;
+    const dz = this.tsutenkakuTargetZ - this.z;
+    const distance = Math.hypot(dx, dy) || 1;
+    const speed = Math.max(900, Math.hypot(this.vx, this.vy));
+    const desiredX = (dx / distance) * speed;
+    const desiredY = (dy / distance) * speed;
+    const desiredZ = Math.min(-760, dz / Math.max(0.16, distance / speed));
+    const turn = Math.min(1, delta * 5.4);
+    this.vx += (desiredX - this.vx) * turn;
+    this.vy += (desiredY - this.vy) * turn;
+    this.vz += (desiredZ - this.vz) * turn;
+  }
+
   getShootSpeedRatio(throwMultiplier = 1) {
     const t = Math.max(0, Math.min(1, ((throwMultiplier || 0.7) - 0.7) / 1.45));
     if (!this.specialShotType) {
@@ -457,6 +526,9 @@ class Ball {
 
     if (this.specialShotType === "slap") {
       return Math.min(3.06, (1.42 + t * 0.24) * 1.8);
+    }
+    if (this.specialShotType === "tsutenkaku") {
+      return Math.min(1.45, 1.15 + t * 0.2);
     }
 
     const specialBase = this.specialShotType === "lightning"
@@ -530,6 +602,7 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
@@ -558,6 +631,7 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
@@ -570,6 +644,7 @@ class Ball {
     if (this.specialShotType === "boomerang") return "#ffe36a";
     if (this.specialShotType === "soul") return "#ffc4e5";
     if (this.specialShotType === "slap") return "#ffb07a";
+    if (this.specialShotType === "tsutenkaku") return "#ffd83d";
     return "#ffe46a";
   }
 
@@ -690,6 +765,19 @@ class Ball {
           context.stroke();
         }
       }
+      if (this.specialShotType === "tsutenkaku") {
+        context.globalAlpha = 0.86;
+        context.strokeStyle = "#fff4a8";
+        context.lineWidth = 5 + intensity * 5;
+        context.beginPath();
+        context.moveTo(this.x, drawY + 18);
+        context.lineTo(this.x, drawY + 150 + intensity * 80);
+        context.stroke();
+        context.fillStyle = "rgba(255,216,61,0.45)";
+        context.beginPath();
+        context.arc(this.x, drawY + 18, 22 + intensity * 18, 0, Math.PI * 2);
+        context.fill();
+      }
       context.strokeStyle = "rgba(255,255,255,0.72)";
       context.lineWidth = 3 + intensity * 3;
       context.beginPath();
@@ -738,6 +826,18 @@ class Ball {
         context.fillStyle = "rgba(255,190,225,0.3)";
         context.beginPath();
         context.arc(0, 0, this.radius + 18, 0, Math.PI * 2);
+        context.fill();
+      }
+      if (this.specialShotType === "tsutenkaku") {
+        context.globalAlpha = 0.78;
+        context.strokeStyle = "#fff4a8";
+        context.lineWidth = 5;
+        context.beginPath();
+        context.arc(0, 0, this.radius + 14 + Math.sin(this.spin) * 4, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = "rgba(255,216,61,0.34)";
+        context.beginPath();
+        context.arc(0, 0, this.radius + 20, 0, Math.PI * 2);
         context.fill();
       }
       context.restore();

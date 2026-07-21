@@ -14,7 +14,8 @@ const CATCH_DIFFICULTY = {
   boomerang: { duration: 0.189, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64 },
   boost: { duration: 0.162, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68 },
   iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74 },
-  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 }
+  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 },
+  tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.28, chanceScale: 0.29, perfectTiming: 0.7 }
 };
 
 const GAME_CONFIG = {
@@ -645,6 +646,33 @@ class DodgeballGame {
           player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "lightning"),
           player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "triple"),
           player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "boomerang")
+        ]
+      },
+      {
+        id: "kuidao-rangers",
+        name: "\u304f\u3044\u3060\u304a\u30ec\u30f3\u30b8\u30e3\u30fc\u30ba",
+        description: "\u5927\u962a\u4ee3\u8868\u306e\u30ce\u30ea\u3068\u52e2\u3044\u3067\u653b\u3081\u308b\u30c1\u30fc\u30e0",
+        characterType: "normal",
+        innerNames: ["\u305f\u3053\u3078\u3044", "\u304a\u3053\u306e\u307f", "\u304f\u3057\u304b\u3064", "\u304f\u3044\u3060\u304a\u308c", "\u3064\u3046\u3066\u3093"],
+        outNames: ["\u306a\u3093\u3067\u3084", "\u307e\u3044\u3069", "\u3069\u3046\u3068\u3093"],
+        uniformColor: "#ffd83d",
+        pantsColor: "#f7f7f2",
+        trimColor: "#fff1a8",
+        hairColor: "#111318",
+        uniformEmblem: "osakaStripes",
+        maxHp: 120,
+        maxStamina: 100,
+        stats: { power: 7, speed: 6, jump: 7, technique: 7 },
+        cpuProfile: "kuidaoRangers",
+        players: [
+          player("\u305f\u3053\u3078\u3044", "inner", "jump", 180, 100, 9, 8, 9, 9, "tsutenkaku", { uniformEmblem: "takoBib" }),
+          player("\u304a\u3053\u306e\u307f", "inner", "normal", 120, 100, 6, 6, 8, 6, "tsutenkaku"),
+          player("\u304f\u3057\u304b\u3064", "inner", "normal", 120, 100, 8, 8, 7, 8, "tsutenkaku"),
+          player("\u304f\u3044\u3060\u304a\u308c", "inner", "normal", 120, 100, 7, 8, 7, 7, "tsutenkaku"),
+          player("\u3064\u3046\u3066\u3093", "inner", "normal", 120, 100, 7, 5, 9, 7, "tsutenkaku"),
+          player("\u306a\u3093\u3067\u3084", "out", "normal", 120, 100, 7, 6, 7, 6, "tsutenkaku"),
+          player("\u307e\u3044\u3069", "out", "normal", 120, 100, 6, 7, 6, 7, "tsutenkaku"),
+          player("\u3069\u3046\u3068\u3093", "out", "normal", 120, 100, 8, 6, 7, 7, "tsutenkaku")
         ]
       },
       {
@@ -2313,6 +2341,11 @@ class DodgeballGame {
       if (joe && Math.random() < 0.68) return joe;
     }
 
+    if (actor.cpuProfile === "kuidaoRangers" && actor.name !== "\u305f\u3053\u3078\u3044" && this.hasFullSpirit(actor.team)) {
+      const takohei = candidates.find((p) => p.name === "\u305f\u3053\u3078\u3044" && p.hp > 0);
+      if (takohei && Math.random() < 0.82) return takohei;
+    }
+
     if (actor.cpuProfile === "doskois" && actor.name !== "よこづな" && this.hasFullSpirit(actor.team)) {
       const yokozuna = candidates.find((p) => p.name === "よこづな" && p.hp > 0);
       if (yokozuna && Math.random() < 0.84) return yokozuna;
@@ -2743,6 +2776,9 @@ class DodgeballGame {
     if (specialType === "iron") {
       return baseDamage * 2.5;
     }
+    if (specialType === "tsutenkaku") {
+      return baseDamage * 1.9;
+    }
     if (specialType === "soul") {
       return baseDamage * 1.2;
     }
@@ -2855,6 +2891,7 @@ class DodgeballGame {
     if (specialType === "boomerang") return "#a8ff6b";
     if (specialType === "soul") return "#ffc4e5";
     if (specialType === "slap") return "#ff6b35";
+    if (specialType === "tsutenkaku") return "#ffd83d";
     return "#ffe46a";
   }
 
@@ -3236,6 +3273,7 @@ class DodgeballGame {
     if (specialType === "boomerang") return "BANANA";
     if (specialType === "soul") return "SOUL RECOVERY";
     if (specialType === "slap") return "張り手シュート";
+    if (specialType === "tsutenkaku") return "\u901a\u5929\u95a3\u843d\u3068\u3057";
     return "";
   }
 
@@ -3687,6 +3725,7 @@ class DodgeballGame {
     if (specialType === "boomerang") return "バ";
     if (specialType === "soul") return "魂";
     if (specialType === "slap") return "張";
+    if (specialType === "tsutenkaku") return "\u901a";
     return "-";
   }
 
@@ -4310,6 +4349,15 @@ class DodgeballGame {
       }
       context.restore();
     }
+    if (style?.uniformEmblem === "osakaStripes" || style?.uniformEmblem === "takoBib") {
+      context.save();
+      context.clip();
+      context.fillStyle = "#111318";
+      for (let stripeX = -28 * body.torsoX; stripeX <= 22 * body.torsoX; stripeX += 18 * body.torsoX) {
+        context.fillRect(stripeX, -80 * body.torsoY, 8 * body.torsoX, 78 * body.torsoY);
+      }
+      context.restore();
+    }
     if (style?.uniformEmblem === "joeBib") {
       context.fillStyle = "#f7f7f2";
       this.roundRect(context, -13 * body.torsoX, -58 * body.torsoY, 26 * body.torsoX, 27 * body.torsoY, 4);
@@ -4319,6 +4367,16 @@ class DodgeballGame {
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.fillText("J", 0, -44);
+    }
+    if (style?.uniformEmblem === "takoBib") {
+      context.fillStyle = "#f7f7f2";
+      this.roundRect(context, -13 * body.torsoX, -58 * body.torsoY, 26 * body.torsoX, 27 * body.torsoY, 4);
+      context.fill();
+      context.fillStyle = "#d92828";
+      context.font = "bold 22px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("T", 0, -44);
     }
     if (style?.uniformEmblem === "hinomaru") {
       context.fillStyle = "#d92828";

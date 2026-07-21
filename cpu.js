@@ -335,6 +335,9 @@ class CPUController {
     if (holder.cpuProfile === "americanBigBalls") {
       return this.getAmericanBigBallsHolderPlan(holder);
     }
+    if (holder.cpuProfile === "kuidaoRangers") {
+      return this.getKuidaoRangersHolderPlan(holder);
+    }
     if (holder.cpuProfile === "doskois") {
       return this.getDoskoisHolderPlan(holder);
     }
@@ -492,6 +495,41 @@ class CPUController {
     }
 
     return this.createHolderPlan(holder, type, 1.08 + Math.random() * 0.32);
+  }
+
+  getKuidaoRangersHolderPlan(holder) {
+    const roll = Math.random();
+    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    let type = "pass-chain";
+
+    if (holder.name === "\u305f\u3053\u3078\u3044") {
+      type = spiritReady
+        ? roll < 0.34 ? "dash-jump-strong-shot"
+          : roll < 0.62 ? "jump-strong-shot"
+            : roll < 0.84 ? "dash-strong-shot"
+              : "charge-shot"
+        : roll < 0.28 ? "jump-shot"
+          : roll < 0.52 ? "dash-shot"
+            : roll < 0.74 ? "pass-chain"
+              : "normal-shot";
+    } else if (spiritReady) {
+      type = roll < 0.86 ? "pass-chain"
+        : roll < 0.94 ? "dash-strong-shot"
+          : "jump-strong-shot";
+    } else if (holder.role === "out") {
+      type = roll < 0.48 ? "pass-chain"
+        : roll < 0.68 ? "jump-shot"
+          : roll < 0.86 ? "dash-shot"
+            : "normal-shot";
+    } else {
+      type = roll < 0.42 ? "pass-chain"
+        : roll < 0.62 ? "dash-shot"
+          : roll < 0.78 ? "jump-shot"
+            : roll < 0.92 ? "center-shot"
+              : "normal-shot";
+    }
+
+    return this.createHolderPlan(holder, type, 1.04 + Math.random() * 0.34);
   }
 
   getDoskoisHolderPlan(holder) {
