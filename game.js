@@ -6,6 +6,15 @@ const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
+const CATCH_DIFFICULTY = {
+  normal: { duration: 0.36, areaScale: 1, maxChance: 0.98, chanceScale: 1, perfectTiming: 0.42, deflectTiming: 0.22, deflectBand: 0.34, deflectDamage: 0.25 },
+  soul: { duration: 0.24, areaScale: 0.88, maxChance: 0.5, chanceScale: 0.51, perfectTiming: 0.5, deflectTiming: 0.3, deflectBand: 0.28, deflectDamage: 0.25 },
+  triple: { duration: 0.22, areaScale: 0.82, maxChance: 0.4, chanceScale: 0.41, perfectTiming: 0.56, deflectTiming: 0.34, deflectBand: 0.24, deflectDamage: 0.32 },
+  lightning: { duration: 0.2, areaScale: 0.78, maxChance: 0.35, chanceScale: 0.36, perfectTiming: 0.62, deflectTiming: 0.4, deflectBand: 0.22, deflectDamage: 0.35 },
+  boomerang: { duration: 0.21, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64, deflectTiming: 0.42, deflectBand: 0.2, deflectDamage: 0.35 },
+  boost: { duration: 0.18, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68, deflectTiming: 0.46, deflectBand: 0.16, deflectDamage: 0.4 },
+  iron: { duration: 0.17, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74, deflectTiming: 0.52, deflectBand: 0.12, deflectDamage: 0.5 }
+};
 
 const GAME_CONFIG = {
   width: 1440,
@@ -1234,7 +1243,7 @@ class DodgeballGame {
         active.startDodge(0, 0, GAME_CONFIG.battle);
       }
       if (this.input.wasPressed("catch")) {
-        active.startCatch(GAME_CONFIG.battle.catchDuration);
+        active.startCatch(this.getCatchDuration(active));
       }
     }
 
@@ -1258,7 +1267,7 @@ class DodgeballGame {
           activeRight.startDodge(0, 0, GAME_CONFIG.battle);
         }
         if (this.input.wasPressed("catch", 2)) {
-          activeRight.startCatch(GAME_CONFIG.battle.catchDuration);
+          activeRight.startCatch(this.getCatchDuration(activeRight));
         }
       }
     }
@@ -1276,7 +1285,7 @@ class DodgeballGame {
     if (!controller) return;
     for (const member of team) {
       const command = controller.getCommand(member);
-      if (command.catch) member.startCatch(GAME_CONFIG.battle.catchDuration);
+      if (command.catch) member.startCatch(this.getCatchDuration(member));
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
@@ -2270,9 +2279,16 @@ class DodgeballGame {
       if (friendly && this.ball.specialShotType === "boomerang") continue;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
-      if (!this.canManualCatch(catcher, friendly)) {
-        if (!this.ball.isFlying || !this.ball.thrower || !this.ball.catchable) return;
+      const catchResult = this.getManualCatchResult(catcher, friendly);
+      if (catchResult === "wait") continue;
+      if (catchResult === "miss") {
+        catcher.catchTimer = 0;
+        this.spawnCatchResultLabel(catcher, "MISS", "#ff806f");
         continue;
+      }
+      if (catchResult === "deflect") {
+        this.handleImperfectCatch(catcher);
+        break;
       }
 
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
@@ -2295,20 +2311,41 @@ class DodgeballGame {
       catcher.catchTimer = 0;
       this.setControlledMember(catcher.team, catcher);
       this.spawnEffect(catcher.x, catcher.y - 55, caughtEnemyShot ? "#8fffe8" : "#ffffff", caughtEnemyShot ? "catchStrong" : "catch");
+      if (caughtEnemyShot) this.spawnCatchResultLabel(catcher, "JUST CATCH", "#8fffe8");
       break;
     }
   }
 
-  canManualCatch(catcher, friendly) {
+  getCatchDifficulty(catcher) {
+    const enemySpecial = (
+      this.ball?.isFlying &&
+      this.ball.kind === "shoot" &&
+      this.ball.specialShotType &&
+      this.ball.thrower &&
+      this.ball.thrower.team !== catcher.team
+    );
+    return enemySpecial
+      ? CATCH_DIFFICULTY[this.ball.specialShotType] || CATCH_DIFFICULTY.normal
+      : CATCH_DIFFICULTY.normal;
+  }
+
+  getCatchDuration(catcher) {
+    return this.getCatchDifficulty(catcher).duration;
+  }
+
+  getManualCatchResult(catcher, friendly) {
     if (this.ball.kind === "pass") {
-      return true;
+      return "perfect";
     }
 
     if (this.ball.kind !== "shoot") {
-      return friendly;
+      return friendly ? "perfect" : "miss";
     }
 
+    if (friendly) return "perfect";
+
     const thrower = this.ball.thrower;
+    const difficulty = this.getCatchDifficulty(catcher);
     const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
     const facingQuality = this.getIncomingFacingQuality(catcher);
     const technique = catcher.stats?.technique || 5;
@@ -2327,27 +2364,64 @@ class DodgeballGame {
       Math.min(5, throwerPowerAboveBase) * 0.01 +
       Math.max(0, throwerPowerAboveBase - 5) * 0.007
     );
-    const shotPowerRatio = Math.max(0, (this.ball.power || 20) / 20 - 1);
+    const projectedDamage = this.ball.specialShotType
+      ? this.getSpecialShotDamage(this.ball.power || 20, this.ball.specialShotType, this.ball.travelDistance)
+      : this.ball.power || 20;
+    const shotPowerRatio = Math.max(0, projectedDamage / 20 - 1);
     const shotPowerPenalty = 1 - Math.min(0.38, shotPowerRatio * 0.18);
-    const specialCatchPenalty = this.ball.specialShotType === "iron"
-      ? 0.3
-      : this.ball.specialShotType ? 0.5 : 1;
     const normalChance = Math.max(0.03, Math.min(0.98,
       (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) *
       distanceFactor * facingFactor * throwerPowerPenalty * shotPowerPenalty
     ));
-    const chance = normalChance * specialCatchPenalty;
-    if (Math.random() <= chance) return true;
+    const chance = Math.min(difficulty.maxChance, normalChance * difficulty.chanceScale);
 
-    if (this.ball.specialShotType === "iron") {
-      const direction = this.ball.vx >= 0 ? 1 : -1;
-      catcher.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 2.4;
-      catcher.knockbackY += (this.ball.vy >= 0 ? 1 : -1) * GAME_CONFIG.battle.knockbackSpeed * 0.6;
+    if (timing < difficulty.perfectTiming) {
+      const receptionEnding = catcher.catchTimer <= 0.055;
+      if (!receptionEnding || timing < difficulty.deflectTiming) return "wait";
+    }
+
+    const roll = Math.random();
+    if (timing >= difficulty.perfectTiming && roll <= chance) return "perfect";
+    if (roll <= Math.min(0.95, chance + difficulty.deflectBand)) return "deflect";
+    return "miss";
+  }
+
+  handleImperfectCatch(catcher) {
+    if (!this.ball?.isFlying || !this.ball.thrower) return;
+
+    const difficulty = this.getCatchDifficulty(catcher);
+    const specialType = this.ball.specialShotType;
+    const fullDamage = specialType
+      ? this.getSpecialShotDamage(this.ball.power || 20, specialType, this.ball.travelDistance)
+      : this.ball.power || 20;
+    const damage = Math.max(1, fullDamage * difficulty.deflectDamage);
+    const direction = this.ball.vx >= 0 ? 1 : -1;
+    const hpBefore = catcher.hp;
+    const damaged = catcher.takeDamage(damage, direction, GAME_CONFIG.battle, 0.42);
+    if (damaged) {
+      this.addSpiritForDamage(catcher.team, hpBefore, catcher.hp);
+      this.spawnDamageNumber(catcher, damage);
+    }
+    if (specialType === "iron") {
+      catcher.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.9;
     }
     catcher.catchTimer = 0;
-    this.spawnEffect(catcher.x, catcher.y - 66, "#ffb09a", "pass");
+    catcher.throwLockTimer = Math.max(catcher.throwLockTimer, 0.25);
+    this.spawnEffect(catcher.x, catcher.y - 60, "#ffd166", "hit");
+    this.spawnCatchResultLabel(catcher, "BLOCK", "#ffd166");
     this.spillFailedCatchBall(catcher);
-    return false;
+  }
+
+  spawnCatchResultLabel(catcher, text, color) {
+    this.effects.push({
+      x: catcher.x,
+      y: catcher.y - catcher.jumpZ - 128,
+      color,
+      type: "catchResult",
+      text,
+      life: 0.72,
+      maxLife: 0.72
+    });
   }
 
   spillFailedCatchBall(catcher) {
@@ -2425,11 +2499,22 @@ class DodgeballGame {
       : 0;
     const inflateX = isEnemyShot ? 52 + facingBonus + techniqueBonus : isPassCut ? 72 : 96;
     const inflateY = (isEnemyShot ? 54 + facingBonus * 0.45 + techniqueBonus : isPassCut ? 64 : 76) + jumpBonus;
-    return {
+    const area = {
       x: box.x - inflateX,
       y: box.y - inflateY,
       w: box.w + inflateX * 2,
       h: box.h + inflateY * 2
+    };
+    if (!isEnemyShot || !this.ball.specialShotType) return area;
+
+    const scale = this.getCatchDifficulty(catcher).areaScale;
+    const centerX = area.x + area.w * 0.5;
+    const centerY = area.y + area.h * 0.5;
+    return {
+      x: centerX - area.w * scale * 0.5,
+      y: centerY - area.h * scale * 0.5,
+      w: area.w * scale,
+      h: area.h * scale
     };
   }
 
@@ -4454,6 +4539,19 @@ class DodgeballGame {
         context.fillStyle = effect.color;
         context.strokeText(effect.text, effect.x, effect.y - progress * 58);
         context.fillText(effect.text, effect.x, effect.y - progress * 58);
+        context.restore();
+        continue;
+      }
+      if (effect.type === "catchResult") {
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.textAlign = "center";
+        context.font = "bold 30px Meiryo, sans-serif";
+        context.lineWidth = 6;
+        context.strokeStyle = "rgba(30, 38, 48, 0.9)";
+        context.fillStyle = effect.color;
+        context.strokeText(effect.text, effect.x, effect.y - progress * 34);
+        context.fillText(effect.text, effect.x, effect.y - progress * 34);
         context.restore();
         continue;
       }
