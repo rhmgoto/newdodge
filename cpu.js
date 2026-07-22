@@ -425,8 +425,21 @@ class CPUController {
 
   getHinomaruBombersHolderPlan(holder) {
     const roll = Math.random();
+    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    const specialShooter = holder.name === "だいち" || holder.name === "しょう";
     let type = "pass-chain";
-    if (this.passChainFinisher) {
+    if (spiritReady && holder.role === "inner" && specialShooter) {
+      type = roll < 0.34 ? "dash-jump-strong-shot"
+        : roll < 0.62 ? "jump-strong-shot"
+          : roll < 0.84 ? "dash-strong-shot"
+            : "charge-shot";
+      this.passChainRemaining = 0;
+      this.passChainFinisher = false;
+    } else if (spiritReady && holder.role === "inner") {
+      type = roll < 0.86 ? "pass-chain"
+        : roll < 0.94 ? "dash-strong-shot"
+          : "jump-strong-shot";
+    } else if (this.passChainFinisher) {
       const finisherRoll = Math.random();
       type = finisherRoll < 0.16 ? "dash-jump-strong-shot"
         : finisherRoll < 0.3 ? "dash-strong-shot"

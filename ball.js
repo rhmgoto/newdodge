@@ -1,4 +1,4 @@
-const TSUTENKAKU_SKY_TRAVEL_TIME = 1.5;
+const TSUTENKAKU_SKY_TRAVEL_TIME = 0.8;
 const TSUTENKAKU_WARNING_MIN_TIME = 0.2;
 const TSUTENKAKU_WARNING_MAX_TIME = 0.2;
 const BOOMERANG_ARC_SCALE = 1.5;
@@ -37,6 +37,7 @@ class Ball {
     this.boomerangStartDistance = 900;
     this.boomerangReturnStartX = 0;
     this.boomerangReturnStartY = 0;
+    this.boomerangReturnStartZ = 0;
     this.boomerangControlX = 0;
     this.boomerangControlY = 0;
     this.boomerangTargetX = 0;
@@ -44,6 +45,9 @@ class Ball {
     this.boomerangReturnElapsed = 0;
     this.boomerangReturnDuration = 0;
     this.boomerangCurveComplete = false;
+    this.boomerangTrail = [];
+    this.boomerangTurnFlashTimer = 0;
+    this.boomerangTargetMarkTimer = 0;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
@@ -130,6 +134,12 @@ class Ball {
     this.travelDistance += Math.hypot(this.x - lastX, this.y - lastY);
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
+    if (this.isFlying && this.specialShotType === "boomerang") {
+      this.boomerangTurnFlashTimer = Math.max(0, this.boomerangTurnFlashTimer - delta);
+      this.boomerangTargetMarkTimer = Math.max(0, this.boomerangTargetMarkTimer - delta);
+      this.boomerangTrail.push({ x: this.x, y: this.y, z: this.z });
+      if (this.boomerangTrail.length > 24) this.boomerangTrail.shift();
+    }
 
     if (
       this.isFlying &&
@@ -248,6 +258,9 @@ class Ball {
     this.returning = false;
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
+    this.boomerangTrail = [];
+    this.boomerangTurnFlashTimer = 0;
+    this.boomerangTargetMarkTimer = 0;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
@@ -299,7 +312,7 @@ class Ball {
     } else if (this.specialShotType === "soul") {
       this.radius = this.baseRadius * 2;
     } else if (this.specialShotType === "slap") {
-      this.radius = this.baseRadius * 2.376;
+      this.radius = this.baseRadius * 3.564;
     } else if (this.specialShotType === "kiai") {
       this.radius = this.baseRadius * 1.15;
     } else if (this.specialShotType === "boomerang") {
@@ -311,6 +324,7 @@ class Ball {
     this.boomerangStartDistance = target ? Math.hypot(target.x - actor.x, target.y - actor.y) : 900;
     this.boomerangReturnStartX = 0;
     this.boomerangReturnStartY = 0;
+    this.boomerangReturnStartZ = 0;
     this.boomerangControlX = 0;
     this.boomerangControlY = 0;
     this.boomerangTargetX = 0;
@@ -318,6 +332,9 @@ class Ball {
     this.boomerangReturnElapsed = 0;
     this.boomerangReturnDuration = 0;
     this.boomerangCurveComplete = false;
+    this.boomerangTrail = [];
+    this.boomerangTurnFlashTimer = 0;
+    this.boomerangTargetMarkTimer = 0;
     this.boostElapsed = 0;
     this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
     this.slapInitialSpeed = 0;
@@ -583,6 +600,7 @@ class Ball {
         this.returning = true;
         this.boomerangReturnStartX = this.x;
         this.boomerangReturnStartY = this.y;
+        this.boomerangReturnStartZ = this.z;
         this.boomerangTargetX = this.target.x;
         this.boomerangTargetY = this.target.y - 38;
         const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
@@ -602,6 +620,8 @@ class Ball {
         );
         this.boomerangReturnElapsed = 0;
         this.boomerangReturnDuration = Math.max(0.62, Math.min(1.65, curveLength / speed));
+        this.boomerangTurnFlashTimer = 0.34;
+        this.boomerangTargetMarkTimer = 0.48;
         const targetZ = (this.target.jumpZ || 0) + 22;
         this.vz = (targetZ - this.z + 0.5 * this.config.gravity *
           this.boomerangReturnDuration * this.boomerangReturnDuration) /
@@ -864,6 +884,12 @@ class Ball {
     }
 
     const drawY = this.y - this.z;
+    if (this.isFlying && this.specialShotType === "boomerang") {
+      this.drawBoomerangFlightEffects(context, drawY);
+    }
+    if (this.isFlying && this.specialShotType === "triple") {
+      this.drawTripleMainTrail(context, drawY);
+    }
     const shotEffect = this.kind === "shoot" && this.isFlying ? Math.max(0, this.shotMultiplier - 0.92) : 0;
     context.save();
     context.fillStyle = "rgba(40, 28, 16, 0.24)";
@@ -1147,7 +1173,22 @@ class Ball {
     }
     if (this.specialShotType === "boomerang") {
       context.rotate(Math.PI * 0.15);
-      context.fillStyle = "#ffd84f";
+      const bananaPulse = 1 + Math.sin(this.spin * 0.7) * 0.05;
+      context.scale(bananaPulse, bananaPulse);
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.5;
+      context.strokeStyle = this.returning ? "#ffffff" : "#fff4a6";
+      context.lineWidth = 10;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.72, 0.12, Math.PI * 1.42);
+      context.stroke();
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 1;
+      const bananaFill = context.createLinearGradient(-this.radius, -this.radius, this.radius, this.radius);
+      bananaFill.addColorStop(0, "#fff7a8");
+      bananaFill.addColorStop(0.42, "#ffd84f");
+      bananaFill.addColorStop(1, "#e5a91e");
+      context.fillStyle = bananaFill;
       context.strokeStyle = "#936428";
       context.lineWidth = 5;
       context.beginPath();
@@ -1384,6 +1425,166 @@ class Ball {
     }
   }
 
+  drawTripleMainTrail(context, drawY) {
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const tailX = -this.vx / speed;
+    const tailY = -this.vy / speed;
+    const sideX = -tailY;
+    const sideY = tailX;
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.lineCap = "round";
+    context.globalAlpha = 0.45;
+    context.strokeStyle = "#d92f45";
+    context.lineWidth = 30;
+    context.beginPath();
+    context.moveTo(this.x + tailX * 12, drawY + tailY * 12);
+    context.lineTo(this.x + tailX * 184, drawY + tailY * 184);
+    context.stroke();
+    context.globalAlpha = 0.82;
+    context.strokeStyle = "#ff725f";
+    context.lineWidth = 17;
+    context.beginPath();
+    context.moveTo(this.x + tailX * 8, drawY + tailY * 8);
+    context.lineTo(this.x + tailX * 154, drawY + tailY * 154);
+    context.stroke();
+    context.globalAlpha = 0.95;
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 6;
+    context.beginPath();
+    context.moveTo(this.x, drawY);
+    context.lineTo(this.x + tailX * 126, drawY + tailY * 126);
+    context.stroke();
+
+    for (let lane = -1; lane <= 1; lane += 2) {
+      context.globalAlpha = 0.7;
+      context.strokeStyle = lane < 0 ? "#68e8ff" : "#ffd83d";
+      context.lineWidth = 5;
+      context.beginPath();
+      for (let index = 0; index <= 12; index += 1) {
+        const distance = 12 + index * 13;
+        const wave = Math.sin(this.spin * 0.65 + index * 0.82 + lane * 1.2) * 21 * lane;
+        const px = this.x + tailX * distance + sideX * wave;
+        const py = drawY + tailY * distance + sideY * wave;
+        if (index === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.stroke();
+    }
+
+    for (let index = 1; index <= 3; index += 1) {
+      const distance = index * 48;
+      const centerX = this.x + tailX * distance;
+      const centerY = drawY + tailY * distance;
+      const radius = 18 + index * 5;
+      context.globalAlpha = 0.34 - index * 0.06;
+      context.strokeStyle = index === 1 ? "#ffffff" : index === 2 ? "#68e8ff" : "#ffd83d";
+      context.lineWidth = 4;
+      context.beginPath();
+      for (let corner = 0; corner < 3; corner += 1) {
+        const angle = this.spin * 0.2 + corner * Math.PI * 2 / 3;
+        const px = centerX + Math.cos(angle) * radius;
+        const py = centerY + Math.sin(angle) * radius;
+        if (corner === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  drawBoomerangFlightEffects(context, drawY) {
+    const trail = this.boomerangTrail;
+    if (trail.length > 1) {
+      const drawTrail = (color, width, alpha) => {
+        context.globalAlpha = alpha;
+        context.strokeStyle = color;
+        context.lineWidth = width;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.beginPath();
+        trail.forEach((point, index) => {
+          const pointY = point.y - point.z;
+          if (index === 0) context.moveTo(point.x, pointY);
+          else context.lineTo(point.x, pointY);
+        });
+        context.stroke();
+      };
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      drawTrail("#8fcf34", 34, 0.18);
+      drawTrail("#ffd83d", 22, 0.48);
+      drawTrail("#fff4a6", 8, 0.86);
+      for (let index = 4; index < trail.length; index += 6) {
+        const point = trail[index];
+        const alpha = index / trail.length * 0.42;
+        context.globalAlpha = alpha;
+        context.strokeStyle = "#ffe36a";
+        context.lineWidth = 6;
+        context.beginPath();
+        context.arc(point.x, point.y - point.z, this.radius * 0.66, 0.2, Math.PI * 1.35);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    if (this.boomerangTurnFlashTimer > 0) {
+      const ratio = this.boomerangTurnFlashTimer / 0.34;
+      const progress = 1 - ratio;
+      const x = this.boomerangReturnStartX;
+      const y = this.boomerangReturnStartY - this.boomerangReturnStartZ;
+      const radius = 62 + progress * 150;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = ratio;
+      context.strokeStyle = "#fff4a6";
+      context.lineWidth = 18 - progress * 8;
+      context.beginPath();
+      context.arc(x, y, radius, -Math.PI * 0.75, Math.PI * 0.75);
+      context.stroke();
+      context.strokeStyle = "#ffd000";
+      context.lineWidth = 9;
+      context.beginPath();
+      context.arc(x, y, radius * 1.18, -Math.PI * 0.72, Math.PI * 0.72);
+      context.stroke();
+      context.globalAlpha = ratio * 0.7;
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 7;
+      for (let index = 0; index < 16; index += 1) {
+        const angle = index * Math.PI * 2 / 16;
+        context.beginPath();
+        context.moveTo(x + Math.cos(angle) * radius * 0.45, y + Math.sin(angle) * radius * 0.45);
+        context.lineTo(x + Math.cos(angle) * radius * 1.3, y + Math.sin(angle) * radius * 1.3);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    if (this.boomerangTargetMarkTimer > 0) {
+      const ratio = this.boomerangTargetMarkTimer / 0.48;
+      const pulse = 1 + Math.sin(performance.now() / 42) * 0.12;
+      const radius = 54 * pulse;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = Math.min(1, ratio * 1.8);
+      context.strokeStyle = "#ffd83d";
+      context.lineWidth = 7;
+      context.beginPath();
+      context.arc(this.boomerangTargetX, this.boomerangTargetY, radius, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(this.boomerangTargetX - radius * 1.35, this.boomerangTargetY);
+      context.lineTo(this.boomerangTargetX + radius * 1.35, this.boomerangTargetY);
+      context.moveTo(this.boomerangTargetX, this.boomerangTargetY - radius * 1.35);
+      context.lineTo(this.boomerangTargetX, this.boomerangTargetY + radius * 1.35);
+      context.stroke();
+      context.restore();
+    }
+  }
+
   drawSlapShot(context, debugMode) {
     const drawY = this.y - this.z;
     const speed = Math.hypot(this.vx, this.vy) || 1;
@@ -1420,7 +1621,7 @@ class Ball {
     context.globalAlpha = 1;
     context.translate(this.x, drawY);
     context.rotate(angle);
-    context.scale(1.5, 1.5);
+    context.scale(2.25, 2.25);
     context.strokeStyle = "#9d3d2d";
     context.lineWidth = 6;
     context.fillStyle = "#ffd1a3";
