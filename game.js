@@ -151,6 +151,7 @@ class DodgeballGame {
     this.counterFreezeTimer = 0;
     this.boostEffectStage = 0;
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.message = "READY";
@@ -174,6 +175,7 @@ class DodgeballGame {
     this.ball = new Ball(GAME_CONFIG.ball);
     this.boostEffectStage = 0;
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.ball.x = court.centerX;
@@ -291,149 +293,6 @@ class DodgeballGame {
     const maxX = Math.max(...rects.map((rect) => rect.x + rect.w)) + padding;
     const maxY = Math.max(...rects.map((rect) => rect.y + rect.h)) + padding;
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-  }
-
-  createTeam(team) {
-    const isLeft = team === "left";
-    const teamDefinition = this.getTeamDefinitionForSide(team);
-    const cpuTeam = teamDefinition?.isCustom ? null : teamDefinition;
-    const color = teamDefinition?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
-    const pantsColor = teamDefinition?.pantsColor || color;
-    const trim = teamDefinition?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
-    const innerArea = isLeft ? this.areas.leftInner : this.areas.rightInner;
-    const sideArea = isLeft ? this.areas.rightSideOut : this.areas.leftSideOut;
-    const topArea = isLeft ? this.areas.rightTopOut : this.areas.leftTopOut;
-    const bottomArea = isLeft ? this.areas.rightBottomOut : this.areas.leftBottomOut;
-    const prefix = isLeft ? "left" : "right";
-    const selectedTypes = this.teamSelections?.[team] || Array(6).fill("normal");
-    const names = isLeft ? ["ソラ", "ミナ", "タケ"] : ["ガツ", "レン", "ドウ"];
-    const outNames = isLeft ? ["ハル", "ナツ", "アキ"] : ["ゴウ", "ジン", "バン"];
-    const xs = isLeft
-      ? [innerArea.x + 180, innerArea.x + 410, innerArea.x + 650]
-      : [innerArea.x + innerArea.w - 650, innerArea.x + innerArea.w - 410, innerArea.x + innerArea.w - 180];
-    const ys = [innerArea.y + 105, innerArea.y + 250, innerArea.y + 395];
-
-    const roster = [
-      new Player({
-        id: `${prefix}-inner-1`,
-        name: names[0],
-        team,
-        role: "inner",
-        zone: isLeft ? "leftInner" : "rightInner",
-        x: xs[0],
-        y: ys[1],
-        characterType: selectedTypes[0],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim
-      }),
-      new Player({
-        id: `${prefix}-inner-2`,
-        name: names[1],
-        team,
-        role: "inner",
-        zone: isLeft ? "leftInner" : "rightInner",
-        x: xs[1],
-        y: ys[0],
-        characterType: selectedTypes[1],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim,
-        hairColor: "#6d3a1d"
-      }),
-      new Player({
-        id: `${prefix}-inner-3`,
-        name: names[2],
-        team,
-        role: "inner",
-        zone: isLeft ? "leftInner" : "rightInner",
-        x: xs[2],
-        y: ys[2],
-        characterType: selectedTypes[2],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim,
-        hairColor: "#1f1f22"
-      }),
-      new Player({
-        id: `${prefix}-out-top`,
-        name: outNames[0],
-        team,
-        role: "out",
-        zone: isLeft ? "rightTopOut" : "leftTopOut",
-        x: topArea.x + topArea.w * 0.55,
-        y: topArea.y + 55,
-        characterType: selectedTypes[3],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim
-      }),
-      new Player({
-        id: `${prefix}-out-bottom`,
-        name: outNames[1],
-        team,
-        role: "out",
-        zone: isLeft ? "rightBottomOut" : "leftBottomOut",
-        x: bottomArea.x + bottomArea.w * 0.45,
-        y: bottomArea.y + bottomArea.h * 0.5,
-        characterType: selectedTypes[4],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim
-      }),
-      new Player({
-        id: `${prefix}-out-side`,
-        name: outNames[2],
-        team,
-        role: "out",
-        zone: isLeft ? "rightSideOut" : "leftSideOut",
-        x: sideArea.x + sideArea.w * 0.5,
-        y: sideArea.y + sideArea.h * 0.52,
-        characterType: selectedTypes[5],
-        maxHp: GAME_CONFIG.player.maxHp,
-        maxStamina: GAME_CONFIG.player.maxStamina,
-        speed: GAME_CONFIG.player.speed,
-        throwPower: GAME_CONFIG.player.throwPower,
-        stats: GAME_CONFIG.player.stats,
-        uniformColor: color,
-        trimColor: trim
-      })
-    ];
-
-    for (const player of roster) {
-      if (
-        !player.specialShotType &&
-        (teamDefinition?.id === "blue-stars" || teamDefinition?.id === "red-fires") &&
-        player.characterType === "normal"
-      ) {
-        player.specialShotType = "kiai";
-      }
-      const area = this.areas[player.zone];
-      player.clampToArea(area);
-      player.homeX = player.x;
-      player.homeY = player.y;
-    }
-    return roster;
   }
 
   createTeam(team) {
@@ -1296,6 +1155,7 @@ class DodgeballGame {
     this.updateTripleBalls(delta);
     this.autoPickupLooseBall();
     this.resetUnreachableOutfieldBall(delta);
+    this.recoverStuckLooseBall(delta);
     this.handleManualCatch(this.leftTeam);
     this.handleManualCatch(this.rightTeam);
     this.handlePassReceives();
@@ -1346,10 +1206,10 @@ class DodgeballGame {
       this.tripleBalls.push({
         x: actor.x + actor.facing * 42,
         y: actor.y - 42,
-        z: actor.jumpZ + 34,
+        z: actor.jumpZ + 24,
         vx: dir.x * speed + actor.vx * GAME_CONFIG.ball.moveBonus * 0.03,
         vy: dir.y * speed + actor.vy * GAME_CONFIG.ball.moveBonus * 0.03,
-        vz: 360 + Math.max(0, multiplier - 0.7) * 50 + actor.jumpZ * 0.08,
+        vz: 180 + Math.max(0, multiplier - 0.7) * 28 + actor.jumpZ * 0.04,
         radius: GAME_CONFIG.ball.radius * 0.88,
         team: actor.team,
         thrower: actor,
@@ -1788,6 +1648,55 @@ class DodgeballGame {
     this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
   }
 
+  recoverStuckLooseBall(delta = 0) {
+    if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) {
+      this.looseBallRecoveryTimer = 0;
+      return;
+    }
+
+    const speed = Math.hypot(this.ball.vx, this.ball.vy);
+    const settled = this.ball.hasBounced && speed < 38 && this.ball.z <= 28;
+    if (!settled) {
+      this.looseBallRecoveryTimer = 0;
+      return;
+    }
+
+    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
+    const candidates = this.players
+      .filter((member) => {
+        if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
+        if (!territory) return this.isPointInsideArea(this.ball.x, this.ball.y, 0, this.getMoveArea(member, false));
+        return member.team === territory.team && member.role === territory.role;
+      })
+      .map((member) => ({
+        member,
+        distance: Math.hypot(member.x - this.ball.x, member.y - this.ball.y),
+        canStandAtBall: this.isPointInsideArea(this.ball.x, this.ball.y, member.radius, this.getMoveArea(member, false))
+      }))
+      .sort((a, b) => a.distance - b.distance);
+
+    const receiver = candidates[0]?.member || null;
+    if (!receiver) {
+      this.looseBallRecoveryTimer = 0;
+      return;
+    }
+
+    const unreachable = candidates[0].distance > GAME_CONFIG.battle.rollingPickupDistance * 0.95 || !candidates[0].canStandAtBall;
+    this.looseBallRecoveryTimer = unreachable ? this.looseBallRecoveryTimer + delta : 0;
+    if (this.looseBallRecoveryTimer < 0.85) return;
+
+    const area = this.getMoveArea(receiver, false);
+    const point = this.clampPointToArea({ x: this.ball.x, y: this.ball.y }, area, receiver.radius);
+    receiver.x = point.x;
+    receiver.y = point.y;
+    receiver.vx = 0;
+    receiver.vy = 0;
+    this.ball.pickUp(receiver);
+    this.setControlledMember(receiver.team, receiver);
+    this.looseBallRecoveryTimer = 0;
+    this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
+  }
+
   clampPointToArea(point, area, radius) {
     const rects = area?.rects || (area ? [area] : []);
     let best = point;
@@ -2168,10 +2077,12 @@ class DodgeballGame {
         const speed = GAME_CONFIG.ball.shootSpeed * COUNTER_CONFIG.speedScale;
         this.ball.vx = dx / length * speed;
         this.ball.vy = dy / length * speed;
+        this.ball.z = Math.min(62, this.ball.z);
         this.ball.vz = 0;
         this.ball.power = pending.counterDamage;
         this.ball.shotMultiplier = COUNTER_CONFIG.speedScale;
         this.ball.counterShot = true;
+        this.ball.radius = this.ball.baseRadius * 1.5;
         this.ball.counterFlightZ = this.ball.z;
         this.ball.counterIntensity = pending.counterIntensity || 1;
         this.spawnEffect(
@@ -2633,6 +2544,7 @@ class DodgeballGame {
     for (const catcher of team) {
       if (catcher.defeated || catcher.hitRecoveryTimer > 0 || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
       const friendly = catcher.team === this.ball.thrower.team;
+      if (friendly && this.ball.kind === "shoot") continue;
       if (friendly && this.ball.specialShotType === "boomerang") continue;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
@@ -3010,7 +2922,7 @@ class DodgeballGame {
       return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
     }
     if (specialType === "iron") {
-      return baseDamage * 3;
+      return baseDamage * 2.55;
     }
     if (specialType === "tsutenkaku") {
       return baseDamage * 2;
@@ -3122,7 +3034,7 @@ class DodgeballGame {
   applyTsutenkakuSplash(primaryTarget, baseDamage, centerX, centerY) {
     const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     const splashRadius = 300;
-    const splashDamage = Math.max(1, baseDamage * 0.2);
+    const splashDamage = Math.max(1, baseDamage * 0.35);
     for (const enemy of enemies) {
       if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
       const dx = enemy.x - centerX;
@@ -3662,120 +3574,6 @@ class DodgeballGame {
     context.textAlign = "center";
     context.fillStyle = "#fff7df";
     context.strokeStyle = "#27324a";
-    context.lineWidth = 7;
-    context.font = "bold 58px Meiryo, sans-serif";
-    context.strokeText("モードセレクト", centerX, 155);
-    context.fillText("モードセレクト", centerX, 155);
-
-    context.fillStyle = "#dff8ff";
-    context.fillRect(centerX - 430, 92, 860, 92);
-    context.fillStyle = "#fff7df";
-    context.strokeStyle = "#27324a";
-    context.font = "bold 58px Meiryo, sans-serif";
-    context.strokeText("\u3076\u3063\u3068\u3073\u30c9\u30c3\u30b8\u30fc\u30ba", centerX, 155);
-    context.fillText("\u3076\u3063\u3068\u3073\u30c9\u30c3\u30b8\u30fc\u30ba", centerX, 155);
-
-    const modes = [
-      { label: "一人用", note: "1P vs CPU" },
-      { label: "二人用", note: "2P対戦" }
-    ];
-    for (let i = 0; i < modes.length; i += 1) {
-      const x = 410 + i * 460;
-      const selected = this.modeIndex === i;
-      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
-      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
-      context.lineWidth = selected ? 6 : 3;
-      this.roundRect(context, x - 150, 275, 300, 140, 8);
-      context.fill();
-      context.stroke();
-      context.fillStyle = "#263241";
-      context.font = "bold 36px Meiryo, sans-serif";
-      context.fillText(modes[i].label, x, 332);
-      context.font = "20px Meiryo, sans-serif";
-      context.fillText(modes[i].note, x, 374);
-    }
-
-    context.fillStyle = "#fff7df";
-    context.font = "20px Meiryo, sans-serif";
-    context.fillText("左右で選択 / ボタン1で決定", centerX, 520);
-    context.restore();
-  }
-
-  drawModeSelect() {
-    const context = this.context;
-    const centerX = GAME_CONFIG.width * 0.5;
-    this.drawMenuBackground();
-    context.save();
-    context.textAlign = "center";
-    context.fillStyle = "#fff7df";
-    context.strokeStyle = "#27324a";
-    context.lineWidth = 7;
-    context.font = "bold 58px Meiryo, sans-serif";
-    context.strokeText("モードセレクト", centerX, 155);
-    context.fillText("モードセレクト", centerX, 155);
-
-    const modes = [
-      { label: "一人用", note: "1P vs CPU" },
-      { label: "二人用", note: "2P対戦" },
-      { label: "観戦", note: "CPU vs CPU" }
-    ];
-    for (let i = 0; i < modes.length; i += 1) {
-      const x = 310 + i * 410;
-      const selected = this.modeIndex === i;
-      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
-      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
-      context.lineWidth = selected ? 6 : 3;
-      this.roundRect(context, x - 140, 275, 280, 140, 8);
-      context.fill();
-      context.stroke();
-      context.fillStyle = "#263241";
-      context.font = "bold 34px Meiryo, sans-serif";
-      context.fillText(modes[i].label, x, 332);
-      context.font = "20px Meiryo, sans-serif";
-      context.fillText(modes[i].note, x, 374);
-    }
-
-    context.fillStyle = "#fff7df";
-    context.font = "20px Meiryo, sans-serif";
-    context.fillText("左右で選択 / ボタン2で決定", centerX, 520);
-    context.restore();
-  }
-
-  drawTeamSelect() {
-    const context = this.context;
-    const centerX = GAME_CONFIG.width * 0.5;
-    this.drawMenuBackground();
-    context.save();
-    context.textAlign = "center";
-    context.fillStyle = "#fff7df";
-    context.strokeStyle = "#27324a";
-    context.lineWidth = 6;
-    context.font = "bold 46px Meiryo, sans-serif";
-    context.strokeText("チーム編成", centerX, 84);
-    context.fillText("チーム編成", centerX, 84);
-
-    this.drawTeamSelectSide("left", 120, "#0057ff");
-    if (this.gameMode === "versus") {
-      this.drawTeamSelectSide("right", 700, "#f01818");
-    } else {
-      this.drawCpuOpponentSelect();
-    }
-    this.drawMatchStartButton();
-
-    context.fillStyle = "#fff7df";
-    context.font = "18px Meiryo, sans-serif";
-    context.fillText("左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る", centerX, 688);
-    context.restore();
-  }
-
-  drawModeSelect() {
-    const context = this.context;
-    const centerX = GAME_CONFIG.width * 0.5;
-    this.drawMenuBackground();
-    context.save();
-    context.textAlign = "center";
-    context.fillStyle = "#fff7df";
-    context.strokeStyle = "#27324a";
     context.lineWidth = 6;
     context.font = "bold 58px Meiryo, sans-serif";
     context.strokeText("モードセレクト", centerX, 155);
@@ -3805,42 +3603,6 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "20px Meiryo, sans-serif";
     context.fillText("左右で選択 / ボタン2で決定", centerX, 520);
-    context.restore();
-  }
-
-  drawTeamSelect() {
-    const context = this.context;
-    const centerX = GAME_CONFIG.width * 0.5;
-    this.drawMenuBackground();
-    context.save();
-    context.textAlign = "center";
-    context.fillStyle = "#fff7df";
-    context.strokeStyle = "#27324a";
-    context.lineWidth = 6;
-    context.font = "bold 46px Meiryo, sans-serif";
-    context.strokeText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
-    context.fillText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
-
-    if (this.gameMode === "watch") {
-      this.drawWatchTeamSelect();
-    } else {
-      this.drawTeamSelectSide("left", 120, "#0057ff");
-      if (this.gameMode === "versus") {
-        this.drawTeamSelectSide("right", 700, "#f01818");
-      } else {
-        this.drawCpuOpponentSelect();
-      }
-    }
-    this.drawMatchStartButton();
-
-    context.fillStyle = "#fff7df";
-    context.font = "18px Meiryo, sans-serif";
-    const help = this.gameMode === "watch"
-      ? "上下でチーム選択 / 左右で欄移動 / ボタン2で決定・観戦開始 / ボタン1で戻る"
-      : this.gameMode === "single"
-        ? "左右で選手選択 / 上下でCPUチーム選択 / ボタン2でタイプ変更・決定 / ボタン1で戻る"
-        : "左右で選手選択 / ボタン2でタイプ変更・試合開始 / ボタン1で戻る";
-    context.fillText(help, centerX, 688);
     context.restore();
   }
 
@@ -4096,78 +3858,7 @@ class DodgeballGame {
       context.font = "bold 18px Meiryo, sans-serif";
       context.fillText(definition.label, cardX + 54, cardY + 30);
       context.font = "14px Meiryo, sans-serif";
-      context.fillText(i < 3 ? `内野 ${i + 1}` : `外野 ${i - 2}`, cardX + 66, cardY + 52);
-    }
-    context.restore();
-  }
-
-  isTeamSelectSlotSelected(side, slot) {
-    if (this.gameMode === "versus") return this.teamSelectionSlots[side] === slot;
-    return this.teamSelectionSide === side && this.teamSelectionSlot === slot;
-  }
-
-  drawTeamSelectSide(side, x, color) {
-    const context = this.context;
-    const title = side === "left" ? "1P TEAM" : "2P TEAM";
-    context.save();
-    context.textAlign = "left";
-    context.fillStyle = color;
-    context.font = "bold 28px Meiryo, sans-serif";
-    context.fillText(title, x, 142);
-
-    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
-      const row = Math.floor(i / TEAM_SELECT_COLUMNS);
-      const col = i % TEAM_SELECT_COLUMNS;
-      const cardX = x + col * 122;
-      const cardY = 165 + row * 185;
-      const selected = this.isTeamSelectSlotSelected(side, i);
-      const type = this.teamSelections[side][i];
-      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-
-      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
-      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
-      context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 108, 142, 8);
-      context.fill();
-      context.stroke();
-
-      this.drawCharacterPreview(cardX + 54, cardY + 100, side, type);
-      context.textAlign = "center";
-      context.fillStyle = "#263241";
-      context.font = "bold 18px Meiryo, sans-serif";
-      context.fillText(definition.label, cardX + 54, cardY + 30);
-      context.font = "14px Meiryo, sans-serif";
       context.fillText(i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`, cardX + 54, cardY + 50);
-    }
-    context.restore();
-  }
-
-  drawMatchStartButton() {
-    const context = this.context;
-    const centerX = GAME_CONFIG.width * 0.5;
-    const selected = this.gameMode === "watch"
-      ? this.watchSelectionSlot === 2
-      : this.gameMode === "versus"
-        ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
-        : this.teamSelectionSlot === START_SLOT;
-    context.save();
-    context.textAlign = "center";
-    context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.82)";
-    context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
-    context.lineWidth = selected ? 6 : 3;
-    this.roundRect(context, centerX - 200, 620, 400, 44, 8);
-    context.fill();
-    context.stroke();
-    context.fillStyle = "#263241";
-    context.font = "bold 24px Meiryo, sans-serif";
-    context.fillText("試合開始", centerX, 650);
-    if (this.gameMode === "versus" && selected) {
-      context.font = "bold 14px Meiryo, sans-serif";
-      context.fillStyle = "#4b5360";
-      const labels = [];
-      if (this.teamSelectionSlots.left === START_SLOT) labels.push("1P");
-      if (this.teamSelectionSlots.right === START_SLOT) labels.push("2P");
-      context.fillText(labels.join(" / "), centerX, 612);
     }
     context.restore();
   }
@@ -4200,18 +3891,6 @@ class DodgeballGame {
       : "上下でチーム選択 / ボタン2で決定・タイプ変更・試合開始 / ボタン1で戻る";
     context.fillText(help, centerX, 688);
     context.restore();
-  }
-
-  drawPlayableTeamSelectSide(side, x, title, color) {
-    const team = this.getSelectedTeamForSide(side);
-    this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
-    if (!this.teamSelectionConfirmed?.[side]) {
-      this.drawTeamPendingPanel(team, x + 54, 278, color);
-    } else if (team?.isCustom) {
-      this.drawEditableTeamCards(side, x, 270, color);
-    } else {
-      this.drawFixedTeamSummary(team, x + 54, 278, color);
-    }
   }
 
   drawTeamPendingPanel(team, x, y, color) {
@@ -4295,102 +3974,6 @@ class DodgeballGame {
     context.restore();
   }
 
-  drawEditableTeamCards(side, x, y, color) {
-    const context = this.context;
-    context.save();
-    context.textAlign = "left";
-    context.fillStyle = color;
-    context.font = "bold 18px Meiryo, sans-serif";
-    context.fillText("自由編成メンバー", x, y - 12);
-
-    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
-      const row = Math.floor(i / 4);
-      const col = i % 4;
-      const cardX = x + col * 136;
-      const cardY = y + row * 165;
-      const selected = this.isTeamSelectSlotSelected(side, i);
-      const type = this.teamSelections[side][i];
-      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-
-      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
-      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
-      context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 116, 132, 8);
-      context.fill();
-      context.stroke();
-
-      this.drawCharacterPreview(cardX + 58, cardY + 96, side, type);
-      context.textAlign = "center";
-      context.fillStyle = "#263241";
-      context.font = "bold 16px Meiryo, sans-serif";
-      context.fillText(definition.label, cardX + 58, cardY + 28);
-      context.font = "13px Meiryo, sans-serif";
-      context.fillText(i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`, cardX + 58, cardY + 48);
-      context.textAlign = "left";
-    }
-
-    const confirmSelected = this.isTeamSelectSlotSelected(side, CUSTOM_TEAM_CONFIRM_SLOT);
-    const buttonX = x + 548;
-    const buttonY = y + 108;
-    context.fillStyle = confirmSelected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
-    context.strokeStyle = confirmSelected ? "#263241" : "rgba(38,50,65,0.45)";
-    context.lineWidth = confirmSelected ? 6 : 3;
-    this.roundRect(context, buttonX, buttonY, 94, 62, 8);
-    context.fill();
-    context.stroke();
-    context.fillStyle = "#263241";
-    context.font = "bold 22px Meiryo, sans-serif";
-    context.textAlign = "center";
-    context.fillText("決定", buttonX + 47, buttonY + 39);
-    context.restore();
-  }
-
-  drawFixedTeamSummary(team, x, y, color) {
-    const context = this.context;
-    const players = team?.players || [];
-    context.save();
-    context.textAlign = "left";
-    context.fillStyle = "rgba(255,255,255,0.82)";
-    context.strokeStyle = "rgba(38,50,65,0.36)";
-    context.lineWidth = 2;
-    this.roundRect(context, x, y, 482, 292, 8);
-    context.fill();
-    context.stroke();
-    context.fillStyle = color;
-    context.font = "bold 24px Meiryo, sans-serif";
-    context.fillText(team?.name || "", x + 18, y + 34);
-    context.fillStyle = "#4b5360";
-    context.font = "15px Meiryo, sans-serif";
-    context.fillText(team?.description || "", x + 18, y + 60);
-    context.fillStyle = "#263241";
-    context.font = "bold 13px Meiryo, sans-serif";
-    context.fillText("選手", x + 18, y + 88);
-    context.fillText("HP", x + 150, y + 88);
-    context.fillText("P", x + 198, y + 88);
-    context.fillText("S", x + 230, y + 88);
-    context.fillText("J", x + 262, y + 88);
-    context.fillText("T", x + 294, y + 88);
-    context.fillText("技", x + 326, y + 88);
-    context.font = "13px Meiryo, sans-serif";
-    for (let i = 0; i < Math.min(players.length, 8); i += 1) {
-      const player = players[i];
-      const rowY = y + 114 + i * 20;
-      const stats = player.stats || {};
-      const roleLabel = player.position === "out" ? "外" : "内";
-      context.fillStyle = i < 5 ? "rgba(0,87,255,0.06)" : "rgba(240,24,24,0.06)";
-      context.fillRect(x + 12, rowY - 14, 458, 18);
-      context.fillStyle = "#263241";
-      context.fillText(`${roleLabel} ${player.name}`, x + 18, rowY);
-      context.fillText(String(player.maxHp ?? team.maxHp ?? ""), x + 150, rowY);
-      context.fillText(String(stats.power ?? ""), x + 202, rowY);
-      context.fillText(String(stats.speed ?? ""), x + 234, rowY);
-      context.fillText(String(stats.jump ?? ""), x + 266, rowY);
-      context.fillText(String(stats.technique ?? ""), x + 298, rowY);
-      context.fillText(this.getSpecialShotShortLabel(player.specialShotType), x + 326, rowY);
-    }
-    context.restore();
-  }
-
   drawPlayableTeamSelectSide(side, x, title, color) {
     const team = this.getSelectedTeamForSide(side);
     const editable = Boolean(team?.isCustom && this.teamSelectionConfirmed?.[side]);
@@ -4404,81 +3987,6 @@ class DodgeballGame {
 
   drawFixedTeamSummary(team, x, y, color) {
     this.drawTeamPlayerCards("right", team, x - 54, y - 14, color, false);
-  }
-
-  drawTeamPlayerCards(side, team, x, y, color, editable) {
-    const context = this.context;
-    context.save();
-    context.textAlign = "left";
-    context.fillStyle = color;
-    context.font = "bold 18px Meiryo, sans-serif";
-    context.fillText(editable ? "自由編成メンバー" : team?.name || "", x, y - 12);
-
-    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
-      const row = Math.floor(i / 4);
-      const col = i % 4;
-      const cardX = x + col * 136;
-      const cardY = y + row * 178;
-      const player = editable ? null : team?.players?.[i];
-      const type = editable
-        ? this.teamSelections[side][i]
-        : player?.characterType || team?.characterType || "normal";
-      const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-      const stats = editable ? definition.stats : player?.stats || team?.stats || definition.stats;
-      const maxHp = editable ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
-      const roleLabel = editable
-        ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
-        : `${player?.position === "out" ? "外" : "内"} ${player?.name || ""}`;
-      const title = editable ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
-      const selected = editable && this.isTeamSelectSlotSelected(side, i);
-      const previewStyle = editable ? null : {
-        ...team,
-        ...player,
-        uniformEmblem: player?.uniformEmblem || team?.uniformEmblem
-      };
-
-      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.82)";
-      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.36)";
-      context.lineWidth = selected ? 5 : 2;
-      this.roundRect(context, cardX, cardY, 122, 158, 8);
-      context.fill();
-      context.stroke();
-
-      this.drawCharacterPreview(cardX + 61, cardY + 80, side, type, previewStyle);
-      context.textAlign = "center";
-      context.fillStyle = "#263241";
-      context.font = "bold 14px Meiryo, sans-serif";
-      context.fillText(title, cardX + 61, cardY + 22);
-      context.font = "12px Meiryo, sans-serif";
-      context.fillText(roleLabel, cardX + 61, cardY + 40);
-      context.font = "bold 12px Meiryo, sans-serif";
-      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 112);
-      context.font = "11px Meiryo, sans-serif";
-      context.fillText(
-        `P${stats.power ?? "-"} S${stats.speed ?? "-"} J${stats.jump ?? "-"} T${stats.technique ?? "-"}`,
-        cardX + 61,
-        cardY + 131
-      );
-      context.fillText(`技 ${this.getSpecialShotShortLabel(player?.specialShotType)}`, cardX + 61, cardY + 148);
-      context.textAlign = "left";
-    }
-
-    if (editable) {
-      const confirmSelected = this.isTeamSelectSlotSelected(side, CUSTOM_TEAM_CONFIRM_SLOT);
-      const buttonX = x + 548;
-      const buttonY = y + 118;
-      context.fillStyle = confirmSelected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.86)";
-      context.strokeStyle = confirmSelected ? "#263241" : "rgba(38,50,65,0.45)";
-      context.lineWidth = confirmSelected ? 6 : 3;
-      this.roundRect(context, buttonX, buttonY, 94, 62, 8);
-      context.fill();
-      context.stroke();
-      context.fillStyle = "#263241";
-      context.font = "bold 22px Meiryo, sans-serif";
-      context.textAlign = "center";
-      context.fillText("決定", buttonX + 47, buttonY + 39);
-    }
-    context.restore();
   }
 
   drawTeamPlayerCards(side, team, x, y, color, editable) {

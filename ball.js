@@ -1,6 +1,6 @@
 const TSUTENKAKU_SKY_TRAVEL_TIME = 1.5;
-const TSUTENKAKU_WARNING_MIN_TIME = 1.5;
-const TSUTENKAKU_WARNING_MAX_TIME = 2.5;
+const TSUTENKAKU_WARNING_MIN_TIME = 0.2;
+const TSUTENKAKU_WARNING_MAX_TIME = 0.2;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
@@ -288,16 +288,18 @@ class Ball {
       this.z = 28;
     } else if (this.specialShotType === "slap") {
       this.z = Math.min(76, 42 + actor.jumpZ * 0.18);
+    } else if (this.specialShotType === "kiai") {
+      this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
     }
     this.passTime = 0;
     this.passDuration = 0;
     this.radius = this.baseRadius;
     if (this.specialShotType === "iron") {
-      this.radius = this.baseRadius * 1.2;
+      this.radius = this.baseRadius * 1.92;
     } else if (this.specialShotType === "soul") {
       this.radius = this.baseRadius * 2;
     } else if (this.specialShotType === "slap") {
-      this.radius = this.baseRadius * 1.98;
+      this.radius = this.baseRadius * 2.376;
     } else if (this.specialShotType === "kiai") {
       this.radius = this.baseRadius * 1.15;
     } else if (this.specialShotType === "boomerang") {
@@ -345,7 +347,7 @@ class Ball {
     const shootBaseSpeed = kind === "shoot" && this.specialShotType && this.specialShotType !== "kiai"
       ? this.config.specialShootSpeed || this.config.shootSpeed
       : this.config.shootSpeed;
-    const specialSpeedScale = this.specialShotType === "slap" ? 1.2 : 1;
+    const specialSpeedScale = this.specialShotType === "slap" ? 1.8 : this.specialShotType === "iron" ? 1.05 : 1;
     const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
@@ -409,10 +411,11 @@ class Ball {
         ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
-      const targetZ = (target.jumpZ || 0) + 22;
+      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
+      const targetZ = lowAimSpecial ? 26 : (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
-      const arcLift = this.specialShotType === "boost"
-        ? 28 + Math.max(0, throwMultiplier - 0.7) * 18
+      const arcLift = lowAimSpecial
+        ? 0
         : this.specialShotType
           ? 70 + Math.max(0, throwMultiplier - 0.7) * 45
           : 110 + Math.max(0, throwMultiplier - 0.7) * 34;
@@ -560,7 +563,7 @@ class Ball {
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
       const initialSpeed = this.slapInitialSpeed || currentSpeed;
-      const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 650));
+      const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 930));
       this.vx = directionX * targetSpeed;
       this.vy = directionY * targetSpeed;
       this.z = this.slapFlightZ;
@@ -840,7 +843,7 @@ class Ball {
     if (
       this.isFlying &&
       this.specialShotType === "tsutenkaku" &&
-      (this.tsutenkakuPhase === "warning" || this.tsutenkakuPhase === "dive")
+      this.tsutenkakuPhase === "warning"
     ) {
       this.drawTsutenkakuLandingMarker(context);
     }
