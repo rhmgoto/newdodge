@@ -1380,7 +1380,7 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        if (!this.startCounterThrow(holder)) this.startChargedThrow(holder, "shoot");
+        if (!this.startCounterThrow(holder, 1)) this.startChargedThrow(holder, "shoot");
       }
       if (this.input.wasPressed("button1")) {
         this.startChargedThrow(holder, "pass");
@@ -1404,7 +1404,7 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          if (!this.startCounterThrow(holder)) this.startChargedThrow(holder, "shoot", 2);
+          if (!this.startCounterThrow(holder, 2)) this.startChargedThrow(holder, "shoot", 2);
         }
         if (this.input.wasPressed("button1", 2)) {
           this.startChargedThrow(holder, "pass", 2);
@@ -1937,7 +1937,7 @@ class DodgeballGame {
     return true;
   }
 
-  startCounterThrow(actor) {
+  startCounterThrow(actor, playerIndex = 0) {
     if (
       this.pendingThrow ||
       this.chargingThrow ||
@@ -1946,11 +1946,7 @@ class DodgeballGame {
       actor.hitRecoveryTimer > 0 ||
       !actor.canCounterThrow()
     ) return false;
-    const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
-    const savedTarget = actor.counterTarget;
-    const target = savedTarget && !savedTarget.defeated
-      ? savedTarget
-      : this.getNearestFrom(actor, enemies.filter((member) => !member.defeated && member.role === "inner"));
+    const target = this.getCounterTarget(actor, playerIndex);
     if (!target) return false;
     if (!actor.consumeStamina(COUNTER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay)) return false;
 
@@ -1977,6 +1973,34 @@ class DodgeballGame {
     this.setControlledMember(target.team, target);
     this.setAutoSwitchCooldown(target.team, 0.28);
     return true;
+  }
+
+  getCounterTarget(actor, playerIndex = 0) {
+    const savedTarget = actor.counterTarget;
+    if (savedTarget && savedTarget.role === "inner" && !savedTarget.defeated) {
+      return savedTarget;
+    }
+
+    const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
+    const innerTargets = enemies.filter((member) => !member.defeated && member.role === "inner");
+    if (innerTargets.length === 0) return null;
+
+    let aim = null;
+    if (playerIndex > 0) {
+      const input = this.input.getCurrent(playerIndex);
+      if (Math.hypot(input.moveX, input.moveY) >= 0.35) {
+        aim = this.normalizedVector(input.moveX, input.moveY);
+      }
+    }
+    if (!aim && savedTarget) {
+      aim = this.normalizedVector(savedTarget.x - actor.x, savedTarget.y - actor.y);
+    }
+    if (!aim) {
+      aim = { x: actor.team === "left" ? 1 : -1, y: 0 };
+    }
+
+    return this.findDirectionalTarget(actor, innerTargets, aim, "shoot")
+      || this.getNearestFrom(actor, innerTargets);
   }
 
   startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
