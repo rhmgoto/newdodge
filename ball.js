@@ -1,4 +1,9 @@
-const TSUTENKAKU_HOLD_TIME = 1.5;
+const TSUTENKAKU_SKY_TRAVEL_TIME = 1.5;
+const TSUTENKAKU_WARNING_MIN_TIME = 1.5;
+const TSUTENKAKU_WARNING_MAX_TIME = 2.5;
+const BOOMERANG_ARC_SCALE = 1.5;
+const BOOMERANG_SIZE_SCALE = 1.5;
+const BOOMERANG_OUTWARD_DISTANCE = 720;
 
 class Ball {
   constructor(config) {
@@ -27,16 +32,30 @@ class Ball {
     this.returning = false;
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
+    this.boomerangReturnStartX = 0;
+    this.boomerangReturnStartY = 0;
+    this.boomerangControlX = 0;
+    this.boomerangControlY = 0;
+    this.boomerangTargetX = 0;
+    this.boomerangTargetY = 0;
+    this.boomerangReturnElapsed = 0;
+    this.boomerangReturnDuration = 0;
+    this.boomerangCurveComplete = false;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.kiaiElapsed = 0;
+    this.kiaiCruiseSpeed = 0;
+    this.kiaiFlightZ = 0;
     this.tsutenkakuPhase = "none";
     this.tsutenkakuElapsed = 0;
     this.tsutenkakuTargetX = 0;
     this.tsutenkakuTargetY = 0;
     this.tsutenkakuTargetZ = 0;
     this.tsutenkakuPeakZ = 0;
+    this.tsutenkakuWarningDuration = TSUTENKAKU_WARNING_MAX_TIME;
+    this.tsutenkakuImpactPending = false;
     this.lightningZigzagActive = false;
     this.lightningElapsed = 0;
     this.lightningDuration = 0;
@@ -87,9 +106,13 @@ class Ball {
       this.isFlying &&
       this.kind === "shoot" &&
       this.specialShotType === "tsutenkaku" &&
-      this.tsutenkakuPhase === "hold"
+      (
+        this.tsutenkakuPhase === "skyTravel" ||
+        this.tsutenkakuPhase === "warning" ||
+        this.tsutenkakuPhase === "impact"
+      )
     ) {
-      this.z = this.tsutenkakuPeakZ;
+      this.z = this.tsutenkakuPhase === "impact" ? this.tsutenkakuTargetZ : this.tsutenkakuPeakZ;
       this.vx = 0;
       this.vy = 0;
       this.vz = 0;
@@ -105,14 +128,35 @@ class Ball {
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
 
+    if (
+      this.isFlying &&
+      this.specialShotType === "tsutenkaku" &&
+      this.tsutenkakuPhase === "dive" &&
+      this.z <= this.tsutenkakuTargetZ
+    ) {
+      this.x = this.tsutenkakuTargetX;
+      this.y = this.tsutenkakuTargetY;
+      this.z = this.tsutenkakuTargetZ;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      this.tsutenkakuPhase = "impact";
+      this.tsutenkakuImpactPending = true;
+      return;
+    }
+
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
+    const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
     if (this.isFlying) {
       if (straightBoostFlight) {
         this.z = this.boostFlightZ;
         this.vz = 0;
       } else if (straightSlapFlight) {
         this.z = this.slapFlightZ;
+        this.vz = 0;
+      } else if (straightKiaiFlight) {
+        this.z = this.kiaiFlightZ;
         this.vz = 0;
       } else if (this.kind !== "pass") {
         const airDrag = this.specialShotType ? 0.994 : 0.996;
@@ -128,7 +172,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -198,6 +242,9 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.kiaiElapsed = 0;
+    this.kiaiCruiseSpeed = 0;
+    this.kiaiFlightZ = 0;
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -238,15 +285,31 @@ class Ball {
       this.radius = this.baseRadius * 2;
     } else if (this.specialShotType === "slap") {
       this.radius = this.baseRadius * 1.98;
+    } else if (this.specialShotType === "kiai") {
+      this.radius = this.baseRadius * 1.15;
+    } else if (this.specialShotType === "boomerang") {
+      this.radius = this.baseRadius * BOOMERANG_SIZE_SCALE;
     }
     this.travelDistance = 0;
     this.returning = false;
     this.boomerangCurveSign = aimVector?.y >= 0 ? 1 : -1;
     this.boomerangStartDistance = target ? Math.hypot(target.x - actor.x, target.y - actor.y) : 900;
+    this.boomerangReturnStartX = 0;
+    this.boomerangReturnStartY = 0;
+    this.boomerangControlX = 0;
+    this.boomerangControlY = 0;
+    this.boomerangTargetX = 0;
+    this.boomerangTargetY = 0;
+    this.boomerangReturnElapsed = 0;
+    this.boomerangReturnDuration = 0;
+    this.boomerangCurveComplete = false;
     this.boostElapsed = 0;
     this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = this.specialShotType === "slap" ? this.z : 0;
+    this.kiaiElapsed = 0;
+    this.kiaiCruiseSpeed = 0;
+    this.kiaiFlightZ = this.specialShotType === "kiai" ? this.z : 0;
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -266,7 +329,7 @@ class Ball {
     const dy = targetY - this.y + aimVector.y * aimNudge;
     const length = Math.hypot(dx, dy) || 1;
     const speedRatio = kind === "shoot" ? this.getShootSpeedRatio(throwMultiplier) : throwMultiplier;
-    const shootBaseSpeed = kind === "shoot" && this.specialShotType
+    const shootBaseSpeed = kind === "shoot" && this.specialShotType && this.specialShotType !== "kiai"
       ? this.config.specialShootSpeed || this.config.shootSpeed
       : this.config.shootSpeed;
     const specialSpeedScale = this.specialShotType === "slap" ? 1.2 : 1;
@@ -302,16 +365,15 @@ class Ball {
     if (this.specialShotType === "tsutenkaku") {
       const targetGroundY = target ? target.y : targetY + 38;
       const targetZ = target ? (target.jumpZ || 0) + 44 : 44;
-      const distance = Math.hypot(targetX - this.x, targetGroundY - this.y);
       this.tsutenkakuPhase = "rise";
       this.tsutenkakuElapsed = 0;
       this.tsutenkakuTargetX = targetX;
       this.tsutenkakuTargetY = targetGroundY;
       this.tsutenkakuTargetZ = targetZ;
-      this.tsutenkakuPeakZ = Math.max(720, this.z + 560 + Math.min(260, distance * 0.16));
+      this.tsutenkakuPeakZ = Math.max(2400, this.y + 1200, this.z + 1800);
       this.vx = 0;
       this.vy = 0;
-      this.vz = 1180;
+      this.vz = 2600;
       this.catchable = true;
       return true;
     }
@@ -319,7 +381,7 @@ class Ball {
     const directX = dx / length;
     const directY = dy / length;
     if (this.specialShotType === "boomerang") {
-      const angle = this.boomerangCurveSign * Math.PI * 0.1;
+      const angle = this.boomerangCurveSign * Math.PI * 0.1 * BOOMERANG_ARC_SCALE;
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const risingSpeed = speed * 0.58;
@@ -343,7 +405,7 @@ class Ball {
           : 110 + Math.max(0, throwMultiplier - 0.7) * 34;
       this.vz = Math.max(-80, Math.min(610, solvedVz + arcLift));
       if (this.specialShotType === "boomerang") {
-        this.vz = Math.max(this.vz, 620 + actor.jumpZ * 0.12);
+        this.vz = Math.max(this.vz, 760 + actor.jumpZ * 0.12);
       }
     } else {
       this.vz = kind === "shoot"
@@ -356,6 +418,16 @@ class Ball {
     if (this.specialShotType === "slap") {
       this.slapInitialSpeed = Math.hypot(this.vx, this.vy);
       this.slapFlightZ = this.z;
+      this.vz = 0;
+    }
+    if (this.specialShotType === "kiai") {
+      const directionLength = Math.hypot(this.vx, this.vy) || 1;
+      const directionX = this.vx / directionLength;
+      const directionY = this.vy / directionLength;
+      this.kiaiCruiseSpeed = speed;
+      this.kiaiFlightZ = this.z;
+      this.vx = directionX * speed * 1.16;
+      this.vy = directionY * speed * 1.16;
       this.vz = 0;
     }
     return true;
@@ -377,6 +449,8 @@ class Ball {
     this.tsutenkakuTargetY = 0;
     this.tsutenkakuTargetZ = 0;
     this.tsutenkakuPeakZ = 0;
+    this.tsutenkakuWarningDuration = TSUTENKAKU_WARNING_MAX_TIME;
+    this.tsutenkakuImpactPending = false;
   }
 
   updateLightningZigzag(delta) {
@@ -456,6 +530,18 @@ class Ball {
         this.vy = directionY * targetSpeed;
       }
     }
+    if (this.specialShotType === "kiai") {
+      this.kiaiElapsed += delta;
+      const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+      const directionX = this.vx / currentSpeed;
+      const directionY = this.vy / currentSpeed;
+      const launchRatio = Math.max(0, 1 - this.kiaiElapsed / 0.14);
+      const targetSpeed = this.kiaiCruiseSpeed * (1 + launchRatio * 0.16);
+      this.vx = directionX * targetSpeed;
+      this.vy = directionY * targetSpeed;
+      this.z = this.kiaiFlightZ;
+      this.vz = 0;
+    }
     if (this.specialShotType === "slap") {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
       const directionX = this.vx / currentSpeed;
@@ -470,29 +556,57 @@ class Ball {
     if (this.specialShotType === "boomerang" && this.target && !this.target.defeated) {
       if (!this.returning) {
         const speed = Math.hypot(this.vx, this.vy) || 1;
-        const sideForce = Math.min(260, 90 + this.travelDistance * 0.12) * this.boomerangCurveSign;
+        const sideForce = Math.min(260, 90 + this.travelDistance * 0.12) *
+          this.boomerangCurveSign * BOOMERANG_ARC_SCALE;
         const sideX = -this.vy / speed;
         const sideY = this.vx / speed;
         this.vx += sideX * sideForce * delta;
         this.vy += sideY * sideForce * delta;
       }
-      const reachedTurningAltitude = this.z >= 320 || (this.z > 180 && this.vz <= 100);
-      if (!this.returning && reachedTurningAltitude && this.travelDistance > 160) {
+      if (!this.returning && this.travelDistance >= BOOMERANG_OUTWARD_DISTANCE) {
         this.returning = true;
+        this.boomerangReturnStartX = this.x;
+        this.boomerangReturnStartY = this.y;
+        this.boomerangTargetX = this.target.x;
+        this.boomerangTargetY = this.target.y - 38;
+        const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+        const speed = Math.max(760, currentSpeed);
+        const directionX = this.vx / currentSpeed;
+        const directionY = this.vy / currentSpeed;
+        const targetDistance = Math.hypot(
+          this.boomerangTargetX - this.x,
+          this.boomerangTargetY - this.y
+        );
+        const controlDistance = Math.max(420, Math.min(1050, targetDistance * 0.95));
+        this.boomerangControlX = this.x + directionX * controlDistance;
+        this.boomerangControlY = this.y + directionY * controlDistance;
+        const curveLength = controlDistance + Math.hypot(
+          this.boomerangTargetX - this.boomerangControlX,
+          this.boomerangTargetY - this.boomerangControlY
+        );
+        this.boomerangReturnElapsed = 0;
+        this.boomerangReturnDuration = Math.max(0.62, Math.min(1.65, curveLength / speed));
+        const targetZ = (this.target.jumpZ || 0) + 22;
+        this.vz = (targetZ - this.z + 0.5 * this.config.gravity *
+          this.boomerangReturnDuration * this.boomerangReturnDuration) /
+          this.boomerangReturnDuration;
         this.hitPlayerIds.clear();
       }
-      if (this.returning) {
-        const dx = this.target.x - this.x;
-        const dy = this.target.y - 38 - this.y;
-        const length = Math.hypot(dx, dy) || 1;
-        const speed = Math.max(760, Math.hypot(this.vx, this.vy));
-        const approachScale = Math.min(1, length / 420);
-        const arcStrength = Math.min(820, 360 + length * 0.42) * this.boomerangCurveSign * approachScale;
-        const desiredX = (dx / length) * speed + (-dy / length) * arcStrength;
-        const desiredY = (dy / length) * speed + (dx / length) * arcStrength;
-        const turn = Math.min(1, delta * 4.2);
-        this.vx += (desiredX - this.vx) * turn;
-        this.vy += (desiredY - this.vy) * turn;
+      if (this.returning && !this.boomerangCurveComplete) {
+        this.boomerangReturnElapsed += delta;
+        const progress = Math.min(1, this.boomerangReturnElapsed / this.boomerangReturnDuration);
+        const inverse = 1 - progress;
+        const nextX = inverse * inverse * this.boomerangReturnStartX +
+          2 * inverse * progress * this.boomerangControlX +
+          progress * progress * this.boomerangTargetX;
+        const nextY = inverse * inverse * this.boomerangReturnStartY +
+          2 * inverse * progress * this.boomerangControlY +
+          progress * progress * this.boomerangTargetY;
+        this.vx = (nextX - this.x) / Math.max(0.001, delta);
+        this.vy = (nextY - this.y) / Math.max(0.001, delta);
+        if (progress >= 1) {
+          this.boomerangCurveComplete = true;
+        }
       }
     }
   }
@@ -500,8 +614,8 @@ class Ball {
   updateTsutenkakuDrop(delta) {
     if (this.tsutenkakuPhase === "rise") {
       this.tsutenkakuElapsed += delta;
-      if (this.z >= this.tsutenkakuPeakZ || this.vz <= 0 || this.tsutenkakuElapsed > 0.78) {
-        this.tsutenkakuPhase = "hold";
+      if (this.z >= this.tsutenkakuPeakZ || this.vz <= 0 || this.tsutenkakuElapsed > 1.05) {
+        this.tsutenkakuPhase = "skyTravel";
         this.tsutenkakuElapsed = 0;
         this.z = this.tsutenkakuPeakZ;
         this.vx = 0;
@@ -510,41 +624,56 @@ class Ball {
       }
       return;
     }
-
-    if (this.tsutenkakuPhase === "hold") {
+    if (this.tsutenkakuPhase === "skyTravel") {
       this.tsutenkakuElapsed += delta;
-      if (this.tsutenkakuElapsed < TSUTENKAKU_HOLD_TIME) return;
+      if (this.tsutenkakuElapsed < TSUTENKAKU_SKY_TRAVEL_TIME) return;
+
+      if (this.target && !this.target.defeated) {
+        this.tsutenkakuTargetX = this.target.x;
+        this.tsutenkakuTargetY = this.target.y;
+        this.tsutenkakuTargetZ = (this.target.jumpZ || 0) + 44;
+      }
+      this.x = this.tsutenkakuTargetX;
+      this.y = this.tsutenkakuTargetY;
+      this.z = this.tsutenkakuPeakZ;
+      this.tsutenkakuPhase = "warning";
+      this.tsutenkakuElapsed = 0;
+      this.tsutenkakuWarningDuration = TSUTENKAKU_WARNING_MIN_TIME +
+        Math.random() * (TSUTENKAKU_WARNING_MAX_TIME - TSUTENKAKU_WARNING_MIN_TIME);
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      return;
+    }
+
+    if (this.tsutenkakuPhase === "warning") {
+      this.tsutenkakuElapsed += delta;
+      if (this.tsutenkakuElapsed < this.tsutenkakuWarningDuration) return;
 
       this.tsutenkakuPhase = "dive";
       this.tsutenkakuElapsed = 0;
-      const dx = this.tsutenkakuTargetX - this.x;
-      const dy = this.tsutenkakuTargetY - this.y;
-      const distance = Math.hypot(dx, dy) || 1;
-      const diveTime = Math.max(0.32, Math.min(0.68, distance / 980));
-      this.vx = dx / diveTime;
-      this.vy = dy / diveTime;
-      this.vz = (this.tsutenkakuTargetZ - this.z) / diveTime;
+      this.x = this.tsutenkakuTargetX;
+      this.y = this.tsutenkakuTargetY;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = -1280;
     }
 
     if (this.tsutenkakuPhase !== "dive") return;
-    const dx = this.tsutenkakuTargetX - this.x;
-    const dy = this.tsutenkakuTargetY - this.y;
-    const dz = this.tsutenkakuTargetZ - this.z;
-    const distance = Math.hypot(dx, dy) || 1;
-    const speed = Math.max(900, Math.hypot(this.vx, this.vy));
-    const desiredX = (dx / distance) * speed;
-    const desiredY = (dy / distance) * speed;
-    const desiredZ = Math.min(-760, dz / Math.max(0.16, distance / speed));
-    const turn = Math.min(1, delta * 5.4);
-    this.vx += (desiredX - this.vx) * turn;
-    this.vy += (desiredY - this.vy) * turn;
-    this.vz += (desiredZ - this.vz) * turn;
+    this.x = this.tsutenkakuTargetX;
+    this.y = this.tsutenkakuTargetY;
+    this.vx = 0;
+    this.vy = 0;
+    this.vz = Math.min(-1280, this.vz);
   }
 
   getShootSpeedRatio(throwMultiplier = 1) {
     const t = Math.max(0, Math.min(1, ((throwMultiplier || 0.7) - 0.7) / 1.45));
     if (!this.specialShotType) {
       return 1 + t * 0.24;
+    }
+    if (this.specialShotType === "kiai") {
+      return (1 + t * 0.24) * 1.22;
     }
     if (this.specialShotType === "boost") {
       return 0.35;
@@ -632,6 +761,9 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.kiaiElapsed = 0;
+    this.kiaiCruiseSpeed = 0;
+    this.kiaiFlightZ = 0;
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -661,12 +793,16 @@ class Ball {
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
     this.slapFlightZ = 0;
+    this.kiaiElapsed = 0;
+    this.kiaiCruiseSpeed = 0;
+    this.kiaiFlightZ = 0;
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
 
   getSpecialColor() {
+    if (this.specialShotType === "kiai") return "#fff06a";
     if (this.specialShotType === "boost") return "#ff6b1a";
     if (this.specialShotType === "triple") return "#ffcc8a";
     if (this.specialShotType === "lightning") return "#66f6ff";
@@ -688,6 +824,14 @@ class Ball {
   draw(context, debugMode) {
     if (this.owner) return;
 
+    if (
+      this.isFlying &&
+      this.specialShotType === "tsutenkaku" &&
+      (this.tsutenkakuPhase === "warning" || this.tsutenkakuPhase === "dive")
+    ) {
+      this.drawTsutenkakuLandingMarker(context);
+    }
+
     if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
       this.drawLightningZigzagBall(context, debugMode);
       return;
@@ -695,6 +839,11 @@ class Ball {
 
     if (this.isFlying && this.specialShotType === "slap") {
       this.drawSlapShot(context, debugMode);
+      return;
+    }
+
+    if (this.isFlying && this.specialShotType === "kiai") {
+      this.drawKiaiStraight(context, debugMode);
       return;
     }
 
@@ -970,6 +1119,136 @@ class Ball {
     context.moveTo(-this.radius, 0);
     context.lineTo(this.radius, 0);
     context.stroke();
+    context.restore();
+
+    if (debugMode) {
+      context.strokeStyle = "rgba(255,0,0,0.7)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  drawTsutenkakuLandingMarker(context) {
+    const warningProgress = this.tsutenkakuPhase === "warning"
+      ? Math.min(1, this.tsutenkakuElapsed / Math.max(0.01, this.tsutenkakuWarningDuration))
+      : 1;
+    const pulse = 0.5 + Math.sin(performance.now() / 95) * 0.5;
+    const radius = 88 + pulse * 22;
+
+    context.save();
+    context.translate(this.tsutenkakuTargetX, this.tsutenkakuTargetY + 8);
+    context.globalAlpha = 0.56 + pulse * 0.26;
+    context.fillStyle = "rgba(255, 62, 44, 0.24)";
+    context.strokeStyle = warningProgress > 0.72 ? "#fff06a" : "#ff4a38";
+    context.lineWidth = 10;
+    context.shadowColor = "#ffcf3d";
+    context.shadowBlur = 18 + pulse * 12;
+    context.beginPath();
+    context.ellipse(0, 0, radius, radius * 0.42, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.shadowBlur = 0;
+    context.globalAlpha = 0.92;
+    context.strokeStyle = "#fff8bd";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.moveTo(-radius * 0.58, 0);
+    context.lineTo(radius * 0.58, 0);
+    context.moveTo(0, -radius * 0.25);
+    context.lineTo(0, radius * 0.25);
+    context.stroke();
+
+    context.fillStyle = "#ff3f2f";
+    context.font = "bold 62px Meiryo, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "bottom";
+    context.fillText("!", 0, -radius * 0.38);
+    context.restore();
+  }
+
+  drawKiaiStraight(context, debugMode) {
+    const drawY = this.y - this.z;
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const directionX = this.vx / speed;
+    const directionY = this.vy / speed;
+    const tailX = -directionX;
+    const tailY = -directionY;
+    const pulse = 0.5 + Math.sin(performance.now() / 48) * 0.5;
+    const auraRadius = this.radius * (1.36 + pulse * 0.18);
+
+    context.save();
+    context.fillStyle = "rgba(64, 38, 18, 0.28)";
+    context.beginPath();
+    context.ellipse(this.x + 3, this.y + 10, this.radius * 1.16, this.radius * 0.4, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.globalCompositeOperation = "lighter";
+    context.lineCap = "round";
+    const trailLength = 150 + pulse * 34;
+    const drawTrail = (color, width, lengthScale, alpha) => {
+      context.globalAlpha = alpha;
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 8, drawY + tailY * 8);
+      context.lineTo(
+        this.x + tailX * trailLength * lengthScale,
+        drawY + tailY * trailLength * lengthScale
+      );
+      context.stroke();
+    };
+    drawTrail("#ef3f24", this.radius * 1.25, 1, 0.4);
+    drawTrail("#ffc52f", this.radius * 0.72, 0.9, 0.68);
+    drawTrail("#ffffff", this.radius * 0.24, 0.82, 0.94);
+
+    context.globalAlpha = 0.78;
+    context.strokeStyle = "#fff0a0";
+    context.lineWidth = 5;
+    for (let index = 0; index < 12; index += 1) {
+      const angle = this.spin * 0.55 + index * Math.PI / 6;
+      const inner = auraRadius * 1.18;
+      const outer = inner + 18 + (index % 3) * 8;
+      context.beginPath();
+      context.moveTo(this.x + Math.cos(angle) * inner, drawY + Math.sin(angle) * inner);
+      context.lineTo(this.x + Math.cos(angle) * outer, drawY + Math.sin(angle) * outer);
+      context.stroke();
+    }
+
+    context.translate(this.x, drawY);
+    const aura = context.createRadialGradient(-this.radius * 0.2, -this.radius * 0.24, 3, 0, 0, auraRadius);
+    aura.addColorStop(0, "rgba(255,255,255,1)");
+    aura.addColorStop(0.34, "rgba(255,238,103,0.96)");
+    aura.addColorStop(0.7, "rgba(255,107,36,0.7)");
+    aura.addColorStop(1, "rgba(227,42,27,0)");
+    context.globalAlpha = 0.94;
+    context.fillStyle = aura;
+    context.beginPath();
+    context.arc(0, 0, auraRadius, 0, Math.PI * 2);
+    context.fill();
+
+    context.rotate(this.spin);
+    context.globalAlpha = 0.96;
+    context.fillStyle = "#fffdf1";
+    context.beginPath();
+    context.arc(0, 0, this.radius * 0.72, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "#ffd83d";
+    context.lineWidth = 7;
+    context.beginPath();
+    context.arc(0, 0, this.radius * 0.93, 0, Math.PI * 2);
+    context.stroke();
+
+    context.strokeStyle = "#fff8c4";
+    context.lineWidth = 4;
+    for (let index = 0; index < 3; index += 1) {
+      const offset = (index - 1) * this.radius * 0.42;
+      context.beginPath();
+      context.ellipse(0, offset, this.radius * 1.28, this.radius * 0.34, index * 0.5, 0, Math.PI * 1.55);
+      context.stroke();
+    }
     context.restore();
 
     if (debugMode) {

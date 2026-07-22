@@ -6,9 +6,10 @@ const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
-const SPECIAL_SHOT_ANTICIPATION_TIME = 0.7;
+const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.3, areaScale: 1, chanceScale: 1, perfectTiming: 0.42 },
+  kiai: { duration: 0.24, areaScale: 0.9, maxChance: 0.43, chanceScale: 0.62, perfectTiming: 0.52 },
   soul: { duration: 0.216, areaScale: 0.88, maxChance: 0.25, chanceScale: 0.255, perfectTiming: 0.5 },
   triple: { duration: 0.198, areaScale: 0.82, maxChance: 0.2, chanceScale: 0.205, perfectTiming: 0.56 },
   lightning: { duration: 0.18, areaScale: 0.78, maxChance: 0.175, chanceScale: 0.18, perfectTiming: 0.62 },
@@ -134,6 +135,9 @@ class DodgeballGame {
     this.lastRuntimeError = null;
     this.runtimeErrorCount = 0;
     this.effects = [];
+    this.screenShakeTimer = 0;
+    this.screenShakeDuration = 0;
+    this.screenShakeStrength = 0;
     this.boostEffectStage = 0;
     this.looseOutfieldRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
@@ -184,6 +188,9 @@ class DodgeballGame {
       })
       : null;
     this.effects = [];
+    this.screenShakeTimer = 0;
+    this.screenShakeDuration = 0;
+    this.screenShakeStrength = 0;
     this.message = "READY";
     this.spiritPoints = { left: 0, right: 0 };
     this.autoSwitchCooldown = 0;
@@ -402,6 +409,13 @@ class DodgeballGame {
     ];
 
     for (const player of roster) {
+      if (
+        !player.specialShotType &&
+        (teamDefinition?.id === "blue-stars" || teamDefinition?.id === "red-fires") &&
+        player.characterType === "normal"
+      ) {
+        player.specialShotType = "kiai";
+      }
       const area = this.areas[player.zone];
       player.clampToArea(area);
       player.homeX = player.x;
@@ -462,6 +476,7 @@ class DodgeballGame {
         hairColor: cpuPlayer?.hairColor || teamDefinition?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
         eyeColor: cpuPlayer?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: cpuPlayer?.uniformEmblem || teamDefinition?.uniformEmblem,
+        captain: Boolean(cpuPlayer?.captain),
         cpuProfile: cpuPlayer?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: cpuPlayer?.specialShotType
       });
@@ -482,6 +497,7 @@ class DodgeballGame {
         hairColor: getCpuPlayer(5)?.hairColor || teamDefinition?.hairColor,
         eyeColor: getCpuPlayer(5)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(5)?.uniformEmblem || teamDefinition?.uniformEmblem,
+        captain: Boolean(getCpuPlayer(5)?.captain),
         cpuProfile: getCpuPlayer(5)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(5)?.specialShotType
       }),
@@ -499,6 +515,7 @@ class DodgeballGame {
         hairColor: getCpuPlayer(6)?.hairColor || teamDefinition?.hairColor,
         eyeColor: getCpuPlayer(6)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(6)?.uniformEmblem || teamDefinition?.uniformEmblem,
+        captain: Boolean(getCpuPlayer(6)?.captain),
         cpuProfile: getCpuPlayer(6)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(6)?.specialShotType
       }),
@@ -516,12 +533,20 @@ class DodgeballGame {
         hairColor: getCpuPlayer(7)?.hairColor || teamDefinition?.hairColor,
         eyeColor: getCpuPlayer(7)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(7)?.uniformEmblem || teamDefinition?.uniformEmblem,
+        captain: Boolean(getCpuPlayer(7)?.captain),
         cpuProfile: getCpuPlayer(7)?.cpuProfile || cpuTeam?.cpuProfile,
         specialShotType: getCpuPlayer(7)?.specialShotType
       })
     );
 
     for (const player of roster) {
+      if (
+        !player.specialShotType &&
+        (teamDefinition?.id === "blue-stars" || teamDefinition?.id === "red-fires") &&
+        player.characterType === "normal"
+      ) {
+        player.specialShotType = "kiai";
+      }
       const area = this.areas[player.zone];
       player.clampToArea(area);
       player.homeX = player.x;
@@ -558,14 +583,14 @@ class DodgeballGame {
         stats: { power: 5, speed: 5, jump: 5, technique: 5 },
         cpuProfile: "townDodgies",
         players: [
-          player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "boost"),
-          player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
-          player("まさる", "inner", "normal", 50, 100, 5, 5, 5, 5, "boomerang"),
-          player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
-          player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "iron"),
-          player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "lightning"),
-          player("けんじ", "out", "normal", 50, 100, 5, 5, 5, 5, "boomerang"),
-          player("たかし", "out", "normal", 50, 100, 5, 5, 5, 5, "boost")
+          player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("まさる", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { captain: true }),
+          player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("けんじ", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
+          player("たかし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai")
         ]
       },
       {
@@ -584,14 +609,14 @@ class DodgeballGame {
         stats: { power: 6, speed: 8, jump: 7, technique: 6 },
         cpuProfile: "bakusouBoys",
         players: [
-          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("しょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "boost"),
-          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "boost")
+          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("しょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost", { captain: true }),
+          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
+          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai")
         ]
       },
       {
@@ -611,14 +636,14 @@ class DodgeballGame {
         stats: { power: 9, speed: 9, jump: 9, technique: 8 },
         cpuProfile: "hinomaruBombers",
         players: [
-          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 8, "boost"),
-          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 8, "lightning"),
+          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 8, "kiai"),
+          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 8, "kiai"),
           player("しょう", "inner", "speed", 150, 110, 9, 8, 10, 7, "boomerang"),
-          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 8, "lightning"),
-          player("だいち", "inner", "power", 250, 150, 13, 7, 9, 8, "iron"),
-          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 7, "lightning"),
-          player("えんじ", "out", "speed", 150, 110, 9, 8, 9, 7, "boomerang"),
-          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 7, "boost")
+          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 8, "kiai"),
+          player("だいち", "inner", "power", 250, 150, 13, 7, 9, 8, "lightning", { captain: true }),
+          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 7, "kiai"),
+          player("えんじ", "out", "speed", 150, 110, 9, 8, 9, 7, "kiai"),
+          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 7, "kiai")
         ]
       },
       {
@@ -628,6 +653,34 @@ class DodgeballGame {
         characterType: "normal",
         innerNames: ["\u30c8\u30e0", "\u30d6\u30e9\u30a4\u30a2\u30f3", "\u30b8\u30e7\u30fc", "\u30cb\u30c3\u30af", "\u30de\u30c3\u30af\u30b9"],
         outNames: ["\u30b9\u30c6\u30a3\u30fc\u30d6", "\u30ec\u30c3\u30af\u30b9", "\u30d6\u30ed\u30c3\u30af"],
+        uniformColor: "#14233f",
+        pantsColor: "#f7f7f2",
+        trimColor: "#d92525",
+        hairColor: "#f2c14e",
+        eyeColor: "#2b73ff",
+        uniformEmblem: "usaFlag",
+        maxHp: 140,
+        maxStamina: 100,
+        stats: { power: 10, speed: 10, jump: 11, technique: 8 },
+        cpuProfile: "americanBigBalls",
+        players: [
+          player("\u30c8\u30e0", "inner", "speed", 140, 100, 9, 12, 13, 8, "kiai"),
+          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 11, 9, 8, 7, "kiai"),
+          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 11, "triple", { captain: true }),
+          player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 10, 11, 10, 8, "kiai"),
+          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 8, 13, 9, 8, "kiai"),
+          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "kiai"),
+          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "kiai"),
+          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "kiai")
+        ]
+      },
+      {
+        id: "iron-gers",
+        name: "アイアンガーズ",
+        description: "ドイツをイメージした堅牢な強豪チーム",
+        characterType: "normal",
+        innerNames: ["シュナイダー", "ミュラー", "クライン", "ベッカー", "ホフマン"],
+        outNames: ["リヒター", "ケラー", "フィッシャー"],
         uniformColor: "#d92525",
         pantsColor: "#111318",
         trimColor: "#f7f7f2",
@@ -636,17 +689,16 @@ class DodgeballGame {
         uniformEmblem: "usaStripes",
         maxHp: 140,
         maxStamina: 100,
-        stats: { power: 10, speed: 10, jump: 11, technique: 8 },
-        cpuProfile: "americanBigBalls",
+        stats: { power: 9, speed: 8, jump: 8, technique: 8 },
         players: [
-          player("\u30c8\u30e0", "inner", "speed", 140, 100, 9, 12, 13, 8, "triple"),
-          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 11, 9, 8, 7, "iron"),
-          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 11, "triple", { uniformEmblem: "joeBib" }),
-          player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 10, 11, 10, 8, "boomerang"),
-          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 8, 13, 9, 8, "boost"),
-          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "lightning"),
-          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "triple"),
-          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "boomerang")
+          player("シュナイダー", "inner", "normal", 270, 100, 12, 8, 9, 8, "iron", { captain: true }),
+          player("ミュラー", "inner", "normal", 140, 100, 9, 8, 8, 7, "iron"),
+          player("クライン", "inner", "normal", 140, 100, 9, 8, 7, 8, "iron"),
+          player("ベッカー", "inner", "normal", 140, 100, 8, 9, 9, 7, "iron"),
+          player("ホフマン", "inner", "normal", 140, 100, 9, 8, 8, 8, "iron"),
+          player("リヒター", "out", "normal", 140, 100, 8, 7, 9, 8, "iron"),
+          player("ケラー", "out", "normal", 140, 100, 9, 8, 8, 7, "iron"),
+          player("フィッシャー", "out", "normal", 140, 100, 7, 8, 8, 8, "iron")
         ]
       },
       {
@@ -654,7 +706,7 @@ class DodgeballGame {
         name: "\u304f\u3044\u3060\u304a\u30ec\u30f3\u30b8\u30e3\u30fc\u30ba",
         description: "\u5927\u962a\u4ee3\u8868\u306e\u30ce\u30ea\u3068\u52e2\u3044\u3067\u653b\u3081\u308b\u30c1\u30fc\u30e0",
         characterType: "normal",
-        innerNames: ["\u305f\u3053\u3078\u3044", "\u304a\u3053\u306e\u307f", "\u304f\u3057\u304b\u3064", "\u304f\u3044\u3060\u304a\u308c", "\u3064\u3046\u3066\u3093"],
+        innerNames: ["\u305f\u3053\u3078\u3044", "\u304a\u3053\u306e\u307f", "\u304f\u3057\u304b\u3064", "\u304f\u3044\u3060\u304a\u308c", "\u304a\u304a\u304d\u306b"],
         outNames: ["\u306a\u3093\u3067\u3084", "\u307e\u3044\u3069", "\u3069\u3046\u3068\u3093"],
         uniformColor: "#ffd83d",
         pantsColor: "#f7f7f2",
@@ -667,13 +719,13 @@ class DodgeballGame {
         cpuProfile: "kuidaoRangers",
         players: [
           player("\u305f\u3053\u3078\u3044", "inner", "jump", 180, 100, 9, 8, 9, 9, "tsutenkaku", { uniformEmblem: "takoBib" }),
-          player("\u304a\u3053\u306e\u307f", "inner", "normal", 120, 100, 6, 6, 8, 6, "tsutenkaku"),
-          player("\u304f\u3057\u304b\u3064", "inner", "normal", 120, 100, 8, 8, 7, 8, "tsutenkaku"),
-          player("\u304f\u3044\u3060\u304a\u308c", "inner", "normal", 120, 100, 7, 8, 7, 7, "tsutenkaku"),
-          player("\u3064\u3046\u3066\u3093", "inner", "normal", 120, 100, 7, 5, 9, 7, "tsutenkaku"),
-          player("\u306a\u3093\u3067\u3084", "out", "normal", 120, 100, 7, 6, 7, 6, "tsutenkaku"),
-          player("\u307e\u3044\u3069", "out", "normal", 120, 100, 6, 7, 6, 7, "tsutenkaku"),
-          player("\u3069\u3046\u3068\u3093", "out", "normal", 120, 100, 8, 6, 7, 7, "tsutenkaku")
+          player("\u304a\u3053\u306e\u307f", "inner", "normal", 120, 100, 6, 6, 8, 6, "kiai"),
+          player("\u304f\u3057\u304b\u3064", "inner", "normal", 120, 100, 8, 8, 7, 8, "kiai"),
+          player("\u304f\u3044\u3060\u304a\u308c", "inner", "normal", 120, 100, 7, 8, 7, 7, "kiai"),
+          player("\u304a\u304a\u304d\u306b", "inner", "normal", 120, 100, 7, 5, 9, 7, "kiai"),
+          player("\u306a\u3093\u3067\u3084", "out", "normal", 120, 100, 7, 6, 7, 6, "kiai"),
+          player("\u307e\u3044\u3069", "out", "normal", 120, 100, 6, 7, 6, 7, "kiai"),
+          player("\u3069\u3046\u3068\u3093", "out", "normal", 120, 100, 8, 6, 7, 7, "kiai")
         ]
       },
       {
@@ -1008,6 +1060,16 @@ class DodgeballGame {
       this.watchCpuRightIndex = this.moveWatchTeamIndex(this.watchCpuRightIndex, teams.length);
     }
 
+    if (this.wasMenuDirectionPressed("left") && this.watchSelectionSlot === 1) {
+      this.watchSelectionSlot = 0;
+    }
+    if (this.wasMenuDirectionPressed("right") && this.watchSelectionSlot === 0) {
+      this.watchSelectionSlot = 1;
+    }
+    if (this.wasMenuDirectionPressed("up") && this.watchSelectionSlot === 2) {
+      this.watchSelectionSlot = 1;
+    }
+
     if (this.input.wasPressed("button2")) {
       if (this.watchSelectionSlot < 2) {
         this.watchSelectionSlot += 1;
@@ -1027,10 +1089,8 @@ class DodgeballGame {
 
   moveWatchTeamIndex(index, length) {
     let next = index;
-    if (this.wasMenuDirectionPressed("left")) next -= 1;
-    if (this.wasMenuDirectionPressed("right")) next += 1;
-    if (this.wasMenuDirectionPressed("up")) next -= 2;
-    if (this.wasMenuDirectionPressed("down")) next += 2;
+    if (this.wasMenuDirectionPressed("up")) next -= 1;
+    if (this.wasMenuDirectionPressed("down")) next += 1;
     if (next === index) return index;
     return ((next % length) + length) % length;
   }
@@ -1226,6 +1286,7 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.leftTeam);
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
+    this.handleTsutenkakuImpact();
     this.handleLightningZigzagImpact();
     this.handleBoostShotExit();
     this.handleTripleBallHits();
@@ -2689,15 +2750,24 @@ class DodgeballGame {
         if (specialType === "soul") {
           this.healTeamByMaxHpRatio(this.ball.thrower.team, 0.1);
         }
+        if (specialType === "tsutenkaku") {
+          this.applyTsutenkakuSplash(target, damage, this.ball.tsutenkakuTargetX, this.ball.tsutenkakuTargetY);
+        }
+        if (specialType === "kiai") {
+          this.startScreenShake(11, 0.12);
+        }
         this.spawnEffect(
           this.ball.x,
           ballY,
           this.getSpecialHitColor(specialType),
-          specialType === "slap" ? "slapImpact" : specialType ? "special" : "hit"
+          specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit"
         );
         this.spawnDamageNumber(target, damage);
         if (specialType === "boomerang") {
           this.ball.drop();
+          this.ball.vx = 0;
+          this.ball.vy = 0;
+          this.ball.vz = Math.min(-120, this.ball.vz);
           return;
         }
         if (specialType !== "boomerang" && specialType !== "iron") {
@@ -2769,9 +2839,30 @@ class DodgeballGame {
     this.spawnEffect(this.ball.lightningTargetX, this.ball.lightningTargetY - 48, "#ffd400", "special");
   }
 
+  handleTsutenkakuImpact() {
+    if (
+      !this.ball.tsutenkakuImpactPending ||
+      this.ball.specialShotType !== "tsutenkaku" ||
+      !this.ball.thrower
+    ) return;
+
+    const centerX = this.ball.tsutenkakuTargetX;
+    const centerY = this.ball.tsutenkakuTargetY;
+    const damage = this.getSpecialShotDamage(this.ball.power, "tsutenkaku", this.ball.travelDistance);
+    this.ball.tsutenkakuImpactPending = false;
+    this.applyTsutenkakuSplash(null, damage, centerX, centerY);
+    this.ball.drop();
+  }
+
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
-    if (specialType === "lightning" || specialType === "triple" || specialType === "boomerang") {
+    if (specialType === "kiai") {
+      return baseDamage * 1.7;
+    }
+    if (specialType === "lightning" || specialType === "triple") {
       return baseDamage * 2;
+    }
+    if (specialType === "boomerang") {
+      return baseDamage * 2.2;
     }
     if (specialType === "boost") {
       return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
@@ -2886,7 +2977,46 @@ class DodgeballGame {
     }
   }
 
+  applyTsutenkakuSplash(primaryTarget, baseDamage, centerX, centerY) {
+    const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
+    const splashRadius = 300;
+    const splashDamage = Math.max(1, baseDamage * 0.2);
+    for (const enemy of enemies) {
+      if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
+      const dx = enemy.x - centerX;
+      const dy = enemy.y - centerY;
+      const distance = Math.hypot(dx, dy);
+      if (distance > splashRadius) continue;
+
+      const length = distance || 1;
+      const direction = dx >= 0 ? 1 : -1;
+      const hpBefore = enemy.hp;
+      if (enemy.takeDamage(splashDamage, direction, GAME_CONFIG.battle, 1.8, true)) {
+        this.addSpiritForDamage(enemy.team, hpBefore, enemy.hp);
+        enemy.knockbackX += dx / length * GAME_CONFIG.battle.knockbackSpeed * 1.15;
+        enemy.knockbackY += dy / length * GAME_CONFIG.battle.knockbackSpeed * 0.85;
+        this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 62, "#ffd83d", "special");
+        this.spawnDamageNumber(enemy, splashDamage);
+      }
+    }
+    this.spawnTsutenkakuImpactEffects(centerX, centerY);
+  }
+
+  spawnTsutenkakuImpactEffects(centerX, centerY) {
+    this.spawnEffect(centerX, centerY - 42, "#ffd83d", "special");
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI * 0.25;
+      this.spawnEffect(
+        centerX + Math.cos(angle) * 120,
+        centerY + Math.sin(angle) * 72 - 42,
+        index % 2 === 0 ? "#fff06a" : "#ff9f32",
+        "special"
+      );
+    }
+  }
+
   getSpecialHitColor(specialType) {
+    if (specialType === "kiai") return "#fff06a";
     if (specialType === "triple") return "#ffcc8a";
     if (specialType === "boost") return "#ff7a1f";
     if (specialType === "lightning") return "#8ffcff";
@@ -3221,7 +3351,14 @@ class DodgeballGame {
   }
 
   spawnEffect(x, y, color, type) {
-    this.effects.push({ x, y, color, type, life: 0.32, maxLife: 0.32 });
+    const duration = type === "kiaiImpact" ? 0.46 : 0.32;
+    this.effects.push({ x, y, color, type, life: duration, maxLife: duration });
+  }
+
+  startScreenShake(strength, duration) {
+    this.screenShakeStrength = Math.max(this.screenShakeStrength, strength);
+    this.screenShakeDuration = Math.max(this.screenShakeDuration, duration);
+    this.screenShakeTimer = Math.max(this.screenShakeTimer, duration);
   }
 
   updateBoostPresentation() {
@@ -3269,6 +3406,7 @@ class DodgeballGame {
   }
 
   getSpecialShotLabel(specialType) {
+    if (specialType === "kiai") return "気合ストレート";
     if (specialType === "triple") return "\u30c8\u30ea\u30d7\u30eb\u30b7\u30e7\u30c3\u30c8";
     if (specialType === "boost") return "BOOST";
     if (specialType === "lightning") return "LIGHTNING";
@@ -3281,6 +3419,11 @@ class DodgeballGame {
   }
 
   updateEffects(delta) {
+    this.screenShakeTimer = Math.max(0, this.screenShakeTimer - delta);
+    if (this.screenShakeTimer <= 0) {
+      this.screenShakeDuration = 0;
+      this.screenShakeStrength = 0;
+    }
     if (this.shotMultiplierDisplay) {
       this.shotMultiplierDisplay.life -= delta;
       if (this.shotMultiplierDisplay.life <= 0) this.shotMultiplierDisplay = null;
@@ -3309,6 +3452,11 @@ class DodgeballGame {
 
     const view = this.getFullCourtView();
     context.save();
+    if (this.screenShakeTimer > 0) {
+      const ratio = this.screenShakeTimer / Math.max(0.01, this.screenShakeDuration);
+      const strength = this.screenShakeStrength * ratio;
+      context.translate((Math.random() - 0.5) * strength * 2, (Math.random() - 0.5) * strength * 2);
+    }
     context.translate(view.offsetX, view.offsetY);
     context.scale(view.scale, view.scale);
     context.translate(-view.x, -view.y);
@@ -3554,10 +3702,28 @@ class DodgeballGame {
   drawWatchTeamSelect() {
     const leftTeam = this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex);
     const rightTeam = this.getCpuOpponentTeamByIndex(this.watchCpuRightIndex);
-    this.drawWatchTeamColumn("左CPUチーム", 110, 145, "#0057ff", this.watchCpuLeftIndex, this.watchSelectionSlot === 0);
-    this.drawWatchTeamColumn("右CPUチーム", 760, 145, "#f01818", this.watchCpuRightIndex, this.watchSelectionSlot === 1);
-    this.drawWatchCpuTeamDetails(leftTeam, 155, 330, "#0057ff");
-    this.drawWatchCpuTeamDetails(rightTeam, 805, 330, "#f01818");
+    this.drawWatchCpuTeamDetails(leftTeam, 144, 278, "#0057ff");
+    this.drawWatchCpuTeamDetails(rightTeam, 814, 278, "#f01818");
+    this.drawTeamChoicePanel(
+      "left",
+      90,
+      122,
+      590,
+      "LEFT CPU TEAM",
+      "#0057ff",
+      this.watchSelectionSlot === 0,
+      this.watchCpuLeftIndex
+    );
+    this.drawTeamChoicePanel(
+      "right",
+      760,
+      122,
+      590,
+      "RIGHT CPU TEAM",
+      "#f01818",
+      this.watchSelectionSlot === 1,
+      this.watchCpuRightIndex
+    );
   }
 
   drawWatchTeamColumn(title, x, y, color, selectedIndex, active) {
@@ -3721,6 +3887,7 @@ class DodgeballGame {
   }
 
   getSpecialShotShortLabel(specialType) {
+    if (specialType === "kiai") return "気";
     if (specialType === "triple") return "三";
     if (specialType === "boost") return "ブ";
     if (specialType === "lightning") return "雷";
@@ -3884,7 +4051,7 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "18px Meiryo, sans-serif";
     const help = this.gameMode === "watch"
-      ? "左スティックでチーム選択 / ボタン2で決定・観戦開始 / ボタン1で戻る"
+      ? "上下でチーム選択 / 左右で選択欄移動 / ボタン2で決定・観戦開始 / ボタン1で戻る"
       : "上下でチーム選択 / ボタン2で決定・タイプ変更・試合開始 / ボタン1で戻る";
     context.fillText(help, centerX, 688);
     context.restore();
@@ -3921,10 +4088,10 @@ class DodgeballGame {
     context.restore();
   }
 
-  drawTeamChoicePanel(side, x, y, width, title, color, active) {
+  drawTeamChoicePanel(side, x, y, width, title, color, active, selectedIndexOverride = null) {
     const context = this.context;
     const teams = this.getSelectableTeams();
-    const selectedIndex = this.selectedTeamIndices[side] ?? 0;
+    const selectedIndex = selectedIndexOverride ?? this.selectedTeamIndices[side] ?? 0;
     const selectedTeam = teams[selectedIndex] || teams[0];
     context.save();
     context.textAlign = "left";
@@ -4320,6 +4487,16 @@ class DodgeballGame {
     context.lineTo(34, -28);
     context.lineTo(38, 0);
     context.stroke();
+    if (style?.uniformEmblem === "usaFlag") {
+      context.strokeStyle = "#d92525";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.moveTo(-23, -49);
+      context.lineTo(-31, -44);
+      context.moveTo(23, -49);
+      context.lineTo(31, -44);
+      context.stroke();
+    }
     context.fillStyle = sumoStyle ? "#ffd1a3" : suit;
     context.beginPath();
     context.ellipse(0, -42, 27 * body.torsoX, 38 * body.torsoY, 0, 0, Math.PI * 2);
@@ -4351,6 +4528,21 @@ class DodgeballGame {
         context.fillRect(-32 * body.torsoX, stripeY, 64 * body.torsoX, 7);
       }
       context.restore();
+    }
+    if (style?.uniformEmblem === "usaFlag") {
+      context.save();
+      context.clip();
+      const stripeHeight = 8;
+      for (let stripeY = -44; stripeY <= -5; stripeY += stripeHeight) {
+        context.fillStyle = Math.floor((stripeY + 44) / stripeHeight) % 2 === 0 ? "#f7f7f2" : "#d92525";
+        context.fillRect(-32 * body.torsoX, stripeY, 64 * body.torsoX, stripeHeight);
+      }
+      context.restore();
+      context.fillStyle = "#f7f7f2";
+      context.font = "bold 20px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("★", -12 * body.torsoX, -62 * body.torsoY);
     }
     if (style?.uniformEmblem === "osakaStripes" || style?.uniformEmblem === "takoBib") {
       context.save();
@@ -4386,6 +4578,19 @@ class DodgeballGame {
       context.beginPath();
       context.arc(0, -45, 8, 0, Math.PI * 2);
       context.fill();
+    }
+    if (style?.captain) {
+      context.fillStyle = "#f7f7f2";
+      context.strokeStyle = "#263241";
+      context.lineWidth = 2;
+      this.roundRect(context, -15 * body.torsoX, -59 * body.torsoY, 30 * body.torsoX, 31 * body.torsoY, 4);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#d92828";
+      context.font = "bold 22px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("C", 0, -44);
     }
     if (body.mage) {
       context.fillStyle = suit;
@@ -4800,6 +5005,55 @@ class DodgeballGame {
         context.restore();
         continue;
       }
+      if (effect.type === "kiaiImpact") {
+        const radius = 34 + progress * 138;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(255, 224, 92, 0.22)";
+        context.strokeStyle = progress < 0.38 ? "#ffffff" : "#ffd83d";
+        context.lineWidth = 15 - progress * 8;
+        context.shadowColor = "#ff8a32";
+        context.shadowBlur = 24;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+
+        context.shadowBlur = 0;
+        context.strokeStyle = "#fff6b5";
+        context.lineWidth = 7;
+        for (let index = 0; index < 20; index += 1) {
+          const angle = index * Math.PI * 0.1;
+          const inner = radius * 0.34;
+          const outer = radius * (index % 2 === 0 ? 1.22 : 0.94);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+
+        context.globalCompositeOperation = "source-over";
+        context.fillStyle = "rgba(180, 119, 52, 0.48)";
+        for (let index = 0; index < 12; index += 1) {
+          const angle = Math.PI * 2 * index / 12;
+          const distance = 34 + progress * (70 + index % 3 * 18);
+          context.beginPath();
+          context.ellipse(
+            Math.cos(angle) * distance,
+            44 + Math.sin(angle) * distance * 0.32,
+            13 + progress * 10,
+            7 + progress * 6,
+            angle,
+            0,
+            Math.PI * 2
+          );
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
       if (effect.type === "slapImpact") {
         const radius = 42 + progress * 145;
         context.save();
@@ -4940,23 +5194,53 @@ class DodgeballGame {
     const progress = Math.max(0, Math.min(1, 1 - pending.timer / SPECIAL_SHOT_ANTICIPATION_TIME));
     const x = actor.x;
     const y = actor.y - actor.jumpZ - 66;
+    const burstRadius = 82 + progress * 78 + pulse * 18;
 
     context.save();
-    context.globalAlpha = 0.2 + pulse * 0.18;
+    context.globalCompositeOperation = "lighter";
+    const glow = context.createRadialGradient(x, y + 10, 10, x, y + 10, burstRadius * 1.15);
+    glow.addColorStop(0, "rgba(255, 245, 220, 0.9)");
+    glow.addColorStop(0.22, "rgba(255, 94, 82, 0.72)");
+    glow.addColorStop(0.58, "rgba(255, 42, 42, 0.3)");
+    glow.addColorStop(1, "rgba(255, 30, 30, 0)");
+    context.globalAlpha = 0.76;
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(x, y + 10, burstRadius * 1.15, 0, Math.PI * 2);
+    context.fill();
+
+    context.globalAlpha = 0.34 + pulse * 0.28;
     context.fillStyle = "#ff6f6f";
     context.shadowColor = "#ff3d3d";
-    context.shadowBlur = 18 + progress * 10;
+    context.shadowBlur = 28 + progress * 22;
     context.beginPath();
-    context.ellipse(x, y + 14, 39 + pulse * 4, 69 + pulse * 5, 0, 0, Math.PI * 2);
+    context.ellipse(x, y + 14, 53 + pulse * 7, 86 + pulse * 8, 0, 0, Math.PI * 2);
     context.fill();
 
     context.shadowBlur = 0;
-    context.globalAlpha = 0.58 + pulse * 0.2;
-    context.strokeStyle = "#ff9b9b";
-    context.lineWidth = 4 + progress * 3;
-    context.beginPath();
-    context.ellipse(x, y + 14, 43 + progress * 7, 73 + progress * 8, 0, 0, Math.PI * 2);
-    context.stroke();
+    context.strokeStyle = "#ff8f83";
+    for (let index = 0; index < 3; index += 1) {
+      const ringRadius = burstRadius * (0.58 + index * 0.2);
+      context.globalAlpha = Math.max(0.18, 0.86 - index * 0.22);
+      context.lineWidth = 9 - index * 2;
+      context.beginPath();
+      context.ellipse(x, y + 8, ringRadius, ringRadius * 0.72, 0, 0, Math.PI * 2);
+      context.stroke();
+    }
+
+    context.strokeStyle = "#fff0d8";
+    context.lineCap = "round";
+    context.globalAlpha = 0.88;
+    context.lineWidth = 5;
+    for (let index = 0; index < 16; index += 1) {
+      const angle = performance.now() / 90 + index * Math.PI / 8;
+      const innerRadius = 52 + (index % 2) * 12;
+      const outerRadius = burstRadius * (0.9 + (index % 3) * 0.12);
+      context.beginPath();
+      context.moveTo(x + Math.cos(angle) * innerRadius, y + 8 + Math.sin(angle) * innerRadius * 0.72);
+      context.lineTo(x + Math.cos(angle) * outerRadius, y + 8 + Math.sin(angle) * outerRadius * 0.72);
+      context.stroke();
+    }
     context.restore();
   }
 

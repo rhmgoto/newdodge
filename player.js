@@ -114,6 +114,7 @@ class Player {
     this.uniformColor = options.uniformColor;
     this.pantsColor = options.pantsColor || this.uniformColor;
     this.uniformEmblem = options.uniformEmblem || null;
+    this.isCaptain = Boolean(options.captain);
     this.trimColor = options.trimColor || "#ffffff";
     this.faceColor = options.faceColor || "#ffd4a3";
     this.hairColor = options.hairColor || "#3d2a1f";
@@ -419,8 +420,8 @@ class Player {
     this.state = "throwing";
   }
 
-  takeDamage(amount, sourceDirection, config, knockbackScale = 1) {
-    if (this.defeated || this.invincibleTime > 0 || this.dodgeTimer > 0) return false;
+  takeDamage(amount, sourceDirection, config, knockbackScale = 1, ignoreDodge = false) {
+    if (this.defeated || this.invincibleTime > 0 || (!ignoreDodge && this.dodgeTimer > 0)) return false;
 
     this.hp = Math.max(0, this.hp - amount);
     this.isDamaged = true;
@@ -765,12 +766,18 @@ class Player {
     else this.drawModelFoot(context, pose.backLeg[2], colors.pants);
 
     this.drawModelTorso(context, 0, torsoY, colors, body);
+    if (this.uniformEmblem === "usaFlag") {
+      this.drawUsaSleeveCuff(context, pose.backArm, 9 * body.armWidth);
+    }
 
     this.drawModelLimb(context, pose.frontLeg, legColor, 12 * body.legWidth);
     if (sumoStyle) this.drawModelBareFoot(context, pose.frontLeg[2]);
     else this.drawModelFoot(context, pose.frontLeg[2], colors.pants);
     if (sumoStyle) this.drawSumoFundoshi(context, torsoY, body);
     this.drawModelLimb(context, pose.frontArm, PLAYER_MODEL.skin, 10 * body.armWidth);
+    if (this.uniformEmblem === "usaFlag") {
+      this.drawUsaSleeveCuff(context, pose.frontArm, 10 * body.armWidth);
+    }
     if (body.mage) {
       this.drawMageSkirt(context, torsoY, colors);
     }
@@ -853,6 +860,22 @@ class Player {
       }
       context.restore();
     }
+    if (this.uniformEmblem === "usaFlag") {
+      context.save();
+      context.clip();
+      const stripeHeight = 8 * body.torsoY;
+      for (let stripeY = y - 2 * body.torsoY; stripeY < y + 38 * body.torsoY; stripeY += stripeHeight) {
+        const stripeIndex = Math.floor((stripeY - (y - 2 * body.torsoY)) / stripeHeight);
+        context.fillStyle = stripeIndex % 2 === 0 ? "#f7f7f2" : "#d92525";
+        context.fillRect(x - 34 * body.torsoX, stripeY, 68 * body.torsoX, stripeHeight);
+      }
+      context.restore();
+      context.fillStyle = "#f7f7f2";
+      context.font = "bold 18px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("★", x - 13 * body.torsoX, y - 18 * body.torsoY);
+    }
     if (this.uniformEmblem === "osakaStripes" || this.uniformEmblem === "takoBib") {
       context.save();
       context.clip();
@@ -887,10 +910,43 @@ class Player {
       context.arc(x, y - 3, Math.max(7, 10 * Math.min(body.torsoX, body.torsoY)), 0, Math.PI * 2);
       context.fill();
     }
+    if (this.isCaptain) {
+      context.fillStyle = "#f7f7f2";
+      context.strokeStyle = "#263241";
+      context.lineWidth = 2;
+      this.roundRect(context, x - 15 * body.torsoX, y - 20 * body.torsoY, 30 * body.torsoX, 34 * body.torsoY, 4);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#d92828";
+      context.font = "bold 16px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("C", x, y - 3);
+    }
   }
 
   isSumoStyle() {
     return this.uniformEmblem === "sumo" || this.uniformEmblem === "sumoGold";
+  }
+
+  drawUsaSleeveCuff(context, points, armWidth) {
+    const shoulder = points[0];
+    const elbow = points[1];
+    const dx = elbow.x - shoulder.x;
+    const dy = elbow.y - shoulder.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const centerX = shoulder.x + dx * 0.3;
+    const centerY = shoulder.y + dy * 0.3;
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    const halfWidth = armWidth * 0.62;
+    context.strokeStyle = "#d92525";
+    context.lineWidth = 5;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(centerX - normalX * halfWidth, centerY - normalY * halfWidth);
+    context.lineTo(centerX + normalX * halfWidth, centerY + normalY * halfWidth);
+    context.stroke();
   }
 
   drawSumoFundoshi(context, torsoY, body) {
