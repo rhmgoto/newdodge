@@ -69,7 +69,9 @@ class CPUController {
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
-      this.throwTimer = cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
+      this.throwTimer = cpuHolder.quickShotReadyTimer > 0
+        ? 0.04 + Math.random() * 0.05
+        : cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
         ? Math.min(this.throwTimer, 0.08 + Math.random() * 0.08)
         : Math.max(this.throwTimer, 0.85 + Math.random() * 0.45);
     } else if (!cpuHolder) {
@@ -118,6 +120,15 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (plan.type === "quick-shot") {
+      this.faceNearestThreat(command, holder);
+      if (this.throwTimer <= 0) {
+        command.shoot = true;
+        this.throwTimer = 0.42 + Math.random() * 0.18;
+        this.holderPlan = null;
+      }
+      return;
+    }
     if (
       plan.type.includes("jump") &&
       !plan.jumpAttempted &&
@@ -317,6 +328,9 @@ class CPUController {
   }
 
   getHolderPlan(holder) {
+    if (holder.quickShotReadyTimer > 0 && this.holderPlan?.type !== "quick-shot") {
+      return this.createHolderPlan(holder, "quick-shot", 0);
+    }
     if (this.holderPlan && this.holderPlan.holderId === holder.id) return this.holderPlan;
 
     if (holder.aerialPassCatchTimer > 0 && holder.jumpZ > 0) {

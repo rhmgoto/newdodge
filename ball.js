@@ -30,6 +30,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.quickShot = false;
+    this.quickFlightZ = 0;
     this.baseRadius = this.config.radius;
     this.travelDistance = 0;
     this.returning = false;
@@ -162,6 +164,7 @@ class Ball {
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
+    const straightQuickFlight = this.isFlying && this.kind === "shoot" && this.quickShot;
     if (this.isFlying) {
       if (straightBoostFlight) {
         this.z = this.boostFlightZ;
@@ -174,6 +177,9 @@ class Ball {
         this.vz = 0;
       } else if (straightCounterFlight) {
         this.z = this.counterFlightZ;
+        this.vz = 0;
+      } else if (straightQuickFlight) {
+        this.z = this.quickFlightZ;
         this.vz = 0;
       } else if (this.kind !== "pass") {
         const airDrag = this.specialShotType ? 0.994 : 0.996;
@@ -189,7 +195,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightCounterFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -253,6 +259,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.quickShot = false;
+    this.quickFlightZ = 0;
     this.radius = this.baseRadius;
     this.travelDistance = 0;
     this.returning = false;
@@ -288,6 +296,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.quickShot = false;
+    this.quickFlightZ = 0;
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
@@ -788,6 +798,11 @@ class Ball {
     this.shotMultiplier = 1;
     this.specialShot = false;
     this.specialShotType = null;
+    this.counterShot = false;
+    this.counterFlightZ = 0;
+    this.counterIntensity = 1;
+    this.quickShot = false;
+    this.quickFlightZ = 0;
     this.radius = this.baseRadius;
     this.travelDistance = 0;
     this.returning = false;
@@ -820,6 +835,11 @@ class Ball {
     this.shotMultiplier = 1;
     this.specialShot = false;
     this.specialShotType = null;
+    this.counterShot = false;
+    this.counterFlightZ = 0;
+    this.counterIntensity = 1;
+    this.quickShot = false;
+    this.quickFlightZ = 0;
     this.radius = this.baseRadius;
     this.travelDistance = 0;
     this.returning = false;

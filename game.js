@@ -7,6 +7,13 @@ const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
+const SHOT_WINDUP_TIME = 0.38 * 1.3;
+const QUICK_SHOT_CONFIG = {
+  windowDuration: 0.55,
+  windupTime: SHOT_WINDUP_TIME * 0.5,
+  speedScale: 1.2,
+  damageScale: 1.1
+};
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.3, areaScale: 1, chanceScale: 1, perfectTiming: 0.42 },
   kiai: { duration: 0.24, areaScale: 0.9, maxChance: 0.43, chanceScale: 0.62, perfectTiming: 0.52 },
@@ -1252,7 +1259,10 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        if (!this.startCounterThrow(holder, 1)) this.startChargedThrow(holder, "shoot");
+        if (!this.startCounterThrow(holder, 1)) {
+          if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 1);
+          else this.startChargedThrow(holder, "shoot");
+        }
       }
       if (this.input.wasPressed("button1")) {
         this.startChargedThrow(holder, "pass");
@@ -1276,7 +1286,10 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          if (!this.startCounterThrow(holder, 2)) this.startChargedThrow(holder, "shoot", 2);
+          if (!this.startCounterThrow(holder, 2)) {
+            if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 2);
+            else this.startChargedThrow(holder, "shoot", 2);
+          }
         }
         if (this.input.wasPressed("button1", 2)) {
           this.startChargedThrow(holder, "pass", 2);
@@ -1325,7 +1338,8 @@ class DodgeballGame {
         this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
       }
       if (command.shoot && this.ball.owner === member) {
-        this.launchFromAi(member, "shoot", opponents);
+        if (member.quickShotReadyTimer > 0) this.startQuickShot(member);
+        else this.launchFromAi(member, "shoot", opponents);
       }
       if (command.pass && this.ball.owner === member) {
         this.launchFromAi(member, "pass", team.filter((p) => p !== member));
@@ -1896,6 +1910,47 @@ class DodgeballGame {
     return true;
   }
 
+  startQuickShot(actor, playerIndex = 0) {
+    if (
+      this.pendingThrow ||
+      this.chargingThrow ||
+      this.ball.owner !== actor ||
+      actor.defeated ||
+      actor.hitRecoveryTimer > 0 ||
+      actor.quickShotReadyTimer <= 0
+    ) return false;
+    if (!actor.consumeStamina(
+      GAME_CONFIG.battle.stamina.shootCost,
+      GAME_CONFIG.battle.stamina.recoveryDelay
+    )) return false;
+
+    const selection = playerIndex > 0
+      ? this.getShootSelection(actor, playerIndex)
+      : this.getCpuShootSelection(actor);
+    const target = selection.target;
+    const aim = target
+      ? this.normalizedVector(target.x - actor.x, target.y - 38 - actor.y)
+      : selection.aim || { x: actor.team === "left" ? 1 : -1, y: 0 };
+    actor.quickShotReadyTimer = 0;
+    this.pendingThrow = {
+      actor,
+      target,
+      kind: "shoot",
+      aim,
+      shotMultiplier: QUICK_SHOT_CONFIG.damageScale,
+      specialType: null,
+      quickShot: true,
+      timer: QUICK_SHOT_CONFIG.windupTime
+    };
+    actor.markThrowing(QUICK_SHOT_CONFIG.windupTime + 0.18, "shoot");
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, QUICK_SHOT_CONFIG.windupTime + 0.18);
+    if (target && target.team !== actor.team) {
+      this.setControlledMember(target.team, target);
+      this.setAutoSwitchCooldown(target.team, 0.3);
+    }
+    return true;
+  }
+
   getCounterTarget(actor, playerIndex = 0) {
     const savedTarget = actor.counterTarget;
     if (savedTarget && savedTarget.role === "inner" && !savedTarget.defeated) {
@@ -1965,7 +2020,11 @@ class DodgeballGame {
     actor.throwLockTimer = Math.max(actor.throwLockTimer, kind === "shoot" ? 0.3 : 0.18);
     actor.markThrowing(kind === "shoot" ? 0.32 : 0.22, kind);
     const specialType = kind === "shoot" ? this.getSpecialShotType(actor, multiplier) : null;
-    if (specialType) {
+    const remainingWindup = kind === "shoot"
+      ? Math.max(0, SHOT_WINDUP_TIME - charged.chargeTime)
+      : 0;
+    const releaseDelay = remainingWindup + (specialType ? SPECIAL_SHOT_ANTICIPATION_TIME : 0);
+    if (releaseDelay > 0) {
       this.pendingThrow = {
         actor,
         target: charged.target,
@@ -1973,12 +2032,12 @@ class DodgeballGame {
         aim: charged.aim,
         shotMultiplier: multiplier,
         specialType,
-        timer: SPECIAL_SHOT_ANTICIPATION_TIME,
-        anticipation: true,
+        timer: releaseDelay,
+        anticipation: Boolean(specialType),
         aerialCombo: charged.aerialCombo
       };
-      actor.markThrowing(SPECIAL_SHOT_ANTICIPATION_TIME + 0.18, kind);
-      actor.throwLockTimer = Math.max(actor.throwLockTimer, SPECIAL_SHOT_ANTICIPATION_TIME + 0.06);
+      actor.markThrowing(releaseDelay + 0.18, kind);
+      actor.throwLockTimer = Math.max(actor.throwLockTimer, releaseDelay + 0.06);
       return true;
     }
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
@@ -2038,7 +2097,7 @@ class DodgeballGame {
       shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
       specialType: null,
       anticipation: false,
-      timer: kind === "shoot" ? 0.38 : 0.2
+      timer: kind === "shoot" ? SHOT_WINDUP_TIME : 0.2
     };
     if (kind === "shoot") {
       this.pendingThrow.specialType = this.getSpecialShotType(actor, this.pendingThrow.shotMultiplier);
@@ -2048,7 +2107,7 @@ class DodgeballGame {
       }
     }
     const throwDuration = kind === "shoot"
-      ? 0.68 + (this.pendingThrow.anticipation ? SPECIAL_SHOT_ANTICIPATION_TIME - 0.2 : 0)
+      ? this.pendingThrow.timer + 0.3
       : 0.4;
     actor.markThrowing(throwDuration, kind);
     actor.throwLockTimer = Math.max(actor.throwLockTimer, throwDuration);
@@ -2074,12 +2133,14 @@ class DodgeballGame {
     if (pending.timer > 0) return;
 
     this.pendingThrow = null;
-    const specialType = pending.counter
+    const specialType = pending.counter || pending.quickShot
       ? null
       : pending.kind === "shoot"
       ? pending.specialType || this.getSpecialShotType(pending.actor, pending.shotMultiplier)
       : null;
-    if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier, specialType)) {
+    const launchTarget = pending.quickShot ? null : pending.target;
+    const launchMultiplier = pending.quickShot ? 1 : pending.shotMultiplier;
+    if (this.ball.launch(pending.actor, launchTarget, pending.kind, pending.aim, launchMultiplier, specialType)) {
       if (pending.counter) {
         const targetX = pending.target?.x ?? this.ball.x + pending.aim.x * 900;
         const targetY = pending.target ? pending.target.y - 38 : this.ball.y + pending.aim.y * 900;
@@ -2106,6 +2167,20 @@ class DodgeballGame {
         );
         this.startScreenShake(7 + (pending.counterIntensity || 1) * 2, 0.1);
         this.spawnCatchResultLabel(pending.actor, "COUNTER!", "#fff36a");
+        return;
+      }
+      if (pending.quickShot) {
+        this.ball.target = pending.target;
+        this.ball.vx *= QUICK_SHOT_CONFIG.speedScale;
+        this.ball.vy *= QUICK_SHOT_CONFIG.speedScale;
+        this.ball.z = Math.min(62, this.ball.z);
+        this.ball.vz = 0;
+        this.ball.power = pending.actor.throwPower * QUICK_SHOT_CONFIG.damageScale;
+        this.ball.shotMultiplier = QUICK_SHOT_CONFIG.damageScale;
+        this.ball.quickShot = true;
+        this.ball.quickFlightZ = this.ball.z;
+        this.spawnEffect(pending.actor.x + pending.actor.facing * 40, pending.actor.y - 48, "#fff27a", "shoot");
+        this.spawnCatchResultLabel(pending.actor, "QUICK!", "#fff27a");
         return;
       }
       if (specialType) this.consumeSpirit(pending.actor.team);
@@ -2539,6 +2614,7 @@ class DodgeballGame {
       }
       target.startCatch(0.34);
       this.ball.pickUp(target);
+      target.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
       this.setControlledMember(target.team, target);
       this.spawnEffect(target.x, target.y - 55, "#ffffff", "catch");
     }
@@ -2580,6 +2656,7 @@ class DodgeballGame {
         continue;
       }
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
+      const caughtFriendlyPass = friendly && this.ball.kind === "pass";
       const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
       const caughtShotDamage = caughtEnemyShot
         ? this.getSpecialShotDamage(this.ball.power, this.ball.specialShotType, this.ball.travelDistance)
@@ -2589,6 +2666,9 @@ class DodgeballGame {
       const ironDirection = caughtIronShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
       const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
       this.ball.pickUp(catcher);
+      if (caughtFriendlyPass) {
+        catcher.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
+      }
       if (caughtFriendlyPassInAir) {
         catcher.aerialPassCatchTimer = 1.1;
       }
@@ -2681,7 +2761,10 @@ class DodgeballGame {
     const visualDistance = Math.hypot(this.ball.x - catcher.x, this.ball.y - this.ball.z - (catcher.y - catcher.jumpZ - 62));
     const timing = Math.max(0, 1 - visualDistance / 250);
     const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
-    const facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
+    let facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
+    if (this.ball.quickShot && facingQuality !== "front") {
+      facingFactor *= facingQuality === "side" ? 0.78 : 0.55;
+    }
     const techniqueAboveBase = Math.max(0, Math.min(20, technique) - 5);
     const techniqueBonus = Math.min(5, techniqueAboveBase) * 0.04 + Math.max(0, techniqueAboveBase - 5) * 0.018;
     const expertCloseCatchBonus = technique >= 10 && facingQuality === "front" && visualDistance < 170

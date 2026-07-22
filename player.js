@@ -161,6 +161,7 @@ class Player {
     this.runupDirX = this.facing;
     this.runupDirY = 0;
     this.aerialPassCatchTimer = 0;
+    this.quickShotReadyTimer = 0;
     this.maxStamina = typeDefinition.maxStamina || options.maxStamina || 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
@@ -212,6 +213,8 @@ class Player {
     this.updateTurn(delta);
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
     this.aerialPassCatchTimer = Math.max(0, this.aerialPassCatchTimer - delta);
+    this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
+    if (!this.hasBall) this.quickShotReadyTimer = 0;
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
     }
@@ -479,6 +482,7 @@ class Player {
     this.invincibleTime = config.invincibleTime;
     this.hitRecoveryTimer = config.hitRecoveryDuration;
     this.catchTimer = 0;
+    this.quickShotReadyTimer = 0;
     this.throwTimer = 0;
     this.throwPhase = "none";
     this.throwKind = "none";
