@@ -141,6 +141,11 @@ class Player {
     this.throwPhase = "none";
     this.throwKind = "none";
     this.throwLockTimer = 0;
+    this.counterReadyTimer = 0;
+    this.counterWindowTimer = 0;
+    this.counterAutoTimer = 0;
+    this.counterSourceDamage = 0;
+    this.counterTarget = null;
     this.dodgeTimer = 0;
     this.dodgeType = "none";
     this.downTimer = 0;
@@ -190,6 +195,12 @@ class Player {
       this.throwKind = "none";
     }
     this.throwLockTimer = Math.max(0, this.throwLockTimer - delta);
+    this.counterReadyTimer = Math.max(0, this.counterReadyTimer - delta);
+    this.counterWindowTimer = Math.max(0, this.counterWindowTimer - delta);
+    this.counterAutoTimer = Math.max(0, this.counterAutoTimer - delta);
+    if (!this.hasBall || this.counterWindowTimer <= 0) {
+      this.clearCounterOpportunity();
+    }
     this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
     this.updateTurn(delta);
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
@@ -323,6 +334,27 @@ class Player {
     if (this.defeated || this.downTimer > 0) return;
     this.catchSuccessTimer = 0.28;
     this.state = "catching";
+  }
+
+  startCounterOpportunity(sourceDamage, target, config) {
+    if (this.defeated || this.downTimer > 0 || !this.hasBall) return;
+    this.counterReadyTimer = config.lockDuration;
+    this.counterWindowTimer = config.lockDuration + config.windowDuration;
+    this.counterAutoTimer = config.lockDuration + 0.12 + Math.random() * 0.16;
+    this.counterSourceDamage = Math.max(0, sourceDamage || 0);
+    this.counterTarget = target || null;
+  }
+
+  canCounterThrow() {
+    return this.hasBall && this.counterWindowTimer > 0 && this.counterReadyTimer <= 0 && this.counterSourceDamage > 0;
+  }
+
+  clearCounterOpportunity() {
+    this.counterReadyTimer = 0;
+    this.counterWindowTimer = 0;
+    this.counterAutoTimer = 0;
+    this.counterSourceDamage = 0;
+    this.counterTarget = null;
   }
 
   stun(duration) {

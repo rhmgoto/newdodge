@@ -19,6 +19,15 @@ const CATCH_DIFFICULTY = {
   slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.1, chanceScale: 0.105, perfectTiming: 0.72 },
   tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.14, chanceScale: 0.145, perfectTiming: 0.7 }
 };
+const COUNTER_CONFIG = {
+  lockDuration: 0.2,
+  windowDuration: 0.55,
+  damageScale: 1.5,
+  speedScale: 1.3,
+  knockbackScale: 1.4,
+  staminaCost: 22,
+  releaseDelay: 0.16
+};
 
 const GAME_CONFIG = {
   width: 1440,
@@ -1364,7 +1373,7 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        this.startChargedThrow(holder, "shoot");
+        if (!this.startCounterThrow(holder)) this.startChargedThrow(holder, "shoot");
       }
       if (this.input.wasPressed("button1")) {
         this.startChargedThrow(holder, "pass");
@@ -1388,7 +1397,7 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          this.startChargedThrow(holder, "shoot", 2);
+          if (!this.startCounterThrow(holder)) this.startChargedThrow(holder, "shoot", 2);
         }
         if (this.input.wasPressed("button1", 2)) {
           this.startChargedThrow(holder, "pass", 2);
@@ -1422,6 +1431,14 @@ class DodgeballGame {
     if (!controller) return;
     for (const member of team) {
       const command = controller.getCommand(member);
+      if (
+        this.ball.owner === member &&
+        member.canCounterThrow() &&
+        member.counterAutoTimer <= 0 &&
+        this.startCounterThrow(member)
+      ) {
+        continue;
+      }
       if (command.catch) member.startCatch(this.getCatchDuration(member));
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
@@ -1911,6 +1928,43 @@ class DodgeballGame {
     return true;
   }
 
+  startCounterThrow(actor) {
+    if (
+      this.pendingThrow ||
+      this.chargingThrow ||
+      this.ball.owner !== actor ||
+      actor.defeated ||
+      !actor.canCounterThrow()
+    ) return false;
+    const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
+    const savedTarget = actor.counterTarget;
+    const target = savedTarget && !savedTarget.defeated
+      ? savedTarget
+      : this.getNearestFrom(actor, enemies.filter((member) => !member.defeated && member.role === "inner"));
+    if (!target) return false;
+    if (!actor.consumeStamina(COUNTER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay)) return false;
+
+    const aim = this.normalizedVector(target.x - actor.x, target.y - actor.y);
+    const counterDamage = actor.counterSourceDamage * COUNTER_CONFIG.damageScale;
+    actor.clearCounterOpportunity();
+    this.pendingThrow = {
+      actor,
+      target,
+      kind: "shoot",
+      aim,
+      shotMultiplier: 1,
+      specialType: null,
+      counter: true,
+      counterDamage,
+      timer: COUNTER_CONFIG.releaseDelay
+    };
+    actor.markThrowing(0.34, "shoot");
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.34);
+    this.setControlledMember(target.team, target);
+    this.setAutoSwitchCooldown(target.team, 0.28);
+    return true;
+  }
+
   startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
     if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
 
@@ -2061,10 +2115,30 @@ class DodgeballGame {
     if (pending.timer > 0) return;
 
     this.pendingThrow = null;
-    const specialType = pending.kind === "shoot"
+    const specialType = pending.counter
+      ? null
+      : pending.kind === "shoot"
       ? pending.specialType || this.getSpecialShotType(pending.actor, pending.shotMultiplier)
       : null;
     if (this.ball.launch(pending.actor, pending.target, pending.kind, pending.aim, pending.shotMultiplier, specialType)) {
+      if (pending.counter) {
+        const targetX = pending.target?.x ?? this.ball.x + pending.aim.x * 900;
+        const targetY = pending.target ? pending.target.y - 38 : this.ball.y + pending.aim.y * 900;
+        const dx = targetX - this.ball.x;
+        const dy = targetY - this.ball.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const speed = GAME_CONFIG.ball.shootSpeed * COUNTER_CONFIG.speedScale;
+        this.ball.vx = dx / length * speed;
+        this.ball.vy = dy / length * speed;
+        this.ball.vz = 0;
+        this.ball.power = pending.counterDamage;
+        this.ball.shotMultiplier = COUNTER_CONFIG.speedScale;
+        this.ball.counterShot = true;
+        this.ball.counterFlightZ = this.ball.z;
+        this.spawnEffect(pending.actor.x + pending.actor.facing * 42, pending.actor.y - 52, "#8ffcff", "counterLaunch");
+        this.spawnCatchResultLabel(pending.actor, "COUNTER!", "#fff36a");
+        return;
+      }
       if (specialType) this.consumeSpirit(pending.actor.team);
       if (specialType === "triple") this.spawnTripleDummyBalls(pending.actor, pending.aim, pending.shotMultiplier);
       if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
@@ -2524,6 +2598,10 @@ class DodgeballGame {
       }
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
       const caughtEnemyShot = !friendly && this.ball.kind === "shoot";
+      const caughtShotDamage = caughtEnemyShot
+        ? this.getSpecialShotDamage(this.ball.power, this.ball.specialShotType, this.ball.travelDistance)
+        : 0;
+      const counterTarget = caughtEnemyShot ? this.ball.thrower : null;
       const caughtIronShot = caughtEnemyShot && this.ball.specialShotType === "iron";
       const ironDirection = caughtIronShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
       const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
@@ -2533,6 +2611,7 @@ class DodgeballGame {
       }
       if (caughtEnemyShot) {
         catcher.startCatchSuccess();
+        catcher.startCounterOpportunity(caughtShotDamage, counterTarget, COUNTER_CONFIG);
         if (caughtIronShot) {
           catcher.knockbackX += ironDirection * GAME_CONFIG.battle.knockbackSpeed * 2.2;
           catcher.knockbackY += ironVerticalDirection * GAME_CONFIG.battle.knockbackSpeed * 0.55;
@@ -2541,8 +2620,8 @@ class DodgeballGame {
       catcher.throwLockTimer = 0.2;
       catcher.catchTimer = 0;
       this.setControlledMember(catcher.team, catcher);
-      this.spawnEffect(catcher.x, catcher.y - 55, caughtEnemyShot ? "#8fffe8" : "#ffffff", caughtEnemyShot ? "catchStrong" : "catch");
-      if (caughtEnemyShot) this.spawnCatchResultLabel(catcher, "JUST CATCH", "#8fffe8");
+      this.spawnEffect(catcher.x, catcher.y - 55, caughtEnemyShot ? "#8fffe8" : "#ffffff", caughtEnemyShot ? "counterCatch" : "catch");
+      if (caughtEnemyShot) this.spawnCatchResultLabel(catcher, "CATCH", "#8fffe8");
       break;
     }
   }
@@ -2731,7 +2810,7 @@ class DodgeballGame {
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const specialType = this.ball.specialShotType;
       const damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
-      const knockbackScale = specialType ? 1.5 : 1;
+      const knockbackScale = this.ball.counterShot ? COUNTER_CONFIG.knockbackScale : specialType ? 1.5 : 1;
       const hpBefore = target.hp;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
@@ -3351,7 +3430,7 @@ class DodgeballGame {
   }
 
   spawnEffect(x, y, color, type) {
-    const duration = type === "kiaiImpact" ? 0.46 : 0.32;
+    const duration = type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, life: duration, maxLife: duration });
   }
 
@@ -5002,6 +5081,31 @@ class DodgeballGame {
         context.fillStyle = effect.color;
         context.strokeText(effect.text, effect.x, effect.y - progress * 34);
         context.fillText(effect.text, effect.x, effect.y - progress * 34);
+        context.restore();
+        continue;
+      }
+      if (effect.type === "counterCatch") {
+        const radius = 30 + progress * 96;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = progress < 0.35 ? "#ffffff" : "#79e7ff";
+        context.lineWidth = 12 - progress * 6;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#fff36a";
+        context.lineWidth = 6;
+        for (let index = 0; index < 16; index += 1) {
+          const angle = Math.PI * 2 * index / 16;
+          const inner = radius * 0.58;
+          const outer = radius * (index % 2 === 0 ? 1.38 : 1.16);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
         context.restore();
         continue;
       }

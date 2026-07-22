@@ -27,6 +27,8 @@ class Ball {
     this.shotMultiplier = 1;
     this.specialShot = false;
     this.specialShotType = null;
+    this.counterShot = false;
+    this.counterFlightZ = 0;
     this.baseRadius = this.config.radius;
     this.travelDistance = 0;
     this.returning = false;
@@ -148,6 +150,7 @@ class Ball {
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
+    const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
     if (this.isFlying) {
       if (straightBoostFlight) {
         this.z = this.boostFlightZ;
@@ -157,6 +160,9 @@ class Ball {
         this.vz = 0;
       } else if (straightKiaiFlight) {
         this.z = this.kiaiFlightZ;
+        this.vz = 0;
+      } else if (straightCounterFlight) {
+        this.z = this.counterFlightZ;
         this.vz = 0;
       } else if (this.kind !== "pass") {
         const airDrag = this.specialShotType ? 0.994 : 0.996;
@@ -172,7 +178,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightCounterFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -233,6 +239,8 @@ class Ball {
     this.shotMultiplier = 1;
     this.specialShot = false;
     this.specialShotType = null;
+    this.counterShot = false;
+    this.counterFlightZ = 0;
     this.radius = this.baseRadius;
     this.travelDistance = 0;
     this.returning = false;
@@ -262,6 +270,8 @@ class Ball {
     this.shotMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.specialShotType = kind === "shoot" && typeof specialShot === "string" ? specialShot : null;
     this.specialShot = Boolean(this.specialShotType);
+    this.counterShot = false;
+    this.counterFlightZ = 0;
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
@@ -863,7 +873,7 @@ class Ball {
       const specialColor = this.getSpecialColor();
       context.save();
       context.globalAlpha = 0.28 + intensity * 0.32;
-      context.strokeStyle = this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ffb44a";
+      context.strokeStyle = this.counterShot ? "#8ffcff" : this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ffb44a";
       context.lineWidth = 8 + intensity * 8;
       context.lineCap = "round";
       context.beginPath();
@@ -969,13 +979,44 @@ class Ball {
       context.restore();
     }
 
+    if (this.counterShot) {
+      const velocity = Math.hypot(this.vx, this.vy) || 1;
+      const tailX = -this.vx / velocity;
+      const tailY = -this.vy / velocity;
+      const pulse = 0.86 + Math.sin(this.spin * 1.8) * 0.12;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.lineCap = "round";
+      context.globalAlpha = 0.72;
+      context.strokeStyle = "#67dfff";
+      context.lineWidth = 18;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 14, drawY + tailY * 14);
+      context.lineTo(this.x + tailX * 138, drawY + tailY * 138);
+      context.stroke();
+      context.globalAlpha = 0.96;
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 6;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 8, drawY + tailY * 8);
+      context.lineTo(this.x + tailX * 108, drawY + tailY * 108);
+      context.stroke();
+      context.globalAlpha = 0.7;
+      context.strokeStyle = "#bdf8ff";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.arc(this.x, drawY, (this.radius + 12) * pulse, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+    }
+
     context.translate(this.x, drawY);
     if (shotEffect > 0) {
       const intensity = Math.min(1, shotEffect / 0.55);
       const specialColor = this.getSpecialColor();
       context.save();
       context.globalAlpha = 0.25 + intensity * 0.28;
-      context.strokeStyle = this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ff8f3a";
+      context.strokeStyle = this.counterShot ? "#bdf8ff" : this.specialShot ? specialColor : intensity > 0.65 ? "#fff46a" : "#ff8f3a";
       context.lineWidth = 4 + intensity * 5;
       context.beginPath();
       context.arc(0, 0, this.radius + 5 + intensity * 8, 0, Math.PI * 2);
