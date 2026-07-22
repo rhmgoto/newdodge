@@ -129,6 +129,7 @@ class Player {
     this.pendingVisualDirection = null;
     this.isDamaged = false;
     this.invincibleTime = 0;
+    this.hitRecoveryTimer = 0;
     this.state = "idle";
     this.vx = 0;
     this.vy = 0;
@@ -146,6 +147,9 @@ class Player {
     this.counterAutoTimer = 0;
     this.counterSourceDamage = 0;
     this.counterTarget = null;
+    this.counterVisualIntensity = 0;
+    this.counterThrowTimer = 0;
+    this.counterThrowIntensity = 0;
     this.dodgeTimer = 0;
     this.dodgeType = "none";
     this.downTimer = 0;
@@ -184,6 +188,7 @@ class Player {
     const airborneBeforeMove = this.jumpZ > 0 || this.jumpVelocity > 0;
     const startedInsideArea = this.isInsideArea(area);
     this.invincibleTime = Math.max(0, this.invincibleTime - delta);
+    this.hitRecoveryTimer = Math.max(0, this.hitRecoveryTimer - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
     this.throwTimer = Math.max(0, this.throwTimer - delta);
@@ -198,6 +203,8 @@ class Player {
     this.counterReadyTimer = Math.max(0, this.counterReadyTimer - delta);
     this.counterWindowTimer = Math.max(0, this.counterWindowTimer - delta);
     this.counterAutoTimer = Math.max(0, this.counterAutoTimer - delta);
+    this.counterThrowTimer = Math.max(0, this.counterThrowTimer - delta);
+    if (this.counterThrowTimer <= 0) this.counterThrowIntensity = 0;
     if (!this.hasBall || this.counterWindowTimer <= 0) {
       this.clearCounterOpportunity();
     }
@@ -224,6 +231,16 @@ class Player {
       if (this.downTimer <= 0 && this.hp <= 0) {
         this.defeated = true;
       }
+      return;
+    }
+
+    if (this.hitRecoveryTimer > 0) {
+      this.stunTimer = Math.max(0, this.stunTimer - delta);
+      this.vx = 0;
+      this.vy = 0;
+      this.state = "damaged";
+      this.applyKnockback(delta, area);
+      this.updateJump(delta, config);
       return;
     }
 
@@ -304,7 +321,7 @@ class Player {
   }
 
   jump(config) {
-    if (this.defeated || this.downTimer > 0 || this.jumpZ > 0 || this.jumpVelocity > 0) return;
+    if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.jumpZ > 0 || this.jumpVelocity > 0) return;
     this.jumpVelocity = config.jumpVelocity * this.getStatScale("jump", 0.08);
     this.state = "jumping";
   }
@@ -325,7 +342,7 @@ class Player {
   }
 
   startCatch(duration) {
-    if (this.defeated || this.downTimer > 0) return;
+    if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0) return;
     this.catchTimer = duration;
     this.state = "catching";
   }
@@ -343,6 +360,7 @@ class Player {
     this.counterAutoTimer = config.lockDuration + 0.12 + Math.random() * 0.16;
     this.counterSourceDamage = Math.max(0, sourceDamage || 0);
     this.counterTarget = target || null;
+    this.counterVisualIntensity = Math.max(1, Math.min(2.5, this.counterSourceDamage / 32));
   }
 
   canCounterThrow() {
@@ -355,6 +373,7 @@ class Player {
     this.counterAutoTimer = 0;
     this.counterSourceDamage = 0;
     this.counterTarget = null;
+    this.counterVisualIntensity = 0;
   }
 
   stun(duration) {
@@ -364,7 +383,7 @@ class Player {
   }
 
   startDodge(moveX, moveY, config) {
-    if (this.defeated || this.downTimer > 0 || this.dodgeTimer > 0) return false;
+    if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.dodgeTimer > 0) return false;
     const cost = config.stamina.duckCost;
     if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
 
@@ -458,6 +477,13 @@ class Player {
     this.hp = Math.max(0, this.hp - amount);
     this.isDamaged = true;
     this.invincibleTime = config.invincibleTime;
+    this.hitRecoveryTimer = config.hitRecoveryDuration;
+    this.catchTimer = 0;
+    this.throwTimer = 0;
+    this.throwPhase = "none";
+    this.throwKind = "none";
+    this.dodgeTimer = 0;
+    this.clearCounterOpportunity();
     const damageRatio = Math.max(0.65, Math.min(2.1, amount / 20));
     const isDefeatHit = this.hp <= 0;
     const knockbackMultiplier = (isDefeatHit ? 4 : 2) * knockbackScale;

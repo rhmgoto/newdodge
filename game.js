@@ -76,6 +76,7 @@ const GAME_CONFIG = {
     catchWidth: 74,
     catchHeight: 92,
     duckDuration: 0.48,
+    hitRecoveryDuration: 0.55,
     invincibleTime: 1,
     knockbackSpeed: 410,
     downTime: 0.9,
@@ -147,6 +148,7 @@ class DodgeballGame {
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
+    this.counterFreezeTimer = 0;
     this.boostEffectStage = 0;
     this.looseOutfieldRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
@@ -200,6 +202,7 @@ class DodgeballGame {
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
+    this.counterFreezeTimer = 0;
     this.message = "READY";
     this.spiritPoints = { left: 0, right: 0 };
     this.autoSwitchCooldown = 0;
@@ -1265,6 +1268,10 @@ class DodgeballGame {
   }
 
   updatePlaying(delta) {
+    if (this.counterFreezeTimer > 0) {
+      this.counterFreezeTimer = Math.max(0, this.counterFreezeTimer - delta);
+      return;
+    }
     this.updateEffects(delta);
     this.updateSpirit(delta);
     if (this.gameMode === "watch") {
@@ -1674,7 +1681,7 @@ class DodgeballGame {
     const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
     const candidates = this.players
       .filter((member) => {
-        if (member.defeated) return false;
+        if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
         if (!territory) return this.isPointInsideArea(this.ball.x, this.ball.y, 0, this.getMoveArea(member, false));
         return member.team === territory.team && member.role === territory.role;
       })
@@ -1879,7 +1886,9 @@ class DodgeballGame {
   }
 
   findNearestOutfielder(team, x, y) {
-    const members = (team === "left" ? this.leftTeam : this.rightTeam).filter((p) => p.role === "out" && !p.defeated);
+    const members = (team === "left" ? this.leftTeam : this.rightTeam).filter((p) => (
+      p.role === "out" && !p.defeated && p.hitRecoveryTimer <= 0
+    ));
     return this.getNearestFrom({ x, y }, members);
   }
 
@@ -1908,7 +1917,7 @@ class DodgeballGame {
   }
 
   startChargedThrow(actor, kind, playerIndex = 1) {
-    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
+    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0 || actor.throwLockTimer > 0) return false;
     if (kind === "shoot" && !actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
       GAME_CONFIG.battle.stamina.recoveryDelay
@@ -1934,6 +1943,7 @@ class DodgeballGame {
       this.chargingThrow ||
       this.ball.owner !== actor ||
       actor.defeated ||
+      actor.hitRecoveryTimer > 0 ||
       !actor.canCounterThrow()
     ) return false;
     const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
@@ -1946,7 +1956,10 @@ class DodgeballGame {
 
     const aim = this.normalizedVector(target.x - actor.x, target.y - actor.y);
     const counterDamage = actor.counterSourceDamage * COUNTER_CONFIG.damageScale;
+    const counterIntensity = actor.counterVisualIntensity || 1;
     actor.clearCounterOpportunity();
+    actor.counterThrowTimer = 0.34;
+    actor.counterThrowIntensity = counterIntensity;
     this.pendingThrow = {
       actor,
       target,
@@ -1956,6 +1969,7 @@ class DodgeballGame {
       specialType: null,
       counter: true,
       counterDamage,
+      counterIntensity,
       timer: COUNTER_CONFIG.releaseDelay
     };
     actor.markThrowing(0.34, "shoot");
@@ -1966,7 +1980,7 @@ class DodgeballGame {
   }
 
   startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
-    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.throwLockTimer > 0) return false;
+    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0 || actor.throwLockTimer > 0) return false;
 
     const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
     const aim = this.getDefaultShootAim(actor, enemies);
@@ -2063,7 +2077,7 @@ class DodgeballGame {
   }
 
   queueThrow(actor, target, kind, aim, ignoreStamina = false) {
-    if (this.pendingThrow || this.ball.owner !== actor || actor.defeated) return false;
+    if (this.pendingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0) return false;
     if (!target && kind !== "shoot") return false;
     if (kind === "shoot" && !ignoreStamina && !actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
@@ -2106,7 +2120,7 @@ class DodgeballGame {
     if (!this.pendingThrow) return;
 
     const pending = this.pendingThrow;
-    if (pending.actor.defeated || this.ball.owner !== pending.actor) {
+    if (pending.actor.defeated || pending.actor.hitRecoveryTimer > 0 || this.ball.owner !== pending.actor) {
       this.pendingThrow = null;
       return;
     }
@@ -2135,7 +2149,15 @@ class DodgeballGame {
         this.ball.shotMultiplier = COUNTER_CONFIG.speedScale;
         this.ball.counterShot = true;
         this.ball.counterFlightZ = this.ball.z;
-        this.spawnEffect(pending.actor.x + pending.actor.facing * 42, pending.actor.y - 52, "#8ffcff", "counterLaunch");
+        this.ball.counterIntensity = pending.counterIntensity || 1;
+        this.spawnEffect(
+          pending.actor.x + pending.actor.facing * 42,
+          pending.actor.y - 52,
+          "#8ffcff",
+          "counterLaunch",
+          pending.counterIntensity || 1
+        );
+        this.startScreenShake(7 + (pending.counterIntensity || 1) * 2, 0.1);
         this.spawnCatchResultLabel(pending.actor, "COUNTER!", "#fff36a");
         return;
       }
@@ -2155,7 +2177,7 @@ class DodgeballGame {
     if (!this.chargingThrow) return;
 
     const charged = this.chargingThrow;
-    if (charged.actor.defeated || this.ball.owner !== charged.actor) {
+    if (charged.actor.defeated || charged.actor.hitRecoveryTimer > 0 || this.ball.owner !== charged.actor) {
       this.chargingThrow = null;
       return;
     }
@@ -2534,6 +2556,7 @@ class DodgeballGame {
       this.ball.drop();
       return;
     }
+    if (target.hitRecoveryTimer > 0) return;
     const horizontalDistance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
     if (
       this.ball.passDuration > 0 &&
@@ -2584,7 +2607,7 @@ class DodgeballGame {
     if (!this.ball.isFlying || !this.ball.catchable || !this.ball.thrower) return;
 
     for (const catcher of team) {
-      if (catcher.defeated || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
+      if (catcher.defeated || catcher.hitRecoveryTimer > 0 || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
       const friendly = catcher.team === this.ball.thrower.team;
       if (friendly && this.ball.specialShotType === "boomerang") continue;
       const box = this.getCatchArea(catcher, friendly);
@@ -2620,8 +2643,18 @@ class DodgeballGame {
       catcher.throwLockTimer = 0.2;
       catcher.catchTimer = 0;
       this.setControlledMember(catcher.team, catcher);
-      this.spawnEffect(catcher.x, catcher.y - 55, caughtEnemyShot ? "#8fffe8" : "#ffffff", caughtEnemyShot ? "counterCatch" : "catch");
-      if (caughtEnemyShot) this.spawnCatchResultLabel(catcher, "CATCH", "#8fffe8");
+      this.spawnEffect(
+        catcher.x,
+        catcher.y - 55,
+        caughtEnemyShot ? "#8fffe8" : "#ffffff",
+        caughtEnemyShot ? "counterCatch" : "catch",
+        caughtEnemyShot ? Math.max(1, Math.min(2.5, caughtShotDamage / 32)) : 1
+      );
+      if (caughtEnemyShot) {
+        this.counterFreezeTimer = Math.max(this.counterFreezeTimer, 0.06);
+        this.startScreenShake(6 + Math.min(5, caughtShotDamage / 24), 0.12);
+        this.spawnCatchResultLabel(catcher, "CATCH", "#8fffe8");
+      }
       break;
     }
   }
@@ -2838,9 +2871,15 @@ class DodgeballGame {
         this.spawnEffect(
           this.ball.x,
           ballY,
-          this.getSpecialHitColor(specialType),
-          specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit"
+          this.ball.counterShot ? "#bdf8ff" : this.getSpecialHitColor(specialType),
+          this.ball.counterShot
+            ? "counterImpact"
+            : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit",
+          this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
         );
+        if (this.ball.counterShot) {
+          this.startScreenShake(10 + (this.ball.counterIntensity || 1) * 3, 0.14);
+        }
         this.spawnDamageNumber(target, damage);
         if (specialType === "boomerang") {
           this.ball.drop();
@@ -3165,14 +3204,14 @@ class DodgeballGame {
   getPlayerControlledMember() {
     const holder = this.ball.owner && this.ball.owner.team === "left" ? this.ball.owner : null;
     if (holder) return holder;
-    const found = this.leftTeam.find((p) => p.id === this.controlledPlayerId && !p.defeated);
+    const found = this.leftTeam.find((p) => p.id === this.controlledPlayerId && !p.defeated && p.hitRecoveryTimer <= 0);
     return found || this.getControllableLeftMembers()[0] || this.leftTeam[0];
   }
 
   getRightControlledMember() {
     const holder = this.ball.owner && this.ball.owner.team === "right" ? this.ball.owner : null;
     if (holder) return holder;
-    const found = this.rightTeam.find((p) => p.id === this.controlledRightPlayerId && !p.defeated);
+    const found = this.rightTeam.find((p) => p.id === this.controlledRightPlayerId && !p.defeated && p.hitRecoveryTimer <= 0);
     return found || this.getControllableMembers("right")[0] || this.rightTeam[0];
   }
 
@@ -3189,7 +3228,7 @@ class DodgeballGame {
   }
 
   getControllableMembers(team, innerOnly = false) {
-    return this.getTeamMembers(team).filter((p) => !p.defeated && (!innerOnly || p.role === "inner"));
+    return this.getTeamMembers(team).filter((p) => !p.defeated && p.hitRecoveryTimer <= 0 && (!innerOnly || p.role === "inner"));
   }
 
   getControlledMember(team) {
@@ -3230,7 +3269,7 @@ class DodgeballGame {
     if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower) return;
     if (this.ball.thrower.team === team) return;
     const target = this.ball.target;
-    if (!target || target.team !== team || target.defeated) return;
+    if (!target || target.team !== team || target.defeated || target.hitRecoveryTimer > 0) return;
     if (team === "left" && this.controlledPlayerId === target.id) return;
     if (team === "right" && this.controlledRightPlayerId === target.id) return;
 
@@ -3429,9 +3468,11 @@ class DodgeballGame {
     };
   }
 
-  spawnEffect(x, y, color, type) {
-    const duration = type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
-    this.effects.push({ x, y, color, type, life: duration, maxLife: duration });
+  spawnEffect(x, y, color, type, intensity = 1) {
+    const duration = type === "counterImpact"
+      ? 0.5
+      : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
+    this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
 
   startScreenShake(strength, duration) {
@@ -3541,6 +3582,7 @@ class DodgeballGame {
     context.translate(-view.x, -view.y);
     this.drawBackground();
     this.drawCourt();
+    this.drawCounterReadyEffects(context);
 
     const active = this.getPlayerControlledMember();
     const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
@@ -5054,6 +5096,85 @@ class DodgeballGame {
     context.restore();
   }
 
+  drawCounterReadyEffects(context) {
+    const now = performance.now() * 0.001;
+    for (const player of this.players) {
+      const ready = player.counterWindowTimer > 0 && player.hasBall;
+      const throwing = player.counterThrowTimer > 0;
+      if (!ready && !throwing) continue;
+
+      const intensity = ready ? player.counterVisualIntensity || 1 : player.counterThrowIntensity || 1;
+      const remainingRatio = ready
+        ? Math.max(0, Math.min(1, player.counterWindowTimer / (COUNTER_CONFIG.lockDuration + COUNTER_CONFIG.windowDuration)))
+        : 0;
+      const pulse = 1 + Math.sin(now * 18) * 0.08;
+      const baseY = player.y + 8;
+      const ballX = player.x + player.facing * 32;
+      const ballY = player.y - player.jumpZ - 38;
+
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = ready ? 0.44 + remainingRatio * 0.26 : 0.54;
+      context.strokeStyle = player.counterReadyTimer > 0 ? "#79e7ff" : "#fff36a";
+      context.lineWidth = 7 + intensity * 1.5;
+      context.beginPath();
+      context.ellipse(player.x, baseY, (54 + remainingRatio * 42) * pulse, (18 + remainingRatio * 10) * pulse, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.globalAlpha *= 0.62;
+      context.strokeStyle = "#bdf8ff";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(player.x, baseY, (74 + remainingRatio * 54) * pulse, (26 + remainingRatio * 14) * pulse, 0, 0, Math.PI * 2);
+      context.stroke();
+
+      context.globalAlpha = 0.64;
+      context.strokeStyle = "#ffd83d";
+      context.lineWidth = 4;
+      const orbitRadius = 30 + intensity * 3;
+      for (let index = 0; index < 3; index += 1) {
+        const start = now * (3.8 + index * 0.35) + index * Math.PI * 0.66;
+        context.beginPath();
+        context.arc(ballX, ballY, orbitRadius + index * 7, start, start + Math.PI * 0.72);
+        context.stroke();
+      }
+
+      const particleCount = 8 + Math.round(intensity * 3);
+      for (let index = 0; index < particleCount; index += 1) {
+        const phase = (now * (0.9 + index * 0.03) + index / particleCount) % 1;
+        const angle = index * 2.399;
+        const radius = 34 + Math.sin(index * 1.7) * 18;
+        const px = player.x + Math.cos(angle) * radius;
+        const py = player.y - 10 - phase * 116 - Math.sin(angle) * 18;
+        context.globalAlpha = (1 - phase) * 0.7;
+        context.fillStyle = index % 3 === 0 ? "#fff36a" : "#a9f4ff";
+        context.beginPath();
+        context.arc(px, py, 3 + intensity * 0.8, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      if (throwing) {
+        const throwProgress = 1 - Math.max(0, Math.min(1, player.counterThrowTimer / 0.34));
+        context.globalAlpha = 0.72 * (1 - throwProgress * 0.35);
+        context.strokeStyle = "#8ffcff";
+        context.lineCap = "round";
+        for (let index = 0; index < 3; index += 1) {
+          const offset = index * 12;
+          context.lineWidth = 12 - index * 3;
+          context.beginPath();
+          context.moveTo(player.x - player.facing * (10 + offset), player.y - player.jumpZ - 82 + index * 4);
+          context.quadraticCurveTo(
+            player.x - player.facing * (52 + offset),
+            player.y - player.jumpZ - 122,
+            player.x + player.facing * (18 - offset),
+            player.y - player.jumpZ - 142 + throwProgress * 38
+          );
+          context.stroke();
+        }
+      }
+      context.restore();
+    }
+  }
+
   drawEffects() {
     const context = this.context;
     for (const effect of this.effects) {
@@ -5085,26 +5206,121 @@ class DodgeballGame {
         continue;
       }
       if (effect.type === "counterCatch") {
-        const radius = 30 + progress * 96;
+        const intensity = effect.intensity || 1;
+        const radius = 30 + progress * (104 + intensity * 18);
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
+        context.fillStyle = `rgba(255,255,255,${Math.max(0, 0.72 - progress * 1.4)})`;
+        context.beginPath();
+        context.arc(0, 0, 46 + intensity * 9, 0, Math.PI * 2);
+        context.fill();
         context.strokeStyle = progress < 0.35 ? "#ffffff" : "#79e7ff";
-        context.lineWidth = 12 - progress * 6;
+        context.lineWidth = 14 + intensity * 2 - progress * 8;
         context.beginPath();
         context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.globalAlpha = Math.max(0, (1 - progress) * 0.72);
+        context.strokeStyle = "#1f6fff";
+        context.lineWidth = 7;
+        context.beginPath();
+        context.arc(0, 0, radius * 1.35, 0, Math.PI * 2);
+        context.stroke();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.strokeStyle = "#fff36a";
+        context.lineWidth = 6;
+        const rayCount = 18 + Math.round(intensity * 2);
+        for (let index = 0; index < rayCount; index += 1) {
+          const angle = Math.PI * 2 * index / rayCount;
+          const inner = radius * 0.58;
+          const outer = radius * (index % 2 === 0 ? 1.5 : 1.2);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "counterLaunch") {
+        const intensity = effect.intensity || 1;
+        const radius = 22 + progress * (112 + intensity * 18);
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 14 - progress * 8;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#67dfff";
+        context.lineWidth = 8;
+        context.beginPath();
+        context.arc(0, 0, radius * 1.34, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#fff36a";
+        context.lineWidth = 5;
+        for (let index = 0; index < 14; index += 1) {
+          const angle = Math.PI * 2 * index / 14;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * radius * 0.4, Math.sin(angle) * radius * 0.4);
+          context.lineTo(Math.cos(angle) * radius * 1.45, Math.sin(angle) * radius * 1.45);
+          context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "counterImpact") {
+        const intensity = effect.intensity || 1;
+        const radius = 32 + progress * (126 + intensity * 24);
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = `rgba(255,255,255,${Math.max(0, 0.88 - progress * 1.5)})`;
+        context.beginPath();
+        context.arc(0, 0, 54 + intensity * 9, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#bdf8ff";
+        context.lineWidth = 16 - progress * 9;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 13 - progress * 6;
+        context.beginPath();
+        context.moveTo(-radius * 1.35, 0);
+        context.lineTo(radius * 1.35, 0);
+        context.moveTo(0, -radius * 1.35);
+        context.lineTo(0, radius * 1.35);
         context.stroke();
         context.strokeStyle = "#fff36a";
         context.lineWidth = 6;
         for (let index = 0; index < 16; index += 1) {
           const angle = Math.PI * 2 * index / 16;
-          const inner = radius * 0.58;
-          const outer = radius * (index % 2 === 0 ? 1.38 : 1.16);
           context.beginPath();
-          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.moveTo(Math.cos(angle) * radius * 0.52, Math.sin(angle) * radius * 0.52);
+          context.lineTo(Math.cos(angle) * radius * 1.42, Math.sin(angle) * radius * 1.42);
           context.stroke();
+        }
+        context.globalCompositeOperation = "source-over";
+        context.fillStyle = "rgba(152,112,56,0.55)";
+        for (let index = 0; index < 12; index += 1) {
+          const angle = Math.PI * 2 * index / 12;
+          const distance = 34 + progress * (76 + index % 3 * 14);
+          context.beginPath();
+          context.ellipse(
+            Math.cos(angle) * distance,
+            52 + Math.sin(angle) * distance * 0.28,
+            12 + progress * 12,
+            7 + progress * 7,
+            angle,
+            0,
+            Math.PI * 2
+          );
+          context.fill();
         }
         context.restore();
         continue;

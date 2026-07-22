@@ -29,6 +29,7 @@ class Ball {
     this.specialShotType = null;
     this.counterShot = false;
     this.counterFlightZ = 0;
+    this.counterIntensity = 1;
     this.baseRadius = this.config.radius;
     this.travelDistance = 0;
     this.returning = false;
@@ -241,6 +242,7 @@ class Ball {
     this.specialShotType = null;
     this.counterShot = false;
     this.counterFlightZ = 0;
+    this.counterIntensity = 1;
     this.radius = this.baseRadius;
     this.travelDistance = 0;
     this.returning = false;
@@ -272,6 +274,7 @@ class Ball {
     this.specialShot = Boolean(this.specialShotType);
     this.counterShot = false;
     this.counterFlightZ = 0;
+    this.counterIntensity = 1;
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
     this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
     this.isFlying = true;
@@ -825,7 +828,7 @@ class Ball {
   }
 
   canBePickedUpBy(player, distance) {
-    if (!this.isLoose || this.owner || this.z >= 78) return false;
+    if (!this.isLoose || this.owner || this.z >= 78 || player.hitRecoveryTimer > 0) return false;
     const rollingBonus = !this.isFlying || this.hasBounced ? 78 : 0;
     const catchBonus = player.catchTimer > 0 ? 72 : 0;
     return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + catchBonus + 26;
@@ -983,29 +986,78 @@ class Ball {
       const velocity = Math.hypot(this.vx, this.vy) || 1;
       const tailX = -this.vx / velocity;
       const tailY = -this.vy / velocity;
+      const sideX = -tailY;
+      const sideY = tailX;
+      const counterPower = Math.max(1, Math.min(2.5, this.counterIntensity || 1));
       const pulse = 0.86 + Math.sin(this.spin * 1.8) * 0.12;
       context.save();
       context.globalCompositeOperation = "lighter";
       context.lineCap = "round";
-      context.globalAlpha = 0.72;
+      context.globalAlpha = 0.48;
+      context.strokeStyle = "#1655d8";
+      context.lineWidth = 28 + counterPower * 4;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 18, drawY + tailY * 18);
+      context.lineTo(this.x + tailX * (166 + counterPower * 18), drawY + tailY * (166 + counterPower * 18));
+      context.stroke();
+      context.globalAlpha = 0.76;
       context.strokeStyle = "#67dfff";
-      context.lineWidth = 18;
+      context.lineWidth = 17 + counterPower * 2;
       context.beginPath();
       context.moveTo(this.x + tailX * 14, drawY + tailY * 14);
-      context.lineTo(this.x + tailX * 138, drawY + tailY * 138);
+      context.lineTo(this.x + tailX * (146 + counterPower * 14), drawY + tailY * (146 + counterPower * 14));
       context.stroke();
       context.globalAlpha = 0.96;
       context.strokeStyle = "#ffffff";
-      context.lineWidth = 6;
+      context.lineWidth = 7;
       context.beginPath();
       context.moveTo(this.x + tailX * 8, drawY + tailY * 8);
-      context.lineTo(this.x + tailX * 108, drawY + tailY * 108);
+      context.lineTo(this.x + tailX * (118 + counterPower * 10), drawY + tailY * (118 + counterPower * 10));
       context.stroke();
-      context.globalAlpha = 0.7;
-      context.strokeStyle = "#bdf8ff";
+      context.globalAlpha = 0.88;
+      context.strokeStyle = "#ffd83d";
       context.lineWidth = 5;
       context.beginPath();
-      context.arc(this.x, drawY, (this.radius + 12) * pulse, 0, Math.PI * 2);
+      for (let index = 0; index <= 12; index += 1) {
+        const distance = 12 + index * 13;
+        const wave = Math.sin(this.spin * 0.75 + index * 0.9) * (15 + counterPower * 2);
+        const px = this.x + tailX * distance + sideX * wave;
+        const py = drawY + tailY * distance + sideY * wave;
+        if (index === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.stroke();
+      for (let index = 1; index <= 3; index += 1) {
+        const distance = 38 + index * 38;
+        const ringX = this.x + tailX * distance;
+        const ringY = drawY + tailY * distance;
+        context.globalAlpha = 0.48 - index * 0.08;
+        context.strokeStyle = index % 2 === 0 ? "#ffffff" : "#8ffcff";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.ellipse(ringX, ringY, 10 + index * 5, 30 + index * 7, Math.atan2(this.vy, this.vx), 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.fillStyle = "#dffcff";
+      for (let index = 0; index < 9; index += 1) {
+        const distance = 28 + index * 17;
+        const scatter = Math.sin(this.spin + index * 2.13) * 26;
+        context.globalAlpha = 0.34 + (index % 3) * 0.14;
+        context.beginPath();
+        context.arc(
+          this.x + tailX * distance + sideX * scatter,
+          drawY + tailY * distance + sideY * scatter,
+          3 + index % 3,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      }
+      context.globalAlpha = 0.7;
+      context.strokeStyle = "#bdf8ff";
+      context.lineWidth = 6 + counterPower;
+      context.beginPath();
+      context.arc(this.x, drawY, (this.radius + 14 + counterPower * 3) * pulse, 0, Math.PI * 2);
       context.stroke();
       context.restore();
     }
@@ -1138,6 +1190,34 @@ class Ball {
       context.beginPath();
       context.arc(-this.radius * 0.18, -this.radius * 0.22, this.radius * 0.22, 0, Math.PI * 2);
       context.fill();
+      context.restore();
+      if (debugMode) {
+        context.strokeStyle = "rgba(255,0,0,0.7)";
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+      return;
+    }
+    if (this.counterShot) {
+      const core = context.createRadialGradient(-this.radius * 0.25, -this.radius * 0.3, 2, 0, 0, this.radius * 1.2);
+      core.addColorStop(0, "#ffffff");
+      core.addColorStop(0.38, "#e8fdff");
+      core.addColorStop(0.72, "#67dfff");
+      core.addColorStop(1, "#1655d8");
+      context.fillStyle = core;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.04, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#fff36a";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 0.92, -1.12, 1.12);
+      context.arc(0, 0, this.radius * 0.92, Math.PI - 1.12, Math.PI + 1.12);
+      context.moveTo(-this.radius, 0);
+      context.lineTo(this.radius, 0);
+      context.stroke();
       context.restore();
       if (debugMode) {
         context.strokeStyle = "rgba(255,0,0,0.7)";
