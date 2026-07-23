@@ -1295,8 +1295,10 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        if (!this.startCounterThrow(holder, 1)) {
-          if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 1);
+        if (!this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 1)) {
+          // 気合満タン時はカウンターより特殊シュートを優先する。
+        } else {
+          if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 1);
           else this.startChargedThrow(holder, "shoot");
         }
       }
@@ -1322,8 +1324,10 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          if (!this.startCounterThrow(holder, 2)) {
-            if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 2);
+          if (!this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 2)) {
+            // 気合満タン時はカウンターより特殊シュートを優先する。
+          } else {
+            if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 2);
             else this.startChargedThrow(holder, "shoot", 2);
           }
         }
@@ -1361,6 +1365,7 @@ class DodgeballGame {
       const command = controller.getCommand(member);
       if (
         this.ball.owner === member &&
+        !this.hasFullSpirit(member.team) &&
         member.canCounterThrow() &&
         member.counterAutoTimer <= 0 &&
         this.startCounterThrow(member)
@@ -1374,7 +1379,7 @@ class DodgeballGame {
         this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
       }
       if (command.shoot && this.ball.owner === member) {
-        if (member.quickShotReadyTimer > 0) this.startQuickShot(member);
+        if (member.quickShotReadyTimer > 0 && !this.hasFullSpirit(member.team)) this.startQuickShot(member);
         else this.launchFromAi(member, "shoot", opponents);
       }
       if (command.pass && this.ball.owner === member) {
@@ -2500,7 +2505,6 @@ class DodgeballGame {
 
   getSpecialShotType(actor, multiplier) {
     if (!this.hasFullSpirit(actor.team)) return null;
-    if ((multiplier || 0) <= 1.2) return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";

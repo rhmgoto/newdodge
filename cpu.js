@@ -48,7 +48,7 @@ class CPUController {
     this.attackTactic = null;
     this.lastTacticType = null;
     this.tacticSerial = 0;
-    this.zenmaiSpecialShooterId = null;
+    this.specialAttackState = null;
   }
 
   update(delta) {
@@ -85,7 +85,8 @@ class CPUController {
     const cpuHolder = holder && holder.team === this.teamName ? holder : null;
     const looseBallChaser = this.getLooseBallChaser();
     const friendlyShotChaser = looseBallChaser ? null : this.getFriendlyFlyingShotChaser();
-    if (cpuHolder && (!this.attackTactic || this.attackTactic.finished)) {
+    const specialAttackReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    if (cpuHolder && !specialAttackReady && (!this.attackTactic || this.attackTactic.finished)) {
       this.selectAttackTactic(cpuHolder);
     }
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
@@ -348,6 +349,10 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (plan.type === "special-pass-wait") {
+      this.stop(command);
+      return;
+    }
     if (plan.type === "lock-rocket-launch") {
       const now = Date.now();
       const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
@@ -426,7 +431,12 @@ class CPUController {
       if (this.throwTimer <= 0) {
         if (plan.passTargetId) holder.cpuPreferredPassTargetId = plan.passTargetId;
         command.pass = true;
-        if (plan.tactical) {
+        if (plan.specialAttackPass && this.specialAttackState) {
+          this.specialAttackState.passUsed = true;
+          this.specialAttackState.passInFlight = true;
+          this.specialAttackState.passerId = holder.id;
+          this.specialAttackState.passStartedAt = Date.now();
+        } else if (plan.tactical) {
           this.advanceAttackTactic(holder);
         } else if (this.passChainRemaining <= 0 && !this.passChainFinisher) {
           this.passChainRemaining = 1 + Math.floor(Math.random() * 2);
@@ -644,13 +654,16 @@ class CPUController {
     if (
       this.holderPlan &&
       this.holderPlan.holderId === holder.id &&
-      (this.holderPlan.type === "lock-rocket-launch" || this.holderPlan.zenmaiSpecialPlan)
+      (
+        this.holderPlan.type === "lock-rocket-launch" ||
+        (this.holderPlan.specialAttackPlan && this.holderPlan.type !== "special-pass-wait")
+      )
     ) {
       return this.holderPlan;
     }
-    const zenmaiSpecialPlan = this.getZenmaiSpecialHolderPlan(holder);
-    if (zenmaiSpecialPlan) {
-      return zenmaiSpecialPlan;
+    const specialAttackPlan = this.getSpecialAttackHolderPlan(holder);
+    if (specialAttackPlan) {
+      return specialAttackPlan;
     }
     if (this.shouldUseTacticalQuickShot(holder) && this.holderPlan?.type !== "quick-shot") {
       return this.markTacticalPlan(this.createHolderPlan(holder, "quick-shot", 0), true);
@@ -720,21 +733,39 @@ class CPUController {
     return this.createHolderPlan(holder, type, 1.05 + Math.random() * 0.45);
   }
 
-  getZenmaiSpecialHolderPlan(holder) {
-    if (holder.cpuProfile !== "zenmaiGears") return null;
+  getSpecialAttackHolderPlan(holder) {
     if (!this.config.isSpiritReady?.(this.teamName)) {
-      this.zenmaiSpecialShooterId = null;
+      this.specialAttackState = null;
       return null;
     }
 
-    const shooter = this.getZenmaiSpecialShooter();
+    let shooter = this.getSpecialAttackShooter();
     if (!shooter) return null;
 
+    if (this.specialAttackState.passInFlight) {
+      const waitingForRelease = (
+        holder.id === this.specialAttackState.passerId &&
+        Date.now() - this.specialAttackState.passStartedAt < 900
+      );
+      if (waitingForRelease) {
+        const waitPlan = this.createHolderPlan(holder, "special-pass-wait", 0);
+        waitPlan.specialAttackPlan = true;
+        return waitPlan;
+      }
+      this.specialAttackState.passInFlight = false;
+    }
+
     if (holder.id !== shooter.id) {
-      const passPlan = this.createHolderPlan(holder, "pass-chain", 0);
-      passPlan.passTargetId = shooter.id;
-      passPlan.zenmaiSpecialPlan = true;
-      return passPlan;
+      if (this.specialAttackState.passUsed) {
+        this.specialAttackState.shooterId = holder.id;
+        shooter = holder;
+      } else {
+        const passPlan = this.createHolderPlan(holder, "pass-chain", 0);
+        passPlan.passTargetId = shooter.id;
+        passPlan.specialAttackPass = true;
+        passPlan.specialAttackPlan = true;
+        return passPlan;
+      }
     }
 
     if (
@@ -743,31 +774,85 @@ class CPUController {
       (shooter.cpuLockRocketLaunchCooldownUntil || 0) <= Date.now()
     ) {
       const rocketPlan = this.createLockRocketLaunchPlan(shooter);
-      rocketPlan.zenmaiSpecialPlan = true;
+      rocketPlan.specialAttackPlan = true;
       return rocketPlan;
     }
 
-    const clockPlan = this.createHolderPlan(shooter, "dash-jump-strong-shot", 0.92);
-    clockPlan.zenmaiSpecialPlan = true;
+    const jumpReady = (shooter.cpuJumpAttackCooldownUntil || 0) <= Date.now();
+    const shotPlan = this.createHolderPlan(
+      shooter,
+      jumpReady ? "dash-jump-strong-shot" : "dash-strong-shot",
+      0.92
+    );
+    shotPlan.specialAttackPlan = true;
     this.passChainRemaining = 0;
     this.passChainFinisher = false;
     if (this.attackTactic) this.attackTactic.finished = true;
-    return clockPlan;
+    return shotPlan;
   }
 
-  getZenmaiSpecialShooter() {
+  getSpecialAttackShooter() {
     const active = this.team.filter((member) => !member.defeated);
-    const current = active.find((member) => member.id === this.zenmaiSpecialShooterId);
+    const current = active.find((member) => member.id === this.specialAttackState?.shooterId);
     if (current) return current;
 
-    const zero = active.find((member) => member.name === "ゼロ");
-    const others = active.filter((member) => member.name !== "ゼロ");
-    const chooseZero = Boolean(zero) && (others.length === 0 || Math.random() < 0.5);
-    const shooter = chooseZero
-      ? zero
-      : others[Math.floor(Math.random() * others.length)] || zero || null;
-    this.zenmaiSpecialShooterId = shooter?.id || null;
+    const shooter = this.selectSpecialAttackShooter(active);
+    this.specialAttackState = {
+      shooterId: shooter?.id || null,
+      passUsed: false,
+      passInFlight: false,
+      passerId: null,
+      passStartedAt: 0,
+      startedAt: Date.now()
+    };
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
+    if (this.attackTactic) this.attackTactic.finished = true;
     return shooter;
+  }
+
+  selectSpecialAttackShooter(active) {
+    if (active.length === 0) return null;
+
+    if (this.isZenmaiGears()) {
+      const zero = active.find((member) => member.name === "ゼロ");
+      const others = active.filter((member) => member.name !== "ゼロ");
+      if (zero && (others.length === 0 || Math.random() < 0.5)) return zero;
+      return others[Math.floor(Math.random() * others.length)] || zero || null;
+    }
+
+    const profile = active[0]?.cpuProfile;
+    const preferredNames = profile === "hinomaruBombers"
+      ? ["だいち", "しょう"]
+      : profile === "bakusouBoys"
+        ? ["しょうた"]
+        : profile === "americanBigBalls"
+          ? ["ジョー"]
+          : profile === "kuidaoRangers"
+            ? ["たこへい"]
+            : profile === "doskois"
+              ? ["よこづな"]
+              : profile === "townDodgies"
+                ? ["まさる"]
+                : [];
+    const preferred = active.filter((member) => preferredNames.includes(member.name));
+    if (preferred.length > 0 && Math.random() < 0.7) {
+      return preferred[Math.floor(Math.random() * preferred.length)];
+    }
+
+    const captain = active.find((member) => member.captain);
+    if (captain && Math.random() < 0.6) return captain;
+
+    const weighted = active.map((member) => ({
+      member,
+      weight: Math.max(1, (member.stats?.power || 5) + (member.stats?.technique || 5) * 0.35)
+    }));
+    let roll = Math.random() * weighted.reduce((sum, entry) => sum + entry.weight, 0);
+    for (const entry of weighted) {
+      roll -= entry.weight;
+      if (roll <= 0) return entry.member;
+    }
+    return active[0];
   }
 
   createLockRocketLaunchPlan(holder) {
@@ -1607,7 +1692,15 @@ class CPUController {
     if (!command) return;
 
     const distance = Math.hypot(this.ball.x - receiver.x, this.ball.y - (receiver.y - 34));
-    if (distance < 190) {
+    const specialReceiver = (
+      this.specialAttackState &&
+      receiver.id === this.specialAttackState.shooterId
+    );
+    if (specialReceiver) {
+      this.moveToward(command, receiver, this.ball.x, this.ball.y);
+      command.dash = true;
+    }
+    if (distance < (specialReceiver ? 260 : 190)) {
       command.catch = true;
     }
   }
