@@ -126,6 +126,11 @@ class Player {
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
     this.visualDirection = this.team === "left" ? "right" : "left";
+    this.robotBodyDirection = this.visualDirection;
+    this.robotHeadDirection = this.visualDirection;
+    this.robotVisualTurnTimer = 0;
+    this.robotCatchMissTimer = 0;
+    this.robotDodgeDirection = this.facing;
     this.turnTimer = 0;
     this.pendingVisualDirection = null;
     this.isDamaged = false;
@@ -163,7 +168,7 @@ class Player {
     this.runupDirY = 0;
     this.aerialPassCatchTimer = 0;
     this.quickShotReadyTimer = 0;
-    this.maxStamina = typeDefinition.maxStamina || options.maxStamina || 100;
+    this.maxStamina = options.maxStamina ?? typeDefinition.maxStamina ?? 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
     this.defeated = false;
@@ -189,6 +194,7 @@ class Player {
   update(delta, controls, area, config) {
     const airborneBeforeMove = this.jumpZ > 0 || this.jumpVelocity > 0;
     const startedInsideArea = this.isInsideArea(area);
+    const catchTimerBeforeUpdate = this.catchTimer;
     this.invincibleTime = Math.max(0, this.invincibleTime - delta);
     this.hitRecoveryTimer = Math.max(0, this.hitRecoveryTimer - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
@@ -212,6 +218,7 @@ class Player {
     }
     this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
     this.updateTurn(delta);
+    this.updateRobotVisualState(delta, catchTimerBeforeUpdate);
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
     this.aerialPassCatchTimer = Math.max(0, this.aerialPassCatchTimer - delta);
     this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
@@ -393,8 +400,37 @@ class Player {
 
     this.dodgeType = "duck";
     this.dodgeTimer = config.duckDuration;
+    this.robotDodgeDirection = Math.abs(moveX) > 0.08 ? Math.sign(moveX) : this.facing;
     this.state = "dodging";
     return true;
+  }
+
+  updateRobotVisualState(delta, catchTimerBeforeUpdate) {
+    if (!this.isRobotStyle()) return;
+
+    this.robotCatchMissTimer = Math.max(0, this.robotCatchMissTimer - delta);
+    if (
+      catchTimerBeforeUpdate > 0 &&
+      this.catchTimer <= 0 &&
+      this.catchSuccessTimer <= 0 &&
+      !this.hasBall
+    ) {
+      this.robotCatchMissTimer = 0.18;
+    }
+
+    if (this.visualDirection !== this.robotHeadDirection) {
+      this.robotHeadDirection = this.visualDirection;
+      this.robotVisualTurnTimer = 0.1;
+    }
+    if (this.robotVisualTurnTimer > 0) {
+      this.robotVisualTurnTimer = Math.max(0, this.robotVisualTurnTimer - delta);
+      if (this.robotVisualTurnTimer <= 0.0001) {
+        this.robotVisualTurnTimer = 0;
+        this.robotBodyDirection = this.robotHeadDirection;
+      }
+    } else {
+      this.robotBodyDirection = this.robotHeadDirection;
+    }
   }
 
   getMoveDirection(moveX, moveY) {
@@ -1016,9 +1052,12 @@ class Player {
   }
 
   drawRobotCharacter(context, scale, drawY, motionTime, config) {
-    const moving = Math.hypot(this.vx, this.vy) > 15;
-    const cadence = this.isDashing ? 42 : 78;
-    const stride = moving ? Math.sin(motionTime / cadence) * (this.isDashing ? 15 : 10) : 0;
+    const visualTurning = this.robotVisualTurnTimer > 0;
+    const moving = Math.hypot(this.vx, this.vy) > 15 && !visualTurning;
+    const cadence = this.isDashing ? 34 : 92;
+    const stepIndex = Math.floor(motionTime / cadence) % 4;
+    const stepPattern = [-1, -0.25, 1, 0.25];
+    const stride = moving ? stepPattern[stepIndex] * (this.isDashing ? 18 : 11) : 0;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
     const damaged = this.state === "damaged";
     const down = this.state === "down" || this.defeated;
@@ -1026,8 +1065,16 @@ class Player {
     const eyeOn = !lowHp || Math.floor(motionTime / 130) % 2 === 0;
     const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const servoAiming = throwWindup && this.throwTimer <= 0.42;
     const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
-    const rootY = crouch ? 25 : Math.abs(stride) * 0.18;
+    const catchSuccess = this.catchSuccessTimer > 0;
+    const idle = this.state === "idle" || this.state === "holding";
+    const dodgeProgress = crouch ? 1 - Math.min(1, this.dodgeTimer / 0.36) : 0;
+    const upperShiftX = crouch
+      ? this.robotDodgeDirection * Math.sin(dodgeProgress * Math.PI) * 30
+      : 0;
+    const upperShiftY = crouch ? 13 : 0;
+    const rootY = crouch ? 29 : Math.abs(stride) * 0.16;
     const hipY = -34 + rootY;
     const shoulderY = -82 + rootY;
     const headY = -126 + rootY + (crouch ? 16 : 0);
@@ -1039,11 +1086,17 @@ class Player {
       frontHand = { x: -68, y: -132 + rootY };
       backHand = { x: 48, y: -42 + rootY };
     } else if (throwRelease) {
-      frontHand = { x: 92, y: -70 + rootY };
+      const releaseProgress = 1 - Math.max(0, Math.min(1, this.throwTimer / 0.26));
+      const armExtension = Math.sin(releaseProgress * Math.PI) * 48;
+      frontHand = { x: 76 + armExtension, y: -70 + rootY };
       backHand = { x: -48, y: -38 + rootY };
     } else if (catching) {
-      frontHand = { x: 18, y: -137 + rootY };
-      backHand = { x: -18, y: -137 + rootY };
+      frontHand = catchSuccess
+        ? { x: 13, y: bodyY - 5 }
+        : { x: 22, y: -137 + rootY };
+      backHand = catchSuccess
+        ? { x: -13, y: bodyY - 5 }
+        : { x: -22, y: -137 + rootY };
     } else if (crouch) {
       frontHand = { x: 24, y: -25 + rootY };
       backHand = { x: -24, y: -25 + rootY };
@@ -1051,8 +1104,10 @@ class Player {
 
     context.save();
     context.translate(this.x, drawY);
-    const verticalView = this.visualDirection === "up" || this.visualDirection === "down";
-    context.scale(scale * (verticalView ? 0.94 : this.facing), scale);
+    const bodyDirection = this.robotBodyDirection || this.visualDirection;
+    const verticalView = bodyDirection === "up" || bodyDirection === "down";
+    const bodyFacing = bodyDirection === "left" ? -1 : bodyDirection === "right" ? 1 : this.facing;
+    context.scale(scale * (verticalView ? 0.94 : bodyFacing), scale);
     if (down) {
       context.rotate(-0.92);
       context.scale(1.08, 0.8);
@@ -1062,15 +1117,62 @@ class Player {
 
     if (moving && this.jumpZ <= 0) {
       context.save();
-      context.globalAlpha = 0.38;
+      const stepPulse = stepIndex === 0 || stepIndex === 2;
+      context.globalAlpha = stepPulse ? 0.58 : 0.28;
       context.fillStyle = "#eef7f4";
-      for (let index = 0; index < 4; index += 1) {
-        const phase = (motionTime / 95 + index * 1.7) % 5;
+      for (let index = 0; index < 3; index += 1) {
+        const phase = (motionTime / cadence + index * 1.4) % 4;
         context.beginPath();
-        context.arc(-18 + index * 12, 20 + phase * 3, 4 + phase * 1.4, 0, Math.PI * 2);
+        context.arc(-17 + index * 17, 18 + phase * 4, 3 + phase * 1.5, 0, Math.PI * 2);
         context.fill();
       }
+      if (stepPulse) {
+        context.strokeStyle = "rgba(190, 220, 224, 0.8)";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(stride < 0 ? -20 : 20, 19, 13, Math.PI, Math.PI * 2);
+        context.stroke();
+      }
       context.restore();
+    }
+
+    if (this.isDashing && moving && this.jumpZ <= 0) {
+      context.save();
+      context.globalAlpha = 0.2;
+      for (let trail = 1; trail <= 3; trail += 1) {
+        const trailX = -this.facing * trail * 12;
+        this.drawRobotLimb(
+          context,
+          { x: -13 + trailX, y: hipY },
+          { x: -18 - stride * 0.5 + trailX, y: -8 + rootY },
+          { x: -17 - stride + trailX, y: 16 + rootY },
+          10
+        );
+        this.drawRobotLimb(
+          context,
+          { x: 13 + trailX, y: hipY },
+          { x: 18 + stride * 0.5 + trailX, y: -8 + rootY },
+          { x: 17 + stride + trailX, y: 16 + rootY },
+          10
+        );
+      }
+      context.restore();
+    }
+
+    const footRootY = crouch ? 0 : rootY;
+    const kneeY = crouch ? 10 : -8 + rootY;
+    const backFoot = { x: -17 - stride, y: 16 + footRootY };
+    const frontFoot = { x: 17 + stride, y: 16 + footRootY };
+    this.drawRobotLimb(context, { x: -13, y: hipY }, { x: -18 - stride * 0.5, y: kneeY }, backFoot, 12);
+    this.drawRobotLimb(context, { x: 13, y: hipY }, { x: 18 + stride * 0.5, y: kneeY }, frontFoot, 13);
+    this.drawRobotFoot(context, backFoot);
+    this.drawRobotFoot(context, frontFoot);
+
+    context.save();
+    context.translate(upperShiftX, upperShiftY);
+    if (visualTurning) {
+      const turnProgress = 1 - Math.max(0, Math.min(1, this.robotVisualTurnTimer / 0.1));
+      context.scale(1 - Math.sin(turnProgress * Math.PI) * 0.28, 1);
     }
 
     if (this.uniformEmblem === "robotCaptain") {
@@ -1086,12 +1188,6 @@ class Player {
       context.stroke();
     }
 
-    const backFoot = { x: -17 - stride, y: 16 + rootY };
-    const frontFoot = { x: 17 + stride, y: 16 + rootY };
-    this.drawRobotLimb(context, { x: -13, y: hipY }, { x: -18 - stride * 0.5, y: -8 + rootY }, backFoot, 12);
-    this.drawRobotLimb(context, { x: 13, y: hipY }, { x: 18 + stride * 0.5, y: -8 + rootY }, frontFoot, 13);
-    this.drawRobotFoot(context, backFoot);
-    this.drawRobotFoot(context, frontFoot);
     this.drawRobotLimb(context, { x: -25, y: shoulderY }, { x: -35, y: -62 + rootY }, backHand, 10);
 
     const metal = context.createLinearGradient(-32, bodyY - 40, 32, bodyY + 38);
@@ -1119,10 +1215,73 @@ class Player {
     context.font = "bold 18px Consolas, monospace";
     context.textAlign = "center";
     context.textBaseline = "middle";
+    context.save();
+    if (idle && Math.floor(motionTime / 420) % 2 === 1) {
+      context.globalAlpha = 0.48;
+    }
     context.fillText(this.getRobotManufacturingNumber(), 0, bodyY + 1);
+    context.restore();
 
     this.drawRobotLimb(context, { x: 25, y: shoulderY }, { x: 35, y: -62 + rootY }, frontHand, 11);
 
+    if (throwWindup || throwRelease) {
+      const servoStep = Math.floor(motionTime / 55) % 4;
+      context.save();
+      context.strokeStyle = throwRelease ? "#fff27a" : "#58f3df";
+      context.lineWidth = 3;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.beginPath();
+        context.arc(25, shoulderY, 14 + ring * 5, -1.8 + servoStep * 0.28, 0.3 + servoStep * 0.28);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    if (catching) {
+      const magnetY = catchSuccess ? bodyY - 5 : -137 + rootY;
+      const magnetPulse = 1 + Math.sin(motionTime / 55) * 0.12;
+      context.save();
+      context.strokeStyle = catchSuccess ? "#e8fffb" : "#4df5dc";
+      context.shadowColor = "#42f4dc";
+      context.shadowBlur = 15;
+      context.lineWidth = 4;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.beginPath();
+        context.ellipse(0, magnetY, (30 + ring * 12) * magnetPulse, 13 + ring * 5, 0, 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    if (this.robotCatchMissTimer > 0) {
+      const missRatio = this.robotCatchMissTimer / 0.18;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      for (let spark = 0; spark < 7; spark += 1) {
+        const angle = spark * Math.PI * 2 / 7;
+        context.strokeStyle = spark % 2 === 0 ? "#66ffe8" : "#ffe56a";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.moveTo(Math.cos(angle) * 34, -116 + Math.sin(angle) * 15);
+        context.lineTo(Math.cos(angle) * (46 + missRatio * 18), -116 + Math.sin(angle) * (24 + missRatio * 12));
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    const directionVectors = {
+      left: { x: -1, y: 0 },
+      right: { x: 1, y: 0 },
+      up: { x: 0, y: -1 },
+      down: { x: 0, y: 1 }
+    };
+    const bodyVector = directionVectors[bodyDirection] || directionVectors.right;
+    const headVector = directionVectors[this.robotHeadDirection] || bodyVector;
+    const idleScan = idle && !visualTurning ? Math.sin(motionTime / 330) * 7 : 0;
+    const headShiftX = (headVector.x - bodyVector.x) * 8 + idleScan;
+    const headShiftY = (headVector.y - bodyVector.y) * 4;
+    context.save();
+    context.translate(headShiftX, headShiftY);
     const headMetal = context.createLinearGradient(-34, headY - 30, 34, headY + 28);
     headMetal.addColorStop(0, "#f8fafb");
     headMetal.addColorStop(0.5, "#b7c1c7");
@@ -1144,7 +1303,30 @@ class Player {
       context.fillStyle = eyeColor;
       this.roundRect(context, -21, headY - 5, 42, 10, 5);
       context.fill();
+      if (!lowHp && !clockStopGlow) {
+        const scanX = Math.sin(motionTime / 170) * 15;
+        context.fillStyle = "#efffff";
+        this.roundRect(context, scanX - 4, headY - 4, 8, 8, 4);
+        context.fill();
+      }
       context.shadowBlur = 0;
+    }
+
+    if (servoAiming) {
+      const aimPulse = 0.45 + Math.sin(motionTime / 35) * 0.2;
+      context.save();
+      context.globalAlpha = aimPulse;
+      context.strokeStyle = "#5dffea";
+      context.shadowColor = "#4cf9e2";
+      context.shadowBlur = 10;
+      context.lineWidth = 2;
+      context.setLineDash([12, 8]);
+      context.beginPath();
+      context.moveTo(22, headY);
+      context.lineTo(172, headY);
+      context.stroke();
+      context.setLineDash([]);
+      context.restore();
     }
 
     context.strokeStyle = "#56636b";
@@ -1160,6 +1342,24 @@ class Player {
     context.arc(0, headY - 52, this.uniformEmblem === "robotCaptain" ? 9 : 7, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+    context.restore();
+
+    if (idle) {
+      const ventPhase = (motionTime % 2800) / 2800;
+      if (ventPhase > 0.72) {
+        context.save();
+        context.globalAlpha = Math.sin((ventPhase - 0.72) / 0.28 * Math.PI) * 0.55;
+        context.fillStyle = "#e9f2f1";
+        for (let puff = 0; puff < 3; puff += 1) {
+          context.beginPath();
+          context.arc(-38 - puff * 11, bodyY - 3 - puff * 7, 7 + puff * 3, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+      }
+    }
+
+    context.restore();
 
     if (damaged) {
       context.save();

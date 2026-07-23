@@ -48,6 +48,7 @@ class CPUController {
     this.attackTactic = null;
     this.lastTacticType = null;
     this.tacticSerial = 0;
+    this.zenmaiSpecialShooterId = null;
   }
 
   update(delta) {
@@ -84,12 +85,12 @@ class CPUController {
     const cpuHolder = holder && holder.team === this.teamName ? holder : null;
     const looseBallChaser = this.getLooseBallChaser();
     const friendlyShotChaser = looseBallChaser ? null : this.getFriendlyFlyingShotChaser();
+    if (cpuHolder && (!this.attackTactic || this.attackTactic.finished)) {
+      this.selectAttackTactic(cpuHolder);
+    }
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
-      if (!this.attackTactic || this.attackTactic.finished) {
-        this.selectAttackTactic(cpuHolder);
-      }
       this.throwTimer = this.shouldUseTacticalQuickShot(cpuHolder)
         ? 0.04 + Math.random() * 0.05
         : cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
@@ -162,24 +163,15 @@ class CPUController {
         break;
       }
     }
-    const zenmaiGears = this.isZenmaiGears();
-    const spiritReady = this.config.isSpiritReady?.(this.teamName);
-    if (zenmaiGears && spiritReady && Math.random() < 0.78) {
-      type = "aceFocus";
-    }
-
     const active = this.getActiveTeammates();
     const ace = this.getAcePlayer(active);
-    const zenmaiPasses = 2 + Math.floor(Math.random() * 3);
     this.attackTactic = {
       id: ++this.tacticSerial,
       type,
       step: 0,
       finished: false,
       startedAt: Date.now(),
-      passesRequired: zenmaiGears && ["buildUp", "quickAttack", "trianglePass", "tempoChange", "aceFocus"].includes(type)
-        ? zenmaiPasses
-        : type === "buildUp" ? 2 + Math.floor(Math.random() * 2)
+      passesRequired: type === "buildUp" ? 2 + Math.floor(Math.random() * 2)
         : type === "trianglePass" ? 3
           : type === "tempoChange" ? 2 + Math.floor(Math.random() * 2)
             : type === "outfieldRelay" ? 3
@@ -198,25 +190,8 @@ class CPUController {
   }
 
   getAttackTacticWeights() {
-    const teamWeights = this.isZenmaiGears()
-      ? {
-          buildUp: 4.5,
-          quickAttack: 4.8,
-          sideOverload: 1.2,
-          aceFocus: 4.2,
-          trianglePass: 6.2,
-          oneTwo: 3.2,
-          sideChange: 2.1,
-          outfieldRelay: 2.5,
-          decoyAce: 1.3,
-          closeAttack: 1.1,
-          tempoChange: 3.8,
-          shotFeint: 1.8
-        }
-      : {};
     return {
       ...CPU_ATTACK_TACTIC_WEIGHTS,
-      ...teamWeights,
       ...(this.config.attackTacticWeights || {})
     };
   }
@@ -273,13 +248,7 @@ class CPUController {
 
     if (tactic.type === "aceFocus") {
       const ace = this.team.find((member) => member.id === tactic.aceId && !member.defeated);
-      if (this.isZenmaiGears() && tactic.step < tactic.passesRequired - 1) {
-        const triangleTarget = this.getNextTriangleTarget(holder, tactic);
-        if (triangleTarget && triangleTarget !== ace) return passThenShoot(triangleTarget);
-        return passThenShoot(this.getZenmaiSetupPassTarget(holder, tactic));
-      }
       if (ace && holder !== ace && tactic.step < 1) return passThenShoot(ace);
-      if (ace && holder !== ace) return passThenShoot(ace);
       return this.createTacticalShotPlan(holder, Math.random() < 0.55 ? "dash-strong-shot" : "charge-shot");
     }
 
@@ -379,6 +348,62 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (plan.type === "lock-rocket-launch") {
+      const now = Date.now();
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      const reachedLaunchPoint = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 46;
+      const approachTimedOut = now - plan.createdAt > 4000;
+
+      if (!plan.launchStarted) {
+        this.moveToward(command, holder, plan.x, plan.y);
+        command.dash = true;
+        if (reachedLaunchPoint || approachTimedOut) {
+          plan.launchStarted = true;
+          plan.startedAt = now;
+        }
+        return;
+      }
+
+      const target = this.nearestActiveOpponent(holder);
+      if (plan.chargeStarted || this.throwTimer <= 0) {
+        if (target) this.moveToward(command, holder, target.x, target.y);
+        command.dash = grounded;
+      } else if (target) {
+        this.facePoint(command, holder, target.x, target.y);
+      } else {
+        this.stop(command);
+      }
+
+      if (this.hasStaleApexChargePlan(plan)) {
+        this.resetHolderPlanSoon();
+        return;
+      }
+      if (!plan.chargeStarted && this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = plan.chargeTime;
+        command.chargeReleaseMode = "apex";
+        plan.chargeStarted = true;
+        plan.startedAt = now;
+        this.throwTimer = plan.chargeTime + 0.95;
+      }
+      if (
+        plan.chargeStarted &&
+        grounded &&
+        now - plan.startedAt > Math.max(220, (plan.chargeTime - 0.72) * 1000)
+      ) {
+        if (plan.jumpAttempted) {
+          if (now - plan.jumpStartedAt > 450) this.resetHolderPlanSoon();
+          return;
+        }
+        command.jump = true;
+        command.dash = true;
+        plan.jumpAttempted = true;
+        plan.jumpStartedAt = now;
+        holder.cpuJumpAttackCooldownUntil = now + 2200;
+        holder.cpuLockRocketLaunchCooldownUntil = now + 3000;
+      }
+      return;
+    }
     if (plan.type === "quick-shot") {
       this.faceNearestThreat(command, holder);
       if (this.throwTimer <= 0) {
@@ -616,6 +641,17 @@ class CPUController {
   }
 
   getHolderPlan(holder) {
+    if (
+      this.holderPlan &&
+      this.holderPlan.holderId === holder.id &&
+      (this.holderPlan.type === "lock-rocket-launch" || this.holderPlan.zenmaiSpecialPlan)
+    ) {
+      return this.holderPlan;
+    }
+    const zenmaiSpecialPlan = this.getZenmaiSpecialHolderPlan(holder);
+    if (zenmaiSpecialPlan) {
+      return zenmaiSpecialPlan;
+    }
     if (this.shouldUseTacticalQuickShot(holder) && this.holderPlan?.type !== "quick-shot") {
       return this.markTacticalPlan(this.createHolderPlan(holder, "quick-shot", 0), true);
     }
@@ -682,6 +718,88 @@ class CPUController {
     }
 
     return this.createHolderPlan(holder, type, 1.05 + Math.random() * 0.45);
+  }
+
+  getZenmaiSpecialHolderPlan(holder) {
+    if (holder.cpuProfile !== "zenmaiGears") return null;
+    if (!this.config.isSpiritReady?.(this.teamName)) {
+      this.zenmaiSpecialShooterId = null;
+      return null;
+    }
+
+    const shooter = this.getZenmaiSpecialShooter();
+    if (!shooter) return null;
+
+    if (holder.id !== shooter.id) {
+      const passPlan = this.createHolderPlan(holder, "pass-chain", 0);
+      passPlan.passTargetId = shooter.id;
+      passPlan.zenmaiSpecialPlan = true;
+      return passPlan;
+    }
+
+    if (
+      shooter.name === "ゼロ" &&
+      shooter.specialShotType === "lockRocket" &&
+      (shooter.cpuLockRocketLaunchCooldownUntil || 0) <= Date.now()
+    ) {
+      const rocketPlan = this.createLockRocketLaunchPlan(shooter);
+      rocketPlan.zenmaiSpecialPlan = true;
+      return rocketPlan;
+    }
+
+    const clockPlan = this.createHolderPlan(shooter, "dash-jump-strong-shot", 0.92);
+    clockPlan.zenmaiSpecialPlan = true;
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
+    if (this.attackTactic) this.attackTactic.finished = true;
+    return clockPlan;
+  }
+
+  getZenmaiSpecialShooter() {
+    const active = this.team.filter((member) => !member.defeated);
+    const current = active.find((member) => member.id === this.zenmaiSpecialShooterId);
+    if (current) return current;
+
+    const zero = active.find((member) => member.name === "ゼロ");
+    const others = active.filter((member) => member.name !== "ゼロ");
+    const chooseZero = Boolean(zero) && (others.length === 0 || Math.random() < 0.5);
+    const shooter = chooseZero
+      ? zero
+      : others[Math.floor(Math.random() * others.length)] || zero || null;
+    this.zenmaiSpecialShooterId = shooter?.id || null;
+    return shooter;
+  }
+
+  createLockRocketLaunchPlan(holder) {
+    const area = this.config.areas?.[holder.zone];
+    const margin = Math.max(holder.radius || 36, 62);
+    const launchY = area
+      ? this.clampPointToArea({ x: holder.homeX, y: holder.homeY }, area, margin).y
+      : holder.homeY;
+    let launchX = holder.homeX;
+
+    if (area?.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, launchY);
+      if (bounds) {
+        launchX = holder.team === "left"
+          ? bounds.left + margin
+          : bounds.right - margin;
+      }
+    } else if (area) {
+      launchX = holder.team === "left"
+        ? area.x + margin
+        : area.x + area.w - margin;
+    }
+
+    const plan = this.createHolderPlan(holder, "lock-rocket-launch", 0.92);
+    plan.x = launchX;
+    plan.y = launchY;
+    plan.createdAt = Date.now();
+    plan.launchStarted = false;
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
+    if (this.attackTactic) this.attackTactic.finished = true;
+    return plan;
   }
 
   getTownDodgiesHolderPlan(holder) {
@@ -946,18 +1064,6 @@ class CPUController {
       .sort((a, b) => Math.hypot(a.x - holder.x, a.y - holder.y) - Math.hypot(b.x - holder.x, b.y - holder.y))[0] || null;
   }
 
-  getZenmaiSetupPassTarget(holder, tactic) {
-    const candidates = this.getActiveTeammates()
-      .filter((member) => (
-        member !== holder &&
-        member.id !== tactic.aceId &&
-        member.id !== tactic.lastPasserId
-      ));
-    return candidates
-      .sort((a, b) => Math.hypot(a.x - holder.x, a.y - holder.y) - Math.hypot(b.x - holder.x, b.y - holder.y))[0]
-      || this.getNearestPassTarget(holder, tactic.lastPasserId);
-  }
-
   getSameSideTeammate(holder, side) {
     const centerY = this.config.court.y + this.config.court.h * 0.5;
     const candidates = this.getActiveTeammates().filter((member) => (
@@ -1007,10 +1113,6 @@ class CPUController {
   }
 
   controlOffBallAttack(command, member, holder) {
-    if (this.isZenmaiGears()) {
-      this.controlZenmaiFormation(command, member, holder);
-      return;
-    }
     const tactic = this.attackTactic;
     const area = this.config.areas?.[member.zone];
     const active = this.getActiveTeammates();
@@ -1082,39 +1184,6 @@ class CPUController {
     }
     this.moveToward(command, member, point.x, point.y);
     command.dash = dash;
-  }
-
-  controlZenmaiFormation(command, member, holder) {
-    const area = this.config.areas?.[member.zone];
-    const active = this.getActiveTeammates();
-    const innerMembers = active.filter((player) => player.role === "inner");
-    const innerIndex = Math.max(0, innerMembers.indexOf(member));
-    const attackDirection = holder.team === "left" ? 1 : -1;
-    const formationStep = Math.floor(Date.now() / 920) % 3;
-    const triangleOffsets = [
-      { x: -155, y: -185 },
-      { x: 185, y: 0 },
-      { x: -155, y: 185 }
-    ];
-    const offset = triangleOffsets[(innerIndex + formationStep) % triangleOffsets.length];
-    let point;
-
-    if (member.role === "inner") {
-      point = {
-        x: holder.x + offset.x * attackDirection,
-        y: holder.y + offset.y
-      };
-    } else {
-      const pulse = formationStep === 1 ? 70 : formationStep === 2 ? -70 : 0;
-      point = {
-        x: member.homeX,
-        y: member.homeY + pulse
-      };
-    }
-
-    point = this.clampPointToArea(point, area, member.radius);
-    this.moveToward(command, member, point.x, point.y);
-    command.dash = Math.hypot(point.x - member.x, point.y - member.y) > 170;
   }
 
   getAttackLineX(holder) {
@@ -1370,18 +1439,16 @@ class CPUController {
     this.reactionTimer -= delta;
     if (this.reactionTimer > 0 && !this.hasUrgentDefender()) return;
 
-    for (const member of this.team.filter((p) => p.role === "inner" && !p.defeated)) {
+    const activeInner = this.team.filter((p) => p.role === "inner" && !p.defeated);
+    for (const member of activeInner) {
       const command = this.commands.get(member.id);
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       const technique = member.stats?.technique || 5;
       const speed = member.stats?.speed || 5;
       const jump = member.stats?.jump || 5;
       const defenseStat = Math.max(technique, speed, jump);
-      const maxReactDistance = (
-        member.cpuProfile === "hinomaruBombers" ? 620
-          : member.cpuProfile === "zenmaiGears" ? 540
-            : 430
-      ) + Math.max(0, defenseStat - 5) * 36;
+      const maxReactDistance = (member.cpuProfile === "hinomaruBombers" ? 620 : 430) +
+        Math.max(0, defenseStat - 5) * 36;
       if (distance > maxReactDistance) continue;
 
       const frontShot = this.isFrontShot(member);
@@ -1416,10 +1483,7 @@ class CPUController {
       const dodgeScale = member.cpuProfile === "townDodgies" ? 1.22 : 1;
       let profileCatchScale = member.cpuProfile === "hinomaruBombers" ? (frontShot ? 2.15 : 1.25) : catchScale;
       let profileDodgeScale = member.cpuProfile === "hinomaruBombers" ? 0.78 : dodgeScale;
-      if (member.cpuProfile === "zenmaiGears") {
-        profileCatchScale = strongShot ? 0.38 : 0.72;
-        profileDodgeScale = strongShot ? 1.48 : 1.22;
-      } else if (member.cpuProfile === "hinomaruBombers" && frontShot && farShot) {
+      if (member.cpuProfile === "hinomaruBombers" && frontShot && farShot) {
         profileCatchScale = strongShot ? 1.7 : 2.9;
         profileDodgeScale = strongShot ? 1.16 : 1.34;
       } else if (member.cpuProfile === "hinomaruBombers" && frontShot) {

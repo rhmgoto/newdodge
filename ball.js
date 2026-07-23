@@ -5,6 +5,10 @@ const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
 const CLOCK_STOP_DURATION = 0.55;
+const LOCK_ROCKET_COAST_TIME = 0.2;
+const LOCK_ROCKET_CRUISE_TIME = 1.2;
+const LOCK_ROCKET_GUIDE_TIME = 2.5;
+const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 
 class Ball {
   constructor(config) {
@@ -67,6 +71,13 @@ class Ball {
     this.clockBurstTargetX = 0;
     this.clockBurstTargetY = 0;
     this.clockBurstSpeed = 0;
+    this.lockRocketPhase = "none";
+    this.lockRocketElapsed = 0;
+    this.lockRocketFlightZ = 0;
+    this.lockRocketBaseSpeed = 0;
+    this.lockRocketTargetX = 0;
+    this.lockRocketTargetY = 0;
+    this.lockRocketTrail = [];
     this.tsutenkakuPhase = "none";
     this.tsutenkakuElapsed = 0;
     this.tsutenkakuTargetX = 0;
@@ -180,6 +191,7 @@ class Ball {
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
     const straightClockFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "clockStop";
+    const straightLockRocketFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "lockRocket";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
     const straightQuickFlight = this.isFlying && this.kind === "shoot" && this.quickShot;
     if (this.isFlying) {
@@ -194,6 +206,9 @@ class Ball {
         this.vz = 0;
       } else if (straightClockFlight) {
         this.z = this.clockStopZ;
+        this.vz = 0;
+      } else if (straightLockRocketFlight) {
+        this.z = this.lockRocketFlightZ;
         this.vz = 0;
       } else if (straightCounterFlight) {
         this.z = this.counterFlightZ;
@@ -215,7 +230,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -234,7 +249,7 @@ class Ball {
       }
     }
 
-    if (straightBoostFlight) return;
+    if (straightBoostFlight || straightLockRocketFlight) return;
 
     if (this.x < bounds.x + this.radius) {
       this.x = bounds.x + this.radius;
@@ -297,6 +312,7 @@ class Ball {
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
     this.clearClockStop();
+    this.clearLockRocket();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -336,6 +352,8 @@ class Ball {
       this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
     } else if (this.specialShotType === "clockStop") {
       this.z = Math.min(58, 36 + actor.jumpZ * 0.08);
+    } else if (this.specialShotType === "lockRocket") {
+      this.z = Math.min(62, 38 + actor.jumpZ * 0.08);
     }
     this.passTime = 0;
     this.passDuration = 0;
@@ -350,6 +368,8 @@ class Ball {
       this.radius = this.baseRadius * 1.15;
     } else if (this.specialShotType === "boomerang") {
       this.radius = this.baseRadius * BOOMERANG_SIZE_SCALE;
+    } else if (this.specialShotType === "lockRocket") {
+      this.radius = this.baseRadius * 1.15;
     }
     this.travelDistance = 0;
     this.returning = false;
@@ -376,6 +396,7 @@ class Ball {
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = this.specialShotType === "kiai" ? this.z : 0;
     this.clearClockStop();
+    this.clearLockRocket();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -457,6 +478,19 @@ class Ball {
       this.clockBurstSpeed = this.config.shootSpeed * normalSpeedRatio * 1.8;
       this.vx = directX * speed * 0.92 + actor.vx * moveBonus;
       this.vy = directY * speed * 0.92 + actor.vy * moveBonus;
+      this.vz = 0;
+      this.catchable = true;
+      return true;
+    }
+    if (this.specialShotType === "lockRocket") {
+      this.lockRocketPhase = "coast";
+      this.lockRocketElapsed = 0;
+      this.lockRocketFlightZ = this.z;
+      this.lockRocketBaseSpeed = this.config.shootSpeed * speedRatio;
+      this.lockRocketTargetX = targetX;
+      this.lockRocketTargetY = targetY;
+      this.vx = directX * this.lockRocketBaseSpeed * 0.3;
+      this.vy = directY * this.lockRocketBaseSpeed * 0.3;
       this.vz = 0;
       this.catchable = true;
       return true;
@@ -592,6 +626,10 @@ class Ball {
     }
     if (this.specialShotType === "clockStop") {
       this.updateClockStopShot(delta);
+      return;
+    }
+    if (this.specialShotType === "lockRocket") {
+      this.updateLockRocket(delta);
       return;
     }
     if (this.specialShotType === "boost") {
@@ -765,6 +803,84 @@ class Ball {
     this.clockBurstSpeed = 0;
   }
 
+  updateLockRocket(delta) {
+    this.lockRocketElapsed += delta;
+    this.lockRocketTrail.push({ x: this.x, y: this.y, z: this.z });
+    if (this.lockRocketTrail.length > 18) this.lockRocketTrail.shift();
+
+    if (this.lockRocketPhase === "coast") {
+      if (this.lockRocketElapsed < LOCK_ROCKET_COAST_TIME) return;
+      this.lockRocketPhase = "cruise";
+      this.lockRocketElapsed = 0;
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      this.vx = this.vx / speed * this.lockRocketBaseSpeed * 0.4;
+      this.vy = this.vy / speed * this.lockRocketBaseSpeed * 0.4;
+      return;
+    }
+
+    if (this.lockRocketPhase === "cruise") {
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      this.vx = this.vx / speed * this.lockRocketBaseSpeed * 0.4;
+      this.vy = this.vy / speed * this.lockRocketBaseSpeed * 0.4;
+      if (this.lockRocketElapsed < LOCK_ROCKET_CRUISE_TIME) return;
+      this.lockRocketPhase = "guide";
+      this.lockRocketElapsed = 0;
+    }
+
+    if (this.lockRocketPhase === "guide") {
+      const targetAvailable = this.target && !this.target.defeated;
+      const targetX = targetAvailable ? this.target.x : this.lockRocketTargetX;
+      const targetY = targetAvailable ? this.target.y - 38 : this.lockRocketTargetY;
+      const currentAngle = Math.atan2(this.vy, this.vx);
+      const desiredAngle = Math.atan2(targetY - this.y, targetX - this.x);
+      let angleDifference = desiredAngle - currentAngle;
+      while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
+      while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
+      const maxTurn = LOCK_ROCKET_MAX_TURN_RATE * delta;
+      const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
+      const guideSpeed = this.lockRocketBaseSpeed * 0.7;
+      this.vx = Math.cos(nextAngle) * guideSpeed;
+      this.vy = Math.sin(nextAngle) * guideSpeed;
+
+      if (this.lockRocketElapsed >= LOCK_ROCKET_GUIDE_TIME) {
+        this.lockRocketPhase = "terminal";
+        this.lockRocketElapsed = 0;
+        this.lockRocketTargetX = targetX;
+        this.lockRocketTargetY = targetY;
+        const dx = this.lockRocketTargetX - this.x;
+        const dy = this.lockRocketTargetY - this.y;
+        const length = Math.hypot(dx, dy);
+        const terminalSpeed = this.lockRocketBaseSpeed * 0.9;
+        if (length > 1) {
+          this.vx = dx / length * terminalSpeed;
+          this.vy = dy / length * terminalSpeed;
+        } else {
+          const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+          this.vx = this.vx / currentSpeed * terminalSpeed;
+          this.vy = this.vy / currentSpeed * terminalSpeed;
+        }
+      }
+      return;
+    }
+
+    if (this.lockRocketPhase === "terminal") {
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      const terminalSpeed = this.lockRocketBaseSpeed * 0.9;
+      this.vx = this.vx / speed * terminalSpeed;
+      this.vy = this.vy / speed * terminalSpeed;
+    }
+  }
+
+  clearLockRocket() {
+    this.lockRocketPhase = "none";
+    this.lockRocketElapsed = 0;
+    this.lockRocketFlightZ = 0;
+    this.lockRocketBaseSpeed = 0;
+    this.lockRocketTargetX = 0;
+    this.lockRocketTargetY = 0;
+    this.lockRocketTrail = [];
+  }
+
   updateTsutenkakuDrop(delta) {
     if (this.tsutenkakuPhase === "rise") {
       this.tsutenkakuElapsed += delta;
@@ -923,6 +1039,8 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.clearClockStop();
+    this.clearLockRocket();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -960,6 +1078,8 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.clearClockStop();
+    this.clearLockRocket();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -976,6 +1096,7 @@ class Ball {
     if (this.specialShotType === "slap") return "#ffb07a";
     if (this.specialShotType === "tsutenkaku") return "#ffd83d";
     if (this.specialShotType === "clockStop") return "#50f5e0";
+    if (this.specialShotType === "lockRocket") return "#55dfff";
     return "#ffe46a";
   }
 
@@ -1004,6 +1125,11 @@ class Ball {
 
     if (this.isFlying && this.specialShotType === "clockStop") {
       this.drawClockStopShot(context, debugMode);
+      return;
+    }
+
+    if (this.isFlying && this.specialShotType === "lockRocket") {
+      this.drawLockRocket(context, debugMode);
       return;
     }
 
@@ -1465,6 +1591,158 @@ class Ball {
     context.textAlign = "center";
     context.textBaseline = "bottom";
     context.fillText("!", 0, -radius * 0.38);
+    context.restore();
+  }
+
+  drawLockRocket(context, debugMode) {
+    const drawY = this.y - this.z;
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const angle = Math.atan2(this.vy, this.vx);
+    const pulse = 1 + Math.sin(performance.now() / 55) * 0.08;
+
+    if (this.lockRocketPhase === "guide" && this.target && !this.target.defeated) {
+      context.save();
+      context.translate(this.target.x, this.target.y - (this.target.jumpZ || 0) - 48);
+      context.strokeStyle = "rgba(74, 255, 231, 0.82)";
+      context.lineWidth = 4;
+      context.setLineDash([12, 8]);
+      context.rotate(performance.now() / 420);
+      context.beginPath();
+      context.arc(0, 0, 54 + Math.sin(performance.now() / 80) * 7, 0, Math.PI * 2);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(-72, 0);
+      context.lineTo(-34, 0);
+      context.moveTo(72, 0);
+      context.lineTo(34, 0);
+      context.moveTo(0, -72);
+      context.lineTo(0, -34);
+      context.moveTo(0, 72);
+      context.lineTo(0, 34);
+      context.stroke();
+      context.restore();
+    }
+
+    context.save();
+    context.lineCap = "round";
+    for (let index = 1; index < this.lockRocketTrail.length; index += 1) {
+      const previous = this.lockRocketTrail[index - 1];
+      const point = this.lockRocketTrail[index];
+      const ratio = index / this.lockRocketTrail.length;
+      context.globalAlpha = ratio * 0.62;
+      context.strokeStyle = index % 2 === 0 ? "#dffcff" : "#4cbfff";
+      context.lineWidth = 4 + ratio * 10;
+      context.beginPath();
+      context.moveTo(previous.x, previous.y - previous.z);
+      context.lineTo(point.x, point.y - point.z);
+      context.stroke();
+      context.fillStyle = "rgba(232, 242, 242, 0.52)";
+      context.beginPath();
+      context.arc(previous.x, previous.y - previous.z, 4 + (1 - ratio) * 11, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.rotate(angle);
+
+    const flameLength = this.lockRocketPhase === "terminal"
+      ? 94
+      : this.lockRocketPhase === "guide"
+        ? 68
+        : this.lockRocketPhase === "cruise"
+          ? 52
+          : 34;
+    const flame = context.createLinearGradient(-this.radius - flameLength, 0, -this.radius, 0);
+    flame.addColorStop(0, "rgba(98, 204, 255, 0)");
+    flame.addColorStop(0.34, "#69d8ff");
+    flame.addColorStop(0.72, "#efffff");
+    flame.addColorStop(1, "#ffcf57");
+    context.fillStyle = flame;
+    context.beginPath();
+    context.moveTo(-this.radius + 3, -11);
+    context.lineTo(-this.radius - flameLength * pulse, 0);
+    context.lineTo(-this.radius + 3, 11);
+    context.closePath();
+    context.fill();
+
+    context.fillStyle = "#61717c";
+    context.strokeStyle = "#27343c";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-this.radius * 0.35, -this.radius * 0.65);
+    context.lineTo(-this.radius * 1.05, -this.radius * 1.05);
+    context.lineTo(-this.radius * 0.88, -this.radius * 0.2);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-this.radius * 0.35, this.radius * 0.65);
+    context.lineTo(-this.radius * 1.05, this.radius * 1.05);
+    context.lineTo(-this.radius * 0.88, this.radius * 0.2);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    const metal = context.createRadialGradient(-this.radius * 0.3, -this.radius * 0.35, 2, 0, 0, this.radius * 1.2);
+    metal.addColorStop(0, "#ffffff");
+    metal.addColorStop(0.3, "#c7d2d8");
+    metal.addColorStop(0.72, "#6f7c85");
+    metal.addColorStop(1, "#303b43");
+    context.fillStyle = metal;
+    context.strokeStyle = "#263139";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(0, 0, this.radius * pulse, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = this.lockRocketPhase === "terminal" ? "#ff4d4d" : "#4ff5df";
+    context.shadowColor = context.strokeStyle;
+    context.shadowBlur = 14;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.arc(0, 0, this.radius * 0.58, -1.15, 1.15);
+    context.stroke();
+    context.shadowBlur = 0;
+
+    if (this.lockRocketPhase === "terminal") {
+      context.globalAlpha = 0.32 + Math.sin(performance.now() / 45) * 0.1;
+      context.fillStyle = "#77dcff";
+      context.strokeStyle = "#e9ffff";
+      context.lineWidth = 3;
+      this.drawRocketFistSilhouette(context, this.radius * 1.25);
+    }
+    context.restore();
+
+    if (debugMode) {
+      context.strokeStyle = "rgba(255, 0, 0, 0.65)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  drawRocketFistSilhouette(context, size) {
+    context.save();
+    context.translate(size * 0.28, 0);
+    context.beginPath();
+    context.rect(-size * 0.35, -size * 0.5, size * 0.85, size);
+    context.fill();
+    context.stroke();
+    for (let finger = 0; finger < 3; finger += 1) {
+      context.beginPath();
+      context.rect(
+        size * (0.32 + finger * 0.22),
+        -size * 0.42,
+        size * 0.22,
+        size * 0.45
+      );
+      context.fill();
+      context.stroke();
+    }
     context.restore();
   }
 

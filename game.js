@@ -25,7 +25,8 @@ const CATCH_DIFFICULTY = {
   iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74 },
   slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 },
   tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.28, chanceScale: 0.29, perfectTiming: 0.7 },
-  clockStop: { duration: 0.168, areaScale: 0.73, maxChance: 0.25, chanceScale: 0.27, perfectTiming: 0.69 }
+  clockStop: { duration: 0.168, areaScale: 0.73, maxChance: 0.25, chanceScale: 0.27, perfectTiming: 0.69 },
+  lockRocket: { duration: 0.165, areaScale: 0.72, maxChance: 0.28, chanceScale: 0.28, perfectTiming: 0.7 }
 };
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
@@ -646,7 +647,7 @@ class DodgeballGame {
       {
         id: "zenmai-gears",
         name: "ゼンマイギアーズ",
-        description: "三角陣形と精密な連続パスで攻めるロボットチーム",
+        description: "機械的な精密動作と誘導シュートで攻めるロボットチーム",
         characterType: "normal",
         innerNames: ["ゼロ", "ボルト", "ギア", "ピストン", "センサー"],
         outNames: ["レーダー", "コイル", "ビット"],
@@ -655,19 +656,19 @@ class DodgeballGame {
         trimColor: "#42e5d0",
         eyeColor: "#37f3df",
         uniformEmblem: "robot",
-        maxHp: 150,
-        maxStamina: 100,
-        stats: { power: 7, speed: 7, jump: 7, technique: 7 },
+        maxHp: 220,
+        maxStamina: 200,
+        stats: { power: 10, speed: 7, jump: 6, technique: 9 },
         cpuProfile: "zenmaiGears",
         players: [
-          player("ゼロ", "inner", "normal", 150, 100, 7, 7, 7, 7, "clockStop", { captain: true, uniformEmblem: "robotCaptain" }),
-          player("ボルト", "inner", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("ギア", "inner", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("ピストン", "inner", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("センサー", "inner", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("レーダー", "out", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("コイル", "out", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" }),
-          player("ビット", "out", "normal", 150, 100, 7, 7, 7, 7, "kiai", { uniformEmblem: "robot" })
+          player("ゼロ", "inner", "normal", 320, 200, 12, 8, 8, 12, "lockRocket", { captain: true, uniformEmblem: "robotCaptain" }),
+          player("ボルト", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("ギア", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("ピストン", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("センサー", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("レーダー", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("コイル", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
+          player("ビット", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" })
         ]
       }
     ];
@@ -3008,7 +3009,13 @@ class DodgeballGame {
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const specialType = this.ball.specialShotType;
       const damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
-      const knockbackScale = this.ball.counterShot ? COUNTER_CONFIG.knockbackScale : specialType ? 1.5 : 1;
+      const knockbackScale = this.ball.counterShot
+        ? COUNTER_CONFIG.knockbackScale
+        : specialType === "lockRocket"
+          ? 1.6
+          : specialType
+            ? 1.5
+            : 1;
       const hpBefore = target.hp;
       const wasDodging = target.dodgeTimer > 0;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
@@ -3044,6 +3051,9 @@ class DodgeballGame {
         if (specialType === "clockStop") {
           this.startScreenShake(13, 0.16);
         }
+        if (specialType === "lockRocket") {
+          this.startScreenShake(15, 0.18);
+        }
         this.spawnEffect(
           this.ball.x,
           ballY,
@@ -3053,6 +3063,7 @@ class DodgeballGame {
             : specialType === "triple" ? "tripleImpact"
             : specialType === "boomerang" ? "bananaImpact"
             : specialType === "clockStop" ? "clockImpact"
+            : specialType === "lockRocket" ? "lockRocketImpact"
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
         );
@@ -3194,6 +3205,9 @@ class DodgeballGame {
     }
     if (specialType === "clockStop") {
       return baseDamage * 2.2;
+    }
+    if (specialType === "lockRocket") {
+      return baseDamage * 2.1;
     }
     return baseDamage;
   }
@@ -3356,6 +3370,7 @@ class DodgeballGame {
     if (specialType === "slap") return "#ff6b35";
     if (specialType === "tsutenkaku") return "#ffd83d";
     if (specialType === "clockStop") return "#50f5e0";
+    if (specialType === "lockRocket") return "#55dfff";
     return "#ffe46a";
   }
 
@@ -3685,7 +3700,7 @@ class DodgeballGame {
     const duration = type === "counterImpact"
       ? 0.5
       : type === "tripleSplit" ? 0.42
-      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" ? 0.52
+      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" || type === "lockRocketImpact" ? 0.52
       : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
@@ -3762,6 +3777,7 @@ class DodgeballGame {
     if (specialType === "slap") return "張り手シュート";
     if (specialType === "tsutenkaku") return "\u901a\u5929\u95a3\u843d\u3068\u3057";
     if (specialType === "clockStop") return "クロックストップ";
+    if (specialType === "lockRocket") return "ロックオン・ロケット";
     return "";
   }
 
@@ -5290,6 +5306,45 @@ class DodgeballGame {
           context.moveTo(Math.cos(angle) * radius * 0.4, Math.sin(angle) * radius * 0.4);
           context.lineTo(Math.cos(angle) * radius * 1.38, Math.sin(angle) * radius * 1.38);
           context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "lockRocketImpact") {
+        const radius = 28 + progress * 165;
+        context.save();
+        context.translate(effect.x, effect.y);
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = progress < 0.35 ? "#ffffff" : "#55dfff";
+        context.lineWidth = 14 - progress * 8;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#ffca55";
+        context.lineWidth = 6;
+        for (let spark = 0; spark < 18; spark += 1) {
+          const angle = spark * Math.PI * 2 / 18 + progress * 0.6;
+          const inner = radius * 0.28;
+          const outer = radius * (1.05 + spark % 3 * 0.2);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+        context.globalCompositeOperation = "source-over";
+        context.fillStyle = "rgba(75, 86, 92, 0.48)";
+        for (let smoke = 0; smoke < 8; smoke += 1) {
+          const angle = smoke * Math.PI * 2 / 8;
+          context.beginPath();
+          context.arc(
+            Math.cos(angle) * radius * 0.62,
+            Math.sin(angle) * radius * 0.38,
+            12 + progress * 18,
+            0,
+            Math.PI * 2
+          );
+          context.fill();
         }
         context.restore();
         continue;
