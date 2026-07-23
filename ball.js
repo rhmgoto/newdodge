@@ -4,6 +4,7 @@ const TSUTENKAKU_WARNING_MAX_TIME = 0.2;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
+const CLOCK_STOP_DURATION = 0.55;
 
 class Ball {
   constructor(config) {
@@ -57,6 +58,15 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.clockStopPhase = "none";
+    this.clockStopElapsed = 0;
+    this.clockStopX = 0;
+    this.clockStopY = 0;
+    this.clockStopZ = 0;
+    this.clockApproachDistance = 0;
+    this.clockBurstTargetX = 0;
+    this.clockBurstTargetY = 0;
+    this.clockBurstSpeed = 0;
     this.tsutenkakuPhase = "none";
     this.tsutenkakuElapsed = 0;
     this.tsutenkakuTargetX = 0;
@@ -101,6 +111,12 @@ class Ball {
 
     if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
       this.updateLightningZigzag(delta);
+      return;
+    }
+
+    if (this.isFlying && this.specialShotType === "clockStop" && this.clockStopPhase === "hold") {
+      this.updateSpecialShot(delta);
+      this.spin += delta * 2.4;
       return;
     }
 
@@ -163,6 +179,7 @@ class Ball {
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
+    const straightClockFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "clockStop";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
     const straightQuickFlight = this.isFlying && this.kind === "shoot" && this.quickShot;
     if (this.isFlying) {
@@ -174,6 +191,9 @@ class Ball {
         this.vz = 0;
       } else if (straightKiaiFlight) {
         this.z = this.kiaiFlightZ;
+        this.vz = 0;
+      } else if (straightClockFlight) {
+        this.z = this.clockStopZ;
         this.vz = 0;
       } else if (straightCounterFlight) {
         this.z = this.counterFlightZ;
@@ -276,6 +296,7 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.clearClockStop();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -313,6 +334,8 @@ class Ball {
       this.z = Math.min(76, 42 + actor.jumpZ * 0.18);
     } else if (this.specialShotType === "kiai") {
       this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
+    } else if (this.specialShotType === "clockStop") {
+      this.z = Math.min(58, 36 + actor.jumpZ * 0.08);
     }
     this.passTime = 0;
     this.passDuration = 0;
@@ -352,6 +375,7 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = this.specialShotType === "kiai" ? this.z : 0;
+    this.clearClockStop();
     this.clearTsutenkakuDrop();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
@@ -422,6 +446,21 @@ class Ball {
 
     const directX = dx / length;
     const directY = dy / length;
+    if (this.specialShotType === "clockStop") {
+      this.clockStopPhase = "approach";
+      this.clockStopElapsed = 0;
+      this.clockStopX = this.x + dx * 0.5;
+      this.clockStopY = this.y + dy * 0.5;
+      this.clockStopZ = this.z;
+      this.clockApproachDistance = Math.hypot(this.clockStopX - this.x, this.clockStopY - this.y);
+      const normalSpeedRatio = 1 + Math.max(0, Math.min(1, (throwMultiplier - 0.7) / 1.45)) * 0.24;
+      this.clockBurstSpeed = this.config.shootSpeed * normalSpeedRatio * 1.8;
+      this.vx = directX * speed * 0.92 + actor.vx * moveBonus;
+      this.vy = directY * speed * 0.92 + actor.vy * moveBonus;
+      this.vz = 0;
+      this.catchable = true;
+      return true;
+    }
     if (this.specialShotType === "boomerang") {
       const angle = this.boomerangCurveSign * Math.PI * 0.1 * BOOMERANG_ARC_SCALE;
       const cos = Math.cos(angle);
@@ -551,6 +590,10 @@ class Ball {
       this.updateTsutenkakuDrop(delta);
       return;
     }
+    if (this.specialShotType === "clockStop") {
+      this.updateClockStopShot(delta);
+      return;
+    }
     if (this.specialShotType === "boost") {
       this.boostElapsed += delta;
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
@@ -655,6 +698,71 @@ class Ball {
         }
       }
     }
+  }
+
+  updateClockStopShot(delta) {
+    if (this.clockStopPhase === "approach") {
+      if (this.travelDistance < this.clockApproachDistance) {
+        this.z = this.clockStopZ;
+        this.vz = 0;
+        return;
+      }
+      this.x = this.clockStopX;
+      this.y = this.clockStopY;
+      this.z = this.clockStopZ;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      this.clockStopPhase = "hold";
+      this.clockStopElapsed = 0;
+      this.catchable = false;
+      return;
+    }
+
+    if (this.clockStopPhase === "hold") {
+      this.clockStopElapsed += delta;
+      this.x = this.clockStopX;
+      this.y = this.clockStopY;
+      this.z = this.clockStopZ;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      if (this.clockStopElapsed < CLOCK_STOP_DURATION) return;
+
+      this.clockBurstTargetX = this.target && !this.target.defeated
+        ? this.target.x
+        : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
+      this.clockBurstTargetY = this.target && !this.target.defeated
+        ? this.target.y - 38
+        : this.clockStopY;
+      const dx = this.clockBurstTargetX - this.x;
+      const dy = this.clockBurstTargetY - this.y;
+      const length = Math.hypot(dx, dy) || 1;
+      this.vx = dx / length * this.clockBurstSpeed;
+      this.vy = dy / length * this.clockBurstSpeed;
+      this.vz = 0;
+      this.clockStopPhase = "burst";
+      this.clockStopElapsed = 0;
+      this.catchable = true;
+      return;
+    }
+
+    if (this.clockStopPhase === "burst") {
+      this.z = this.clockStopZ;
+      this.vz = 0;
+    }
+  }
+
+  clearClockStop() {
+    this.clockStopPhase = "none";
+    this.clockStopElapsed = 0;
+    this.clockStopX = 0;
+    this.clockStopY = 0;
+    this.clockStopZ = 0;
+    this.clockApproachDistance = 0;
+    this.clockBurstTargetX = 0;
+    this.clockBurstTargetY = 0;
+    this.clockBurstSpeed = 0;
   }
 
   updateTsutenkakuDrop(delta) {
@@ -867,6 +975,7 @@ class Ball {
     if (this.specialShotType === "soul") return "#ffc4e5";
     if (this.specialShotType === "slap") return "#ffb07a";
     if (this.specialShotType === "tsutenkaku") return "#ffd83d";
+    if (this.specialShotType === "clockStop") return "#50f5e0";
     return "#ffe46a";
   }
 
@@ -890,6 +999,11 @@ class Ball {
 
     if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
       this.drawLightningZigzagBall(context, debugMode);
+      return;
+    }
+
+    if (this.isFlying && this.specialShotType === "clockStop") {
+      this.drawClockStopShot(context, debugMode);
       return;
     }
 
@@ -1351,6 +1465,120 @@ class Ball {
     context.textAlign = "center";
     context.textBaseline = "bottom";
     context.fillText("!", 0, -radius * 0.38);
+    context.restore();
+  }
+
+  drawClockStopShot(context, debugMode) {
+    const drawY = this.y - this.z;
+    const holding = this.clockStopPhase === "hold";
+    const bursting = this.clockStopPhase === "burst";
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const tailX = -this.vx / speed;
+    const tailY = -this.vy / speed;
+    const pulse = 0.5 + Math.sin(performance.now() / 55) * 0.5;
+
+    context.save();
+    context.fillStyle = "rgba(30, 34, 37, 0.28)";
+    context.beginPath();
+    context.ellipse(this.x + 3, this.y + 10, this.radius * 1.2, this.radius * 0.42, 0, 0, Math.PI * 2);
+    context.fill();
+
+    if (!holding) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.lineCap = "round";
+      context.globalAlpha = bursting ? 0.82 : 0.4;
+      context.strokeStyle = bursting ? "#5bffe9" : "#b8fff5";
+      context.lineWidth = bursting ? 20 : 10;
+      context.beginPath();
+      context.moveTo(this.x + tailX * 14, drawY + tailY * 14);
+      context.lineTo(this.x + tailX * (bursting ? 210 : 92), drawY + tailY * (bursting ? 210 : 92));
+      context.stroke();
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = bursting ? 7 : 4;
+      context.stroke();
+      context.restore();
+    }
+
+    context.translate(this.x, drawY);
+    if (holding) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.72 + pulse * 0.2;
+      this.drawClockGear(context, this.radius + 24, 16, this.spin, "#55f5df", 7);
+      this.drawClockGear(context, this.radius + 50, 20, -this.spin * 0.72, "#fff06a", 5);
+      context.restore();
+
+      const remaining = Math.max(0, CLOCK_STOP_DURATION - this.clockStopElapsed);
+      const count = remaining > CLOCK_STOP_DURATION * 2 / 3 ? "3"
+        : remaining > CLOCK_STOP_DURATION / 3 ? "2" : "1";
+      context.font = "bold 52px Consolas, monospace";
+      context.textAlign = "center";
+      context.textBaseline = "bottom";
+      context.lineWidth = 8;
+      context.strokeStyle = "rgba(20,28,34,0.9)";
+      context.fillStyle = remaining < CLOCK_STOP_DURATION / 3 ? "#ff4b42" : "#fff06a";
+      context.strokeText(count, 0, -this.radius - 58);
+      context.fillText(count, 0, -this.radius - 58);
+    } else if (bursting) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.58;
+      this.drawClockGear(context, this.radius + 18 + pulse * 8, 14, -this.spin, "#63ffe9", 5);
+      context.restore();
+    }
+
+    const metal = context.createRadialGradient(-this.radius * 0.35, -this.radius * 0.45, 2, 0, 0, this.radius * 1.2);
+    metal.addColorStop(0, "#ffffff");
+    metal.addColorStop(0.38, "#c9d2d7");
+    metal.addColorStop(0.72, "#7c8991");
+    metal.addColorStop(1, "#3d474d");
+    context.fillStyle = metal;
+    context.strokeStyle = "#28343a";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(0, 0, this.radius * 1.08, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.strokeStyle = "#58f4df";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(0, 0, this.radius * 0.64, this.spin, this.spin + Math.PI * 1.45);
+    context.stroke();
+    context.fillStyle = "#203038";
+    context.beginPath();
+    context.arc(0, 0, this.radius * 0.22, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    if (debugMode) {
+      context.strokeStyle = "rgba(255,0,0,0.7)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  drawClockGear(context, radius, teeth, rotation, color, lineWidth) {
+    context.save();
+    context.rotate(rotation);
+    context.strokeStyle = color;
+    context.lineWidth = lineWidth;
+    context.beginPath();
+    for (let index = 0; index < teeth * 2; index += 1) {
+      const angle = index * Math.PI / teeth;
+      const toothRadius = radius * (index % 2 === 0 ? 1.16 : 0.91);
+      const x = Math.cos(angle) * toothRadius;
+      const y = Math.sin(angle) * toothRadius;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.closePath();
+    context.stroke();
+    context.beginPath();
+    context.arc(0, 0, radius * 0.64, 0, Math.PI * 2);
+    context.stroke();
     context.restore();
   }
 

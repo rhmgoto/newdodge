@@ -122,6 +122,7 @@ class Player {
     this.cpuProfile = options.cpuProfile || null;
     this.cpuControlled = Boolean(options.cpuControlled);
     this.specialShotType = options.specialShotType || null;
+    this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
     this.visualDirection = this.team === "left" ? "right" : "left";
@@ -680,6 +681,11 @@ class Player {
   }
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
+    if (this.isRobotStyle()) {
+      this.drawRobotCharacter(context, scale, drawY, motionTime, config);
+      return;
+    }
+
     const teamColors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
     const colors = {
       ...teamColors,
@@ -989,6 +995,224 @@ class Player {
 
   isSumoStyle() {
     return this.uniformEmblem === "sumo" || this.uniformEmblem === "sumoGold";
+  }
+
+  isRobotStyle() {
+    return this.uniformEmblem === "robot" || this.uniformEmblem === "robotCaptain";
+  }
+
+  getRobotManufacturingNumber() {
+    const numbers = {
+      "ゼロ": "00",
+      "ボルト": "01",
+      "ギア": "02",
+      "ピストン": "03",
+      "センサー": "04",
+      "レーダー": "05",
+      "コイル": "06",
+      "ビット": "07"
+    };
+    return numbers[this.name] || "99";
+  }
+
+  drawRobotCharacter(context, scale, drawY, motionTime, config) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const cadence = this.isDashing ? 42 : 78;
+    const stride = moving ? Math.sin(motionTime / cadence) * (this.isDashing ? 15 : 10) : 0;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const lowHp = this.hp / Math.max(1, this.maxHp) <= 0.3;
+    const eyeOn = !lowHp || Math.floor(motionTime / 130) % 2 === 0;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const rootY = crouch ? 25 : Math.abs(stride) * 0.18;
+    const hipY = -34 + rootY;
+    const shoulderY = -82 + rootY;
+    const headY = -126 + rootY + (crouch ? 16 : 0);
+    const bodyY = -66 + rootY;
+    let frontHand = { x: 42 + stride * 0.45, y: -40 + rootY };
+    let backHand = { x: -42 - stride * 0.45, y: -40 + rootY };
+
+    if (throwWindup) {
+      frontHand = { x: -68, y: -132 + rootY };
+      backHand = { x: 48, y: -42 + rootY };
+    } else if (throwRelease) {
+      frontHand = { x: 92, y: -70 + rootY };
+      backHand = { x: -48, y: -38 + rootY };
+    } else if (catching) {
+      frontHand = { x: 18, y: -137 + rootY };
+      backHand = { x: -18, y: -137 + rootY };
+    } else if (crouch) {
+      frontHand = { x: 24, y: -25 + rootY };
+      backHand = { x: -24, y: -25 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    const verticalView = this.visualDirection === "up" || this.visualDirection === "down";
+    context.scale(scale * (verticalView ? 0.94 : this.facing), scale);
+    if (down) {
+      context.rotate(-0.92);
+      context.scale(1.08, 0.8);
+    } else if (damaged) {
+      context.rotate(-0.1);
+    }
+
+    if (moving && this.jumpZ <= 0) {
+      context.save();
+      context.globalAlpha = 0.38;
+      context.fillStyle = "#eef7f4";
+      for (let index = 0; index < 4; index += 1) {
+        const phase = (motionTime / 95 + index * 1.7) % 5;
+        context.beginPath();
+        context.arc(-18 + index * 12, 20 + phase * 3, 4 + phase * 1.4, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.restore();
+    }
+
+    if (this.uniformEmblem === "robotCaptain") {
+      context.fillStyle = "#b9272f";
+      context.strokeStyle = "#68141a";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-25, shoulderY + 3);
+      context.lineTo(-48, -12 + rootY);
+      context.lineTo(-12, -24 + rootY);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+
+    const backFoot = { x: -17 - stride, y: 16 + rootY };
+    const frontFoot = { x: 17 + stride, y: 16 + rootY };
+    this.drawRobotLimb(context, { x: -13, y: hipY }, { x: -18 - stride * 0.5, y: -8 + rootY }, backFoot, 12);
+    this.drawRobotLimb(context, { x: 13, y: hipY }, { x: 18 + stride * 0.5, y: -8 + rootY }, frontFoot, 13);
+    this.drawRobotFoot(context, backFoot);
+    this.drawRobotFoot(context, frontFoot);
+    this.drawRobotLimb(context, { x: -25, y: shoulderY }, { x: -35, y: -62 + rootY }, backHand, 10);
+
+    const metal = context.createLinearGradient(-32, bodyY - 40, 32, bodyY + 38);
+    metal.addColorStop(0, "#f4f7f8");
+    metal.addColorStop(0.45, "#b9c4ca");
+    metal.addColorStop(1, "#77838b");
+    context.fillStyle = metal;
+    context.strokeStyle = "#48545c";
+    context.lineWidth = 4;
+    this.roundRect(context, -32, bodyY - 38, 64, 76, 18);
+    context.fill();
+    context.stroke();
+
+    const clockStopGlow = this.clockStopAnticipation && this.uniformEmblem === "robotCaptain";
+    context.fillStyle = clockStopGlow ? "#6d1018" : "#263139";
+    this.roundRect(context, -20, bodyY - 15, 40, 31, 5);
+    context.fill();
+    context.strokeStyle = clockStopGlow ? "#ff4356" : "#55f0dd";
+    context.lineWidth = 2;
+    context.shadowColor = clockStopGlow ? "#ff243c" : "transparent";
+    context.shadowBlur = clockStopGlow ? 18 : 0;
+    context.stroke();
+    context.shadowBlur = 0;
+    context.fillStyle = clockStopGlow ? "#fff1f1" : "#dffefa";
+    context.font = "bold 18px Consolas, monospace";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(this.getRobotManufacturingNumber(), 0, bodyY + 1);
+
+    this.drawRobotLimb(context, { x: 25, y: shoulderY }, { x: 35, y: -62 + rootY }, frontHand, 11);
+
+    const headMetal = context.createLinearGradient(-34, headY - 30, 34, headY + 28);
+    headMetal.addColorStop(0, "#f8fafb");
+    headMetal.addColorStop(0.5, "#b7c1c7");
+    headMetal.addColorStop(1, "#6f7b83");
+    context.fillStyle = headMetal;
+    context.strokeStyle = "#46525a";
+    context.lineWidth = 4;
+    this.roundRect(context, -36, headY - 29, 72, 58, 23);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#17252a";
+    this.roundRect(context, -27, headY - 9, 54, 18, 8);
+    context.fill();
+    if (eyeOn) {
+      const eyeColor = clockStopGlow || lowHp ? "#ff334d" : "#41f2dc";
+      context.shadowColor = eyeColor;
+      context.shadowBlur = lowHp ? 18 : 12;
+      context.fillStyle = eyeColor;
+      this.roundRect(context, -21, headY - 5, 42, 10, 5);
+      context.fill();
+      context.shadowBlur = 0;
+    }
+
+    context.strokeStyle = "#56636b";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.moveTo(0, headY - 29);
+    context.lineTo(0, headY - 48);
+    context.stroke();
+    context.fillStyle = this.uniformEmblem === "robotCaptain" ? "#f1c33d" : "#829099";
+    context.strokeStyle = this.uniformEmblem === "robotCaptain" ? "#9d7411" : "#46525a";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, headY - 52, this.uniformEmblem === "robotCaptain" ? 9 : 7, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    if (damaged) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      for (let index = 0; index < 8; index += 1) {
+        const angle = index * Math.PI * 2 / 8 + motionTime / 180;
+        context.strokeStyle = index % 2 === 0 ? "#fff06a" : "#ff7b2f";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.moveTo(Math.cos(angle) * 24, bodyY + Math.sin(angle) * 28);
+        context.lineTo(Math.cos(angle) * 58, bodyY + Math.sin(angle) * 58);
+        context.stroke();
+      }
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.42;
+      context.fillStyle = "#4a5156";
+      context.beginPath();
+      context.arc(22, headY - 43, 15, 0, Math.PI * 2);
+      context.arc(35, headY - 58, 11, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
+    context.restore();
+  }
+
+  drawRobotLimb(context, start, joint, end, width) {
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#1f262b";
+    context.lineWidth = width + 7;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(joint.x, joint.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    context.strokeStyle = "#aeb9bf";
+    context.lineWidth = width;
+    context.stroke();
+    context.fillStyle = "#171d21";
+    for (const point of [start, joint, end]) {
+      context.beginPath();
+      context.arc(point.x, point.y, width * 0.58, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  drawRobotFoot(context, point) {
+    context.fillStyle = "#7f8b92";
+    context.strokeStyle = "#3c474e";
+    context.lineWidth = 3;
+    this.roundRect(context, point.x - 13, point.y - 5, 26, 12, 5);
+    context.fill();
+    context.stroke();
   }
 
   drawUsaSleeveCuff(context, points, armWidth) {
