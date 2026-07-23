@@ -323,6 +323,12 @@ class CPUController {
       return this.createHolderPlan(holder, "catch-and-shoot", 0.85 + Math.random() * 0.35);
     }
 
+    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    const captain = this.team.find((p) => p.isCaptain && p !== holder && !p.defeated && p.hp > 0);
+    if (holder.role === "inner" && spiritReady && captain && Math.random() < 0.76) {
+      return this.createHolderPlan(holder, "pass-chain", 0.72 + Math.random() * 0.25);
+    }
+
     if (holder.cpuProfile === "townDodgies") {
       return this.getTownDodgiesHolderPlan(holder);
     }

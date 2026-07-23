@@ -2431,6 +2431,11 @@ class DodgeballGame {
     const candidates = team.filter((p) => p !== actor && !p.defeated);
     if (candidates.length === 0) return null;
 
+    if (actor.role === "inner" && this.hasFullSpirit(actor.team)) {
+      const captain = candidates.find((p) => p.isCaptain && p.hp > 0);
+      if (captain && Math.random() < 0.88) return captain;
+    }
+
     if (actor.cpuProfile === "americanBigBalls" && actor.name !== "\u30b8\u30e7\u30fc") {
       const joe = candidates.find((p) => p.name === "\u30b8\u30e7\u30fc" && p.hp > 0);
       if (joe && Math.random() < 0.68) return joe;
