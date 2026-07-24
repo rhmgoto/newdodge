@@ -121,7 +121,7 @@ class Ball {
     }
 
     if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
-      this.updateLightningZigzag(delta);
+      this.updateLightningZigzag(delta, bounds);
       return;
     }
 
@@ -366,6 +366,8 @@ class Ball {
       this.radius = this.baseRadius * 3.564;
     } else if (this.specialShotType === "kiai") {
       this.radius = this.baseRadius * 1.15;
+    } else if (this.specialShotType === "triple") {
+      this.radius = this.baseRadius * 1.3;
     } else if (this.specialShotType === "boomerang") {
       this.radius = this.baseRadius * BOOMERANG_SIZE_SCALE;
     } else if (this.specialShotType === "lockRocket") {
@@ -569,36 +571,34 @@ class Ball {
     this.tsutenkakuImpactPending = false;
   }
 
-  updateLightningZigzag(delta) {
-    if (this.lightningProgress >= 1) {
-      this.x = this.lightningTargetX;
-      this.y = this.lightningTargetY;
-      this.z = this.lightningTargetZ;
-      this.catchable = true;
-      this.lightningImpactTimer -= delta;
-      if (this.lightningImpactTimer <= 0) this.drop();
-      return;
-    }
-
+  updateLightningZigzag(delta, bounds) {
     const previousX = this.x;
     const previousY = this.y;
     const previousZ = this.z;
     this.lightningElapsed += delta;
-    const progress = Math.min(1, this.lightningElapsed / Math.max(0.01, this.lightningDuration));
+    const progress = this.lightningElapsed / Math.max(0.01, this.lightningDuration);
     const dx = this.lightningTargetX - this.lightningStartX;
     const dy = this.lightningTargetY - this.lightningStartY;
     const length = Math.hypot(dx, dy) || 1;
     const sideX = -dy / length;
     const sideY = dx / length;
     const zigzag = (2 / Math.PI) * Math.asin(Math.sin(progress * Math.PI * 6));
-    const envelope = Math.pow(Math.sin(progress * Math.PI), 0.48);
+    const envelope = progress <= 1
+      ? Math.pow(Math.max(0, Math.sin(progress * Math.PI)), 0.48)
+      : Math.min(1, (progress - 1) * 4);
     const offset = zigzag * this.lightningAmplitude * envelope;
     const baseX = this.lightningStartX + dx * progress;
     const baseY = this.lightningStartY + dy * progress;
-    const baseZ = this.lightningStartZ + (this.lightningTargetZ - this.lightningStartZ) * progress;
+    const baseZ = progress <= 1
+      ? this.lightningStartZ + (this.lightningTargetZ - this.lightningStartZ) * progress
+      : this.lightningTargetZ;
     this.x = baseX + sideX * offset;
     this.y = baseY + sideY * offset;
-    this.z = baseZ + Math.sin(progress * Math.PI) * 115;
+    this.z = baseZ + (
+      progress <= 1
+        ? Math.sin(progress * Math.PI) * 115
+        : Math.abs(Math.sin((progress - 1) * Math.PI * 2)) * 70
+    );
     this.vx = (this.x - previousX) / Math.max(0.001, delta);
     this.vy = (this.y - previousY) / Math.max(0.001, delta);
     this.vz = (this.z - previousZ) / Math.max(0.001, delta);
@@ -608,13 +608,16 @@ class Ball {
     this.lightningTrail.push({ x: this.x, y: this.y - this.z });
     if (this.lightningTrail.length > 16) this.lightningTrail.shift();
 
-    if (progress >= 1) {
-      this.x = this.lightningTargetX;
-      this.y = this.lightningTargetY;
-      this.z = this.lightningTargetZ;
-      this.lightningImpactTimer = 0.12;
-      this.lightningImpactPending = true;
-      this.lightningTrail.push({ x: this.x, y: this.y - this.z });
+    const reachedEdge = (
+      this.x <= bounds.x + this.radius ||
+      this.x >= bounds.x + bounds.w - this.radius ||
+      this.y <= bounds.y + this.radius ||
+      this.y >= bounds.y + bounds.h - this.radius
+    );
+    if (reachedEdge) {
+      this.x = Math.max(bounds.x + this.radius, Math.min(bounds.x + bounds.w - this.radius, this.x));
+      this.y = Math.max(bounds.y + this.radius, Math.min(bounds.y + bounds.h - this.radius, this.y));
+      this.drop();
     }
   }
 

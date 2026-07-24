@@ -1270,7 +1270,7 @@ class DodgeballGame {
         vx: dir.x * speed + actor.vx * GAME_CONFIG.ball.moveBonus * 0.03,
         vy: dir.y * speed + actor.vy * GAME_CONFIG.ball.moveBonus * 0.03,
         vz: 180 + Math.max(0, multiplier - 0.7) * 28 + actor.jumpZ * 0.04,
-        radius: GAME_CONFIG.ball.radius * 0.88,
+        radius: GAME_CONFIG.ball.radius * 0.88 * 1.3,
         team: actor.team,
         thrower: actor,
         power: actor.throwPower * Math.max(0.7, multiplier) * 0.2,
@@ -3140,7 +3140,8 @@ class DodgeballGame {
           this.ball.vz = Math.min(-120, this.ball.vz);
           return;
         }
-        if (specialType !== "boomerang" && specialType !== "iron") {
+        const piercingSpecial = specialType === "iron" || specialType === "slap";
+        if (specialType !== "boomerang" && !piercingSpecial) {
           this.spillHitBallInDefenderCourt(target, direction, damage);
         }
       } else if (wasDodging) {
