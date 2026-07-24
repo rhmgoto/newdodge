@@ -20,6 +20,18 @@ const DEFAULT_PLAYER_STATS = {
   technique: 5
 };
 
+// ゼンマイギアーズの低HP時強化。数値調整はここへまとめる。
+const ROBOT_OVERDRIVE_CONFIG = {
+  hpRatio: 0.3,
+  moveSpeedScale: 1.2,
+  jumpScale: 1.2,
+  reactionTimeScale: 0.75,
+  windupTimeScale: 0.9,
+  dodgeChanceScale: 1.12,
+  closeDodgeBonus: 0.08,
+  strongShotCatchScale: 0.35
+};
+
 const CHARACTER_TYPES = {
   normal: {
     maxHp: 60,
@@ -201,7 +213,8 @@ class Player {
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
     this.throwTimer = Math.max(0, this.throwTimer - delta);
     if (this.throwTimer > 0) {
-      const releaseWindow = this.throwKind === "shoot" ? 0.26 : 0.2;
+      const windupScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.windupTimeScale : 1;
+      const releaseWindow = (this.throwKind === "shoot" ? 0.26 : 0.2) * windupScale;
       this.throwPhase = this.throwTimer > releaseWindow ? "windup" : "release";
     } else {
       this.throwPhase = "none";
@@ -286,7 +299,8 @@ class Player {
     const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
     const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
     const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) : 1;
-    const speed = this.speed * dashMultiplier * duckSlow * turnSlow;
+    const overdriveScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.moveSpeedScale : 1;
+    const speed = this.speed * overdriveScale * dashMultiplier * duckSlow * turnSlow;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
     this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
@@ -333,7 +347,8 @@ class Player {
 
   jump(config) {
     if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.jumpZ > 0 || this.jumpVelocity > 0) return;
-    this.jumpVelocity = config.jumpVelocity * this.getStatScale("jump", 0.08);
+    const overdriveScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.jumpScale : 1;
+    this.jumpVelocity = config.jumpVelocity * this.getStatScale("jump", 0.08) * overdriveScale;
     this.state = "jumping";
   }
 
@@ -1037,6 +1052,15 @@ class Player {
     return this.uniformEmblem === "robot" || this.uniformEmblem === "robotCaptain";
   }
 
+  isRobotOverdrive() {
+    return (
+      this.isRobotStyle() &&
+      !this.defeated &&
+      this.hp > 0 &&
+      this.hp / Math.max(1, this.maxHp) <= ROBOT_OVERDRIVE_CONFIG.hpRatio
+    );
+  }
+
   getRobotManufacturingNumber() {
     const numbers = {
       "ゼロ": "00",
@@ -1061,7 +1085,8 @@ class Player {
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
     const damaged = this.state === "damaged";
     const down = this.state === "down" || this.defeated;
-    const lowHp = this.hp / Math.max(1, this.maxHp) <= 0.3;
+    const lowHp = this.hp / Math.max(1, this.maxHp) <= ROBOT_OVERDRIVE_CONFIG.hpRatio;
+    const overdrive = this.isRobotOverdrive();
     const eyeOn = !lowHp || Math.floor(motionTime / 130) % 2 === 0;
     const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
@@ -1113,6 +1138,10 @@ class Player {
       context.scale(1.08, 0.8);
     } else if (damaged) {
       context.rotate(-0.1);
+    }
+
+    if (overdrive) {
+      this.drawRobotOverdriveEffects(context, motionTime, moving, bodyY, headY);
     }
 
     if (moving && this.jumpZ <= 0) {
@@ -1381,6 +1410,62 @@ class Player {
       context.arc(35, headY - 58, 11, 0, Math.PI * 2);
       context.fill();
       context.restore();
+    }
+    context.restore();
+  }
+
+  drawRobotOverdriveEffects(context, motionTime, moving, bodyY, headY) {
+    context.save();
+    context.globalCompositeOperation = "lighter";
+
+    if (moving) {
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      const trailX = -this.vx / speed;
+      const trailY = -this.vy / speed * 0.35;
+      for (let trail = 3; trail >= 1; trail -= 1) {
+        context.save();
+        context.translate(trailX * trail * 15, trailY * trail * 15);
+        context.globalAlpha = 0.05 + (4 - trail) * 0.035;
+        context.fillStyle = "#ff283f";
+        this.roundRect(context, -29, bodyY - 35, 58, 70, 17);
+        context.fill();
+        context.beginPath();
+        context.arc(0, headY, 32, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
+    }
+
+    const pulse = 0.55 + Math.sin(motionTime / 55) * 0.2;
+    for (let spark = 0; spark < 7; spark += 1) {
+      const angle = spark * Math.PI * 2 / 7 + motionTime / 210;
+      const inner = 36 + (spark % 2) * 9;
+      const outer = inner + 13 + pulse * 8;
+      context.globalAlpha = 0.48 + (spark % 3) * 0.13;
+      context.strokeStyle = spark % 2 === 0 ? "#fff07a" : "#ff3d31";
+      context.lineWidth = spark % 2 === 0 ? 3 : 4;
+      context.beginPath();
+      context.moveTo(Math.cos(angle) * inner, bodyY + Math.sin(angle) * inner * 0.85);
+      context.lineTo(Math.cos(angle) * outer, bodyY + Math.sin(angle) * outer * 0.85);
+      context.stroke();
+    }
+
+    const steamPhase = (motionTime % 520) / 520;
+    for (let side = -1; side <= 1; side += 2) {
+      for (let puff = 0; puff < 3; puff += 1) {
+        const phase = (steamPhase + puff * 0.23) % 1;
+        context.globalAlpha = (1 - phase) * 0.38;
+        context.fillStyle = puff % 2 === 0 ? "#ffd7d7" : "#f3f6f6";
+        context.beginPath();
+        context.arc(
+          side * (34 + phase * 22),
+          bodyY - 25 - phase * 38,
+          5 + phase * 7,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      }
     }
     context.restore();
   }

@@ -17,7 +17,6 @@ const CPU_ATTACK_TACTIC_WEIGHTS = {
   buildUp: 1,
   quickAttack: 1,
   sideOverload: 1,
-  aceFocus: 1,
   trianglePass: 1,
   oneTwo: 1,
   sideChange: 1,
@@ -43,8 +42,8 @@ class CPUController {
     this.holderPlan = null;
     this.currentHolderId = null;
     this.evasionPlans = new Map();
-    this.passChainRemaining = 0;
-    this.passChainFinisher = false;
+    this.passCutAssignment = null;
+    this.passReceiverPrediction = null;
     this.attackTactic = null;
     this.lastTacticType = null;
     this.tacticSerial = 0;
@@ -92,7 +91,9 @@ class CPUController {
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
-      this.throwTimer = this.shouldUseTacticalQuickShot(cpuHolder)
+      this.throwTimer = this.isRobotOverdrive(cpuHolder)
+        ? 0.22 + Math.random() * 0.16
+        : this.shouldUseTacticalQuickShot(cpuHolder)
         ? 0.04 + Math.random() * 0.05
         : cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
         ? Math.min(this.throwTimer, 0.08 + Math.random() * 0.08)
@@ -148,7 +149,6 @@ class CPUController {
 
   selectAttackTactic(holder) {
     const weights = this.getAttackTacticWeights();
-    if (!this.config.isSpiritReady?.(this.teamName)) weights.aceFocus = 0;
     if (this.lastTacticType && weights[this.lastTacticType] != null) {
       weights[this.lastTacticType] *= 0.35;
     }
@@ -177,7 +177,7 @@ class CPUController {
           : type === "tempoChange" ? 2 + Math.floor(Math.random() * 2)
             : type === "outfieldRelay" ? 3
               : type === "sideOverload" || type === "oneTwo" || type === "decoyAce" ? 2
-                : type === "quickAttack" || type === "sideChange" || type === "shotFeint" || type === "aceFocus" ? 1
+                : type === "quickAttack" || type === "sideChange" || type === "shotFeint" ? 1
                   : 0,
       side: Math.random() < 0.5 ? -1 : 1,
       firstPasserId: holder.id,
@@ -245,12 +245,6 @@ class CPUController {
       if (tactic.step === 0) return passThenShoot(this.getSameSideTeammate(holder, tactic.side));
       if (tactic.step === 1) return passThenShoot(this.getOppositeSideTeammate(holder, tactic.side));
       return this.createTacticalShotPlan(holder, "dash-shot");
-    }
-
-    if (tactic.type === "aceFocus") {
-      const ace = this.team.find((member) => member.id === tactic.aceId && !member.defeated);
-      if (ace && holder !== ace && tactic.step < 1) return passThenShoot(ace);
-      return this.createTacticalShotPlan(holder, Math.random() < 0.55 ? "dash-strong-shot" : "charge-shot");
     }
 
     if (tactic.type === "trianglePass") {
@@ -438,8 +432,6 @@ class CPUController {
           this.specialAttackState.passStartedAt = Date.now();
         } else if (plan.tactical) {
           this.advanceAttackTactic(holder);
-        } else if (this.passChainRemaining <= 0 && !this.passChainFinisher) {
-          this.passChainRemaining = 1 + Math.floor(Math.random() * 2);
         }
         this.throwTimer = plan.slowPass
           ? 0.72 + Math.random() * 0.3
@@ -670,6 +662,15 @@ class CPUController {
     }
     if (this.holderPlan && this.holderPlan.holderId === holder.id) return this.holderPlan;
 
+    if (this.isRobotOverdrive(holder)) {
+      const roll = Math.random();
+      const type = roll < 0.45 ? "dash-shot" : roll < 0.72 ? "charge-shot" : "normal-shot";
+      return this.markTacticalPlan(
+        this.createHolderPlan(holder, type, 0.58 + Math.random() * 0.18),
+        true
+      );
+    }
+
     const tacticalPlan = this.getTacticalHolderPlan(holder);
     if (tacticalPlan) return tacticalPlan;
 
@@ -677,59 +678,10 @@ class CPUController {
       return this.createHolderPlan(holder, "catch-and-shoot", 0.85 + Math.random() * 0.35);
     }
 
-    if (holder.cpuProfile === "townDodgies") {
-      return this.getTownDodgiesHolderPlan(holder);
-    }
-    if (holder.cpuProfile === "bakusouBoys") {
-      return this.getBakusouBoysHolderPlan(holder);
-    }
-    if (holder.cpuProfile === "hinomaruBombers") {
-      return this.getHinomaruBombersHolderPlan(holder);
-    }
-    if (holder.cpuProfile === "americanBigBalls") {
-      return this.getAmericanBigBallsHolderPlan(holder);
-    }
-    if (holder.cpuProfile === "kuidaoRangers") {
-      return this.getKuidaoRangersHolderPlan(holder);
-    }
-    if (holder.cpuProfile === "doskois") {
-      return this.getDoskoisHolderPlan(holder);
-    }
-
     const roll = Math.random();
-    let type = "normal-shot";
-    if (this.passChainFinisher) {
-      const finisherRoll = Math.random();
-      type = finisherRoll < 0.34 ? "dash-strong-shot" : finisherRoll < 0.66 ? "dash-jump-strong-shot" : finisherRoll < 0.84 ? "jump-strong-shot" : "jump-shot";
-      this.passChainFinisher = false;
-    } else if (this.passChainRemaining > 0) {
-      this.passChainRemaining -= 1;
-      type = "pass-chain";
-      if (this.passChainRemaining <= 0) {
-        this.passChainFinisher = true;
-      }
-    } else {
-      if (holder.role === "out") {
-        type = roll < 0.16 ? "normal-shot" : roll < 0.34 ? "pass-chain" : roll < 0.58 ? "dash-strong-shot" : roll < 0.78 ? "dash-jump-strong-shot" : roll < 0.9 ? "jump-strong-shot" : "jump-shot";
-      } else if (roll < 0.12) {
-        type = "normal-shot";
-      } else if (roll < 0.26) {
-        type = "center-shot";
-      } else if (roll < 0.4) {
-        type = "dash-shot";
-      } else if (roll < 0.52) {
-        type = "jump-shot";
-      } else if (roll < 0.66) {
-        type = "pass-chain";
-      } else if (roll < 0.82) {
-        type = "dash-strong-shot";
-      } else if (roll < 0.95) {
-        type = "dash-jump-strong-shot";
-      } else {
-        type = "jump-strong-shot";
-      }
-    }
-
+    const type = holder.role === "out"
+      ? (roll < 0.45 ? "dash-strong-shot" : roll < 0.75 ? "jump-shot" : "normal-shot")
+      : (roll < 0.35 ? "center-shot" : roll < 0.7 ? "dash-shot" : "normal-shot");
     return this.createHolderPlan(holder, type, 1.05 + Math.random() * 0.45);
   }
 
@@ -785,8 +737,6 @@ class CPUController {
       0.92
     );
     shotPlan.specialAttackPlan = true;
-    this.passChainRemaining = 0;
-    this.passChainFinisher = false;
     if (this.attackTactic) this.attackTactic.finished = true;
     return shotPlan;
   }
@@ -802,11 +752,8 @@ class CPUController {
       passUsed: false,
       passInFlight: false,
       passerId: null,
-      passStartedAt: 0,
-      startedAt: Date.now()
+      passStartedAt: 0
     };
-    this.passChainRemaining = 0;
-    this.passChainFinisher = false;
     if (this.attackTactic) this.attackTactic.finished = true;
     return shooter;
   }
@@ -881,219 +828,21 @@ class CPUController {
     plan.y = launchY;
     plan.createdAt = Date.now();
     plan.launchStarted = false;
-    this.passChainRemaining = 0;
-    this.passChainFinisher = false;
     if (this.attackTactic) this.attackTactic.finished = true;
     return plan;
   }
 
-  getTownDodgiesHolderPlan(holder) {
-    const roll = Math.random();
-    let type = "normal-shot";
-    if (holder.role === "out") {
-      type = roll < 0.2 ? "normal-shot"
-        : roll < 0.38 ? "pass-chain"
-          : roll < 0.62 ? "dash-shot"
-            : roll < 0.84 ? "dash-strong-shot"
-              : roll < 0.96 ? "charge-shot"
-                : "jump-shot";
-    } else {
-      type = roll < 0.16 ? "normal-shot"
-        : roll < 0.3 ? "center-shot"
-          : roll < 0.52 ? "dash-shot"
-            : roll < 0.64 ? "pass-chain"
-              : roll < 0.84 ? "dash-strong-shot"
-                : roll < 0.98 ? "charge-shot"
-                  : "jump-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 0.75 + Math.random() * 0.45);
-  }
-
-  getBakusouBoysHolderPlan(holder) {
-    const roll = Math.random();
-    let type = "pass-chain";
-    if (holder.role === "inner") {
-      type = roll < 0.3 ? "dash-jump-strong-shot"
-        : roll < 0.46 ? "dash-strong-shot"
-          : roll < 0.68 ? "pass-chain"
-            : roll < 0.84 ? "jump-shot"
-              : roll < 0.94 ? "dash-shot"
-                : "normal-shot";
-    } else {
-      type = roll < 0.34 ? "pass-chain"
-        : roll < 0.58 ? "jump-shot"
-          : roll < 0.78 ? "dash-jump-strong-shot"
-            : roll < 0.92 ? "dash-shot"
-              : "normal-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 1.05 + Math.random() * 0.4);
-  }
-
-  getHinomaruBombersHolderPlan(holder) {
-    const roll = Math.random();
-    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
-    const specialShooter = holder.name === "だいち" || holder.name === "しょう";
-    let type = "pass-chain";
-    if (spiritReady && holder.role === "inner" && specialShooter) {
-      type = roll < 0.34 ? "dash-jump-strong-shot"
-        : roll < 0.62 ? "jump-strong-shot"
-          : roll < 0.84 ? "dash-strong-shot"
-            : "charge-shot";
-      this.passChainRemaining = 0;
-      this.passChainFinisher = false;
-    } else if (spiritReady && holder.role === "inner") {
-      type = roll < 0.86 ? "pass-chain"
-        : roll < 0.94 ? "dash-strong-shot"
-          : "jump-strong-shot";
-    } else if (this.passChainFinisher) {
-      const finisherRoll = Math.random();
-      type = finisherRoll < 0.16 ? "dash-jump-strong-shot"
-        : finisherRoll < 0.3 ? "dash-strong-shot"
-          : finisherRoll < 0.42 ? "jump-strong-shot"
-            : finisherRoll < 0.7 ? "jump-shot"
-              : "dash-shot";
-      this.passChainFinisher = false;
-    } else if (this.passChainRemaining > 0) {
-      this.passChainRemaining -= 1;
-      type = "pass-chain";
-      if (this.passChainRemaining <= 0) {
-        this.passChainFinisher = true;
-      }
-    } else if (holder.role === "inner") {
-      type = roll < 0.5 ? "pass-chain"
-        : roll < 0.62 ? "dash-jump-strong-shot"
-          : roll < 0.78 ? "dash-strong-shot"
-            : roll < 0.8 ? "jump-strong-shot"
-              : roll < 0.9 ? "jump-shot"
-                : "dash-shot";
-    } else {
-      type = roll < 0.56 ? "pass-chain"
-        : roll < 0.66 ? "dash-jump-strong-shot"
-          : roll < 0.82 ? "dash-strong-shot"
-            : roll < 0.86 ? "jump-strong-shot"
-              : roll < 0.94 ? "jump-shot"
-                : "dash-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 1.02 + Math.random() * 0.28);
-  }
-
-  getAmericanBigBallsHolderPlan(holder) {
-    const roll = Math.random();
-    let type = "pass-chain";
-    if (holder.name === "\u30b8\u30e7\u30fc") {
-      type = roll < 0.24 ? "dash-jump-strong-shot"
-        : roll < 0.48 ? "dash-strong-shot"
-          : roll < 0.64 ? "jump-strong-shot"
-            : roll < 0.78 ? "center-shot"
-              : roll < 0.9 ? "normal-shot"
-                : "pass-chain";
-    } else if (this.passChainFinisher) {
-      type = roll < 0.36 ? "dash-strong-shot"
-        : roll < 0.58 ? "jump-strong-shot"
-          : roll < 0.78 ? "center-shot"
-            : "normal-shot";
-      this.passChainFinisher = false;
-    } else if (this.passChainRemaining > 0) {
-      this.passChainRemaining -= 1;
-      type = "pass-chain";
-      if (this.passChainRemaining <= 0) {
-        this.passChainFinisher = true;
-      }
-    } else if (holder.role === "inner") {
-      type = roll < 0.58 ? "pass-chain"
-        : roll < 0.74 ? "dash-strong-shot"
-          : roll < 0.86 ? "jump-strong-shot"
-            : roll < 0.94 ? "center-shot"
-              : "normal-shot";
-    } else {
-      type = roll < 0.64 ? "pass-chain"
-        : roll < 0.82 ? "dash-strong-shot"
-          : roll < 0.92 ? "jump-strong-shot"
-            : "normal-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 1.08 + Math.random() * 0.32);
-  }
-
-  getKuidaoRangersHolderPlan(holder) {
-    const roll = Math.random();
-    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
-    let type = "pass-chain";
-
-    if (holder.name === "\u305f\u3053\u3078\u3044") {
-      type = spiritReady
-        ? roll < 0.34 ? "dash-jump-strong-shot"
-          : roll < 0.62 ? "jump-strong-shot"
-            : roll < 0.84 ? "dash-strong-shot"
-              : "charge-shot"
-        : roll < 0.28 ? "jump-shot"
-          : roll < 0.52 ? "dash-shot"
-            : roll < 0.74 ? "pass-chain"
-              : "normal-shot";
-    } else if (spiritReady) {
-      type = roll < 0.86 ? "pass-chain"
-        : roll < 0.94 ? "dash-strong-shot"
-          : "jump-strong-shot";
-    } else if (holder.role === "out") {
-      type = roll < 0.48 ? "pass-chain"
-        : roll < 0.68 ? "jump-shot"
-          : roll < 0.86 ? "dash-shot"
-            : "normal-shot";
-    } else {
-      type = roll < 0.42 ? "pass-chain"
-        : roll < 0.62 ? "dash-shot"
-          : roll < 0.78 ? "jump-shot"
-            : roll < 0.92 ? "center-shot"
-              : "normal-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 1.04 + Math.random() * 0.34);
-  }
-
-  getDoskoisHolderPlan(holder) {
-    const roll = Math.random();
-    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
-    let type = "dash-strong-shot";
-
-    if (holder.name === "よこづな") {
-      type = spiritReady
-        ? roll < 0.38 ? "dash-strong-shot"
-          : roll < 0.68 ? "jump-strong-shot"
-            : roll < 0.9 ? "charge-shot"
-              : "dash-jump-strong-shot"
-        : roll < 0.3 ? "dash-strong-shot"
-          : roll < 0.54 ? "charge-shot"
-            : roll < 0.76 ? "center-shot"
-              : roll < 0.9 ? "normal-shot"
-                : "pass-chain";
-    } else if (spiritReady) {
-      type = roll < 0.88 ? "pass-chain" : "dash-strong-shot";
-    } else if (holder.role === "out") {
-      type = roll < 0.5 ? "pass-chain"
-        : roll < 0.72 ? "dash-strong-shot"
-          : roll < 0.9 ? "charge-shot"
-            : "normal-shot";
-    } else {
-      type = roll < 0.42 ? "pass-chain"
-        : roll < 0.66 ? "dash-strong-shot"
-          : roll < 0.84 ? "charge-shot"
-            : "center-shot";
-    }
-
-    return this.createHolderPlan(holder, type, 1.14 + Math.random() * 0.28);
-  }
-
   createHolderPlan(holder, type, chargeTime) {
     const centerLineX = this.getAttackLineX(holder);
+    const windupScale = this.isRobotOverdrive(holder)
+      ? ROBOT_OVERDRIVE_CONFIG.windupTimeScale
+      : 1;
     this.holderPlan = {
       holderId: holder.id,
       type,
       x: holder.role === "inner" ? centerLineX : holder.homeX,
       y: holder.y,
-      chargeTime,
+      chargeTime: chargeTime * windupScale,
       chargeStarted: false,
       startedAt: 0,
       jumpAttempted: false,
@@ -1239,7 +988,7 @@ class CPUController {
           ? this.config.court.y + this.config.court.h * 0.16
           : this.config.court.y + this.config.court.h * 0.84;
         dash = true;
-      } else if (tactic.type === "aceFocus" || tactic.type === "decoyAce") {
+      } else if (tactic.type === "decoyAce") {
         if (member.id === tactic.aceId) {
           point.x = this.getAttackLineX(member);
           point.y = centerY;
@@ -1372,36 +1121,33 @@ class CPUController {
     return best;
   }
 
-  evadeHolder(command, member, holder) {
-    const area = this.config.areas ? this.config.areas[member.zone] : null;
-    const away = this.normalizedVector(member.x - holder.x, member.y - holder.y);
-    const retreatDirection = member.team === "left" ? -1 : 1;
-    const candidates = [
-      { x: member.x + away.x * 360, y: member.y + away.y * 240 },
-      { x: member.homeX + retreatDirection * 260, y: member.homeY - 170 },
-      { x: member.homeX + retreatDirection * 300, y: member.homeY + 170 },
-      { x: member.homeX + retreatDirection * 430, y: member.homeY },
-      { x: member.homeX + retreatDirection * 180, y: member.homeY }
-    ];
+  evadeHolder(command, member, holder, plan) {
+    const target = plan.target || this.getBestEvasionPoint(member, holder).point;
+    if (!target) {
+      this.stop(command);
+      return;
+    }
 
-    let best = null;
-    let bestScore = -Infinity;
-    for (const point of candidates) {
-      const p = this.clampPointToArea(point, area, member.radius);
-      const holderDistance = Math.hypot(p.x - holder.x, p.y - holder.y);
-      const teammatePenalty = this.teammateCrowding(member, p.x, p.y);
-      const homePenalty = Math.hypot(p.x - member.homeX, p.y - member.homeY) * 0.06;
-      const score = holderDistance * 1.45 - teammatePenalty * 1.8 - homePenalty;
-      if (score > bestScore) {
-        best = p;
-        bestScore = score;
+    const now = Date.now();
+    const distance = Math.hypot(member.x - target.x, member.y - target.y);
+    if (distance <= 40 && !plan.arrivalHoldCompleted) {
+      if (!plan.holdUntil) {
+        plan.holdUntil = now + 400 + Math.random() * 400;
+        plan.expiresAt = Math.max(plan.expiresAt || 0, plan.holdUntil);
       }
+      if (now < plan.holdUntil) {
+        this.stop(command);
+        return;
+      }
+      plan.arrivalHoldCompleted = true;
+      plan.expiresAt = 0;
+      this.stop(command);
+      return;
     }
 
-    if (best) {
-      this.moveToward(command, member, best.x, best.y);
-      command.dash = true;
-    }
+    this.moveToward(command, member, target.x, target.y);
+    const holderDistance = Math.hypot(member.x - holder.x, member.y - holder.y);
+    command.dash = distance > 220 && holderDistance < 600;
   }
 
   controlWithoutBall(command, member, holder) {
@@ -1436,7 +1182,7 @@ class CPUController {
       return;
     }
 
-    this.evadeHolder(command, member, holder);
+    this.evadeHolder(command, member, holder, plan);
   }
 
   retreatLowHp(command, member, holder) {
@@ -1454,27 +1200,66 @@ class CPUController {
   }
 
   getPassCutDefender(holder) {
+    const now = Date.now();
+    const assigned = this.team.find((member) => (
+      member.id === this.passCutAssignment?.defenderId &&
+      !member.defeated
+    ));
+    if (
+      assigned &&
+      this.passCutAssignment.holderId === holder.id &&
+      this.passCutAssignment.expiresAt > now
+    ) {
+      return assigned;
+    }
+
     const candidates = this.team.filter((member) => (
       !member.defeated &&
       member.role === "inner" &&
       member.hp / Math.max(1, member.maxHp) > 0.32
     ));
-    return candidates.sort((a, b) => {
+    const defender = [...candidates].sort((a, b) => {
       const aScore = (a.stats?.technique || 5) * 2 + (a.stats?.speed || 5) - Math.hypot(a.x - holder.x, a.y - holder.y) * 0.004;
       const bScore = (b.stats?.technique || 5) * 2 + (b.stats?.speed || 5) - Math.hypot(b.x - holder.x, b.y - holder.y) * 0.004;
       return bScore - aScore;
     })[0] || null;
+    this.passCutAssignment = {
+      holderId: holder.id,
+      defenderId: defender?.id || null,
+      expiresAt: now + 350 + Math.random() * 250
+    };
+    return defender;
   }
 
   getLikelyPassReceiver(holder) {
+    const now = Date.now();
+    const predicted = this.opponents.find((member) => (
+      member.id === this.passReceiverPrediction?.receiverId &&
+      !member.defeated &&
+      member !== holder
+    ));
+    if (
+      predicted &&
+      this.passReceiverPrediction.holderId === holder.id &&
+      this.passReceiverPrediction.expiresAt > now
+    ) {
+      return predicted;
+    }
+
     const active = this.opponents.filter((member) => !member.defeated && member !== holder);
-    return active.sort((a, b) => {
+    const receiver = [...active].sort((a, b) => {
       const aDistance = Math.hypot(a.x - holder.x, a.y - holder.y);
       const bDistance = Math.hypot(b.x - holder.x, b.y - holder.y);
       const aScore = (a.role === "out" ? 150 : 0) + Math.abs(a.y - holder.y) * 0.22 - aDistance * 0.08;
       const bScore = (b.role === "out" ? 150 : 0) + Math.abs(b.y - holder.y) * 0.22 - bDistance * 0.08;
       return bScore - aScore;
     })[0] || null;
+    this.passReceiverPrediction = {
+      holderId: holder.id,
+      receiverId: receiver?.id || null,
+      expiresAt: now + 350 + Math.random() * 250
+    };
+    return receiver;
   }
 
   isNearJumpApex(member) {
@@ -1502,19 +1287,87 @@ class CPUController {
 
   getEvasionPlan(member, holder) {
     const key = member.id;
-    const current = this.evasionPlans.get(key);
+    let current = this.evasionPlans.get(key);
     const now = Date.now();
-    if (current && current.holderId === holder.id && current.expiresAt > now) return current;
+    const preparingShot = this.isHolderPreparingShot(holder);
+    if (current?.holderId !== holder.id || current?.arrivalHoldCompleted) current = null;
+    if (current?.type === "side-step" && !preparingShot) current = null;
 
+    if (current) {
+      if (current.holdUntil > now || current.nextDecisionAt > now) return current;
+      current.nextDecisionAt = now + 350 + Math.random() * 250;
+      if (current.targetLockUntil > now) return current;
+    }
+
+    const useSideStep = preparingShot && Math.random() < 0.22;
+    const best = useSideStep ? null : this.getBestEvasionPoint(member, holder);
+    if (current?.type === "run-away" && best) {
+      const currentScore = this.scoreEvasionPoint(member, holder, current.target);
+      const requiredImprovement = Math.max(80, Math.abs(currentScore) * 0.15);
+      if (best.score < currentScore + requiredImprovement) {
+        current.targetLockUntil = now + 400 + Math.random() * 300;
+        current.expiresAt = current.targetLockUntil;
+        return current;
+      }
+    }
+
+    const lockDuration = 800 + Math.random() * 600;
     const plan = {
       holderId: holder.id,
-      type: Math.random() < 0.22 ? "side-step" : "run-away",
+      type: useSideStep ? "side-step" : "run-away",
       width: 80 + Math.random() * 90,
       speed: 260 + Math.random() * 220,
-      expiresAt: now + 650 + Math.random() * 900
+      target: best?.point || null,
+      targetScore: best?.score ?? -Infinity,
+      nextDecisionAt: now + 350 + Math.random() * 250,
+      targetLockUntil: now + lockDuration,
+      expiresAt: now + lockDuration,
+      holdUntil: 0,
+      arrivalHoldCompleted: false
     };
     this.evasionPlans.set(key, plan);
     return plan;
+  }
+
+  isHolderPreparingShot(holder) {
+    return Boolean(
+      holder &&
+      this.ball.owner === holder &&
+      holder.state === "throwing"
+    );
+  }
+
+  getBestEvasionPoint(member, holder) {
+    const area = this.config.areas ? this.config.areas[member.zone] : null;
+    const away = this.normalizedVector(member.x - holder.x, member.y - holder.y);
+    const retreatDirection = member.team === "left" ? -1 : 1;
+    const candidates = [
+      { x: member.x + away.x * 360, y: member.y + away.y * 240 },
+      { x: member.homeX + retreatDirection * 260, y: member.homeY - 170 },
+      { x: member.homeX + retreatDirection * 300, y: member.homeY + 170 },
+      { x: member.homeX + retreatDirection * 430, y: member.homeY },
+      { x: member.homeX + retreatDirection * 180, y: member.homeY }
+    ];
+
+    let point = null;
+    let score = -Infinity;
+    for (const candidate of candidates) {
+      const clamped = this.clampPointToArea(candidate, area, member.radius);
+      const candidateScore = this.scoreEvasionPoint(member, holder, clamped);
+      if (candidateScore > score) {
+        point = clamped;
+        score = candidateScore;
+      }
+    }
+    return { point, score };
+  }
+
+  scoreEvasionPoint(member, holder, point) {
+    if (!point) return -Infinity;
+    const holderDistance = Math.hypot(point.x - holder.x, point.y - holder.y);
+    const teammatePenalty = this.teammateCrowding(member, point.x, point.y);
+    const homePenalty = Math.hypot(point.x - member.homeX, point.y - member.homeY) * 0.06;
+    return holderDistance * 1.45 - teammatePenalty * 1.8 - homePenalty;
   }
 
   reactToIncomingBall(delta) {
@@ -1575,23 +1428,36 @@ class CPUController {
         profileCatchScale = strongShot ? 1.25 : 2.45;
         profileDodgeScale = strongShot ? 1.12 : 0.96;
       }
+      const robotOverdrive = this.isRobotOverdrive(member);
+      if (robotOverdrive) {
+        profileDodgeScale *= ROBOT_OVERDRIVE_CONFIG.dodgeChanceScale;
+        if (strongShot) {
+          profileCatchScale *= ROBOT_OVERDRIVE_CONFIG.strongShotCatchScale;
+        }
+      }
 
       const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30;
       const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
       const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1);
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
-      const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted);
+      const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive);
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {
         this.dodgeIncomingShot(command, member, true, {
           speed,
           jump,
           closePanic,
-          closeRange: true
+          closeRange: true,
+          robotOverdrive
         });
       } else if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
         command.catch = true;
       } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
-        this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, { speed, jump, closePanic });
+        this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, {
+          speed,
+          jump,
+          closePanic,
+          robotOverdrive
+        });
       }
     }
 
@@ -1623,13 +1489,14 @@ class CPUController {
     return false;
   }
 
-  getCloseRangeDodgeChance(speed, distance, targeted) {
+  getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive = false) {
     const speedBonus = (Math.max(1, Math.min(20, speed)) - 5) * CPU_CLOSE_SHOT_DEFENSE.dodgeChancePerSpeed;
     const targetBonus = targeted ? CPU_CLOSE_SHOT_DEFENSE.targetedBonus : 0;
     const panicBonus = distance < 170 ? CPU_CLOSE_SHOT_DEFENSE.panicBonus : 0;
     return Math.max(0.32, Math.min(
       CPU_CLOSE_SHOT_DEFENSE.maxDodgeChance,
-      CPU_CLOSE_SHOT_DEFENSE.baseDodgeChance + speedBonus + targetBonus + panicBonus
+      CPU_CLOSE_SHOT_DEFENSE.baseDodgeChance + speedBonus + targetBonus + panicBonus +
+        (robotOverdrive ? ROBOT_OVERDRIVE_CONFIG.closeDodgeBonus : 0)
     ));
   }
 
@@ -1649,7 +1516,11 @@ class CPUController {
     const speedBias = Math.max(0, speed - 5) * 0.08;
     const jumpBias = Math.max(0, jump - 5) * 0.1;
     const closeDodgeSuccess = traits.closeRange
-      ? this.getCloseRangeDodgeSuccessChance(speed, traits.closePanic)
+      ? Math.min(
+        CPU_CLOSE_SHOT_DEFENSE.maxSuccessChance,
+        this.getCloseRangeDodgeSuccessChance(speed, traits.closePanic) +
+          (traits.robotOverdrive ? ROBOT_OVERDRIVE_CONFIG.closeDodgeBonus : 0)
+      )
       : 0;
     if (traits.closeRange && dodgeRoll < closeDodgeSuccess) {
       command.crouch = true;
@@ -1663,7 +1534,7 @@ class CPUController {
     const perpendicularY = this.ball.vx / incomingSpeed;
     const awayY = member.y < this.config.court.y + this.config.court.h * 0.5 ? 1 : -1;
     const side = Math.random() < 0.5 ? -1 : 1;
-    const lateralStrength = speed >= 7 ? 1 : 0.62;
+    const lateralStrength = (speed >= 7 ? 1 : 0.62) * (traits.robotOverdrive ? 1.08 : 1);
     command.moveX = perpendicularX * side * lateralStrength + (this.ball.vx > 0 ? -0.28 : 0.28);
     command.moveY = perpendicularY * side * lateralStrength + awayY * (speed >= 7 ? 0.42 : 0.26);
     const length = Math.hypot(command.moveX, command.moveY) || 1;
@@ -1736,7 +1607,7 @@ class CPUController {
 
   moveToHome(command, member) {
     if (member.role === "inner") {
-      this.moveToward(command, member, member.homeX, member.homeY + Math.sin(Date.now() / 500 + member.x) * 34);
+      this.moveToward(command, member, member.homeX, member.homeY + Math.sin(Date.now() / 700 + member.x) * 10);
     } else {
       this.moveToward(command, member, member.homeX, member.homeY);
     }
@@ -1850,6 +1721,13 @@ class CPUController {
   }
 
   randomReaction() {
-    return 0.13 + Math.random() * 0.17;
+    const overdriveScale = this.team.some((member) => this.isRobotOverdrive(member))
+      ? ROBOT_OVERDRIVE_CONFIG.reactionTimeScale
+      : 1;
+    return (0.13 + Math.random() * 0.17) * overdriveScale;
+  }
+
+  isRobotOverdrive(member) {
+    return Boolean(member?.isRobotOverdrive?.());
   }
 }

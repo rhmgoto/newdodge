@@ -31,8 +31,8 @@ const CATCH_DIFFICULTY = {
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
   windowDuration: 0.55,
-  damageScale: 1.5,
-  speedScale: 1.3,
+  damageScale: 1.65,
+  speedScale: 1.43,
   knockbackScale: 1.4,
   staminaCost: 22,
   releaseDelay: 0.16
@@ -1211,6 +1211,7 @@ class DodgeballGame {
     this.handleTsutenkakuImpact();
     this.handleLightningZigzagImpact();
     this.handleBoostShotExit();
+    this.handleLockRocketExit();
     this.handleTripleBallHits();
     this.ensureBallIsPlayable();
     this.checkGameOver();
@@ -1295,9 +1296,8 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        if (!this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 1)) {
-          // 気合満タン時はカウンターより特殊シュートを優先する。
-        } else {
+        const counterStarted = !this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 1);
+        if (!counterStarted) {
           if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 1);
           else this.startChargedThrow(holder, "shoot");
         }
@@ -1324,9 +1324,8 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          if (!this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 2)) {
-            // 気合満タン時はカウンターより特殊シュートを優先する。
-          } else {
+          const counterStarted = !this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 2);
+          if (!counterStarted) {
             if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 2);
             else this.startChargedThrow(holder, "shoot", 2);
           }
@@ -1909,7 +1908,7 @@ class DodgeballGame {
       chargeTime: 0,
       aerialCombo: kind === "shoot" && actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
     };
-    actor.markThrowing(0.5, kind);
+    actor.markThrowing(0.5 * this.getThrowWindupScale(actor), kind);
     return true;
   }
 
@@ -1929,6 +1928,7 @@ class DodgeballGame {
     const aim = this.normalizedVector(target.x - actor.x, target.y - actor.y);
     const counterDamage = actor.counterSourceDamage * COUNTER_CONFIG.damageScale;
     const counterIntensity = actor.counterVisualIntensity || 1;
+    const windupScale = this.getThrowWindupScale(actor);
     actor.clearCounterOpportunity();
     actor.counterThrowTimer = 0.34;
     actor.counterThrowIntensity = counterIntensity;
@@ -1942,10 +1942,10 @@ class DodgeballGame {
       counter: true,
       counterDamage,
       counterIntensity,
-      timer: COUNTER_CONFIG.releaseDelay
+      timer: COUNTER_CONFIG.releaseDelay * windupScale
     };
-    actor.markThrowing(0.34, "shoot");
-    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.34);
+    actor.markThrowing(0.34 * windupScale, "shoot");
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.34 * windupScale);
     this.setControlledMember(target.team, target);
     this.setAutoSwitchCooldown(target.team, 0.28);
     return true;
@@ -1973,6 +1973,7 @@ class DodgeballGame {
       ? this.normalizedVector(target.x - actor.x, target.y - 38 - actor.y)
       : selection.aim || { x: actor.team === "left" ? 1 : -1, y: 0 };
     actor.quickShotReadyTimer = 0;
+    const windupScale = this.getThrowWindupScale(actor);
     this.pendingThrow = {
       actor,
       target,
@@ -1981,10 +1982,11 @@ class DodgeballGame {
       shotMultiplier: QUICK_SHOT_CONFIG.damageScale,
       specialType: null,
       quickShot: true,
-      timer: QUICK_SHOT_CONFIG.windupTime
+      timer: QUICK_SHOT_CONFIG.windupTime * windupScale
     };
-    actor.markThrowing(QUICK_SHOT_CONFIG.windupTime + 0.18, "shoot");
-    actor.throwLockTimer = Math.max(actor.throwLockTimer, QUICK_SHOT_CONFIG.windupTime + 0.18);
+    const quickThrowDuration = (QUICK_SHOT_CONFIG.windupTime + 0.18) * windupScale;
+    actor.markThrowing(quickThrowDuration, "shoot");
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, quickThrowDuration);
     if (target && target.team !== actor.team) {
       this.setControlledMember(target.team, target);
       this.setAutoSwitchCooldown(target.team, 0.3);
@@ -2038,7 +2040,7 @@ class DodgeballGame {
       cpuReleaseMode: releaseMode,
       aerialCombo: actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
     };
-    actor.markThrowing(0.5, "shoot");
+    actor.markThrowing(0.5 * this.getThrowWindupScale(actor), "shoot");
     return true;
   }
 
@@ -2055,14 +2057,15 @@ class DodgeballGame {
       ? this.getShotAim(actor, charged.target, selection.aim || charged.aim)
       : selection.aim || charged.aim;
     const chargeRatio = Math.min(1, charged.chargeTime / MAX_SHOT_CHARGE_TIME);
+    const windupScale = this.getThrowWindupScale(actor);
     const multiplier = kind === "shoot"
       ? this.getShotMultiplier(actor, charged.aim, chargeRatio, charged.aerialCombo)
       : 1 + chargeRatio * 0.85;
-    actor.throwLockTimer = Math.max(actor.throwLockTimer, kind === "shoot" ? 0.3 : 0.18);
-    actor.markThrowing(kind === "shoot" ? 0.32 : 0.22, kind);
-    const specialType = kind === "shoot" ? this.getSpecialShotType(actor, multiplier) : null;
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, (kind === "shoot" ? 0.3 : 0.18) * windupScale);
+    actor.markThrowing((kind === "shoot" ? 0.32 : 0.22) * windupScale, kind);
+    const specialType = kind === "shoot" ? this.getSpecialShotType(actor) : null;
     const remainingWindup = kind === "shoot"
-      ? Math.max(0, SHOT_WINDUP_TIME - charged.chargeTime)
+      ? Math.max(0, SHOT_WINDUP_TIME * windupScale - charged.chargeTime)
       : 0;
     const releaseDelay = remainingWindup + (specialType ? SPECIAL_SHOT_ANTICIPATION_TIME : 0);
     if (releaseDelay > 0) {
@@ -2077,8 +2080,8 @@ class DodgeballGame {
         anticipation: Boolean(specialType),
         aerialCombo: charged.aerialCombo
       };
-      actor.markThrowing(releaseDelay + 0.18, kind);
-      actor.throwLockTimer = Math.max(actor.throwLockTimer, releaseDelay + 0.06);
+      actor.markThrowing(releaseDelay + 0.18 * windupScale, kind);
+      actor.throwLockTimer = Math.max(actor.throwLockTimer, releaseDelay + 0.06 * windupScale);
       return true;
     }
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
@@ -2129,6 +2132,7 @@ class DodgeballGame {
     )) return false;
 
     const shotAim = kind === "shoot" ? this.getShotAim(actor, target, aim) : null;
+    const windupScale = this.getThrowWindupScale(actor);
     this.pendingThrow = {
       actor,
       target,
@@ -2137,10 +2141,10 @@ class DodgeballGame {
       shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
       specialType: null,
       anticipation: false,
-      timer: kind === "shoot" ? SHOT_WINDUP_TIME : 0.2
+      timer: kind === "shoot" ? SHOT_WINDUP_TIME * windupScale : 0.2 * windupScale
     };
     if (kind === "shoot") {
-      this.pendingThrow.specialType = this.getSpecialShotType(actor, this.pendingThrow.shotMultiplier);
+      this.pendingThrow.specialType = this.getSpecialShotType(actor);
       if (this.pendingThrow.specialType) {
         this.pendingThrow.timer += SPECIAL_SHOT_ANTICIPATION_TIME;
         this.pendingThrow.anticipation = true;
@@ -2150,8 +2154,8 @@ class DodgeballGame {
       }
     }
     const throwDuration = kind === "shoot"
-      ? this.pendingThrow.timer + 0.3
-      : 0.4;
+      ? this.pendingThrow.timer + 0.3 * windupScale
+      : 0.4 * windupScale;
     actor.markThrowing(throwDuration, kind);
     actor.throwLockTimer = Math.max(actor.throwLockTimer, throwDuration);
 
@@ -2181,7 +2185,7 @@ class DodgeballGame {
     const specialType = pending.counter || pending.quickShot
       ? null
       : pending.kind === "shoot"
-      ? pending.specialType || this.getSpecialShotType(pending.actor, pending.shotMultiplier)
+      ? pending.specialType || this.getSpecialShotType(pending.actor)
       : null;
     const launchTarget = pending.quickShot ? null : pending.target;
     const launchMultiplier = pending.quickShot ? 1 : pending.shotMultiplier;
@@ -2288,7 +2292,7 @@ class DodgeballGame {
       charged.aim = selection.aim;
     }
 
-    charged.actor.markThrowing(0.42, charged.kind);
+    charged.actor.markThrowing(0.42 * this.getThrowWindupScale(charged.actor), charged.kind);
     charged.actor.throwLockTimer = Math.max(charged.actor.throwLockTimer, 0.08);
   }
 
@@ -2503,7 +2507,7 @@ class DodgeballGame {
     return Math.max(0.7, Math.min(2.15, 0.7 + dashBonus + powerBonus + speedBonus + jumpBonus + chargeBonus + aerialBonus));
   }
 
-  getSpecialShotType(actor, multiplier) {
+  getSpecialShotType(actor) {
     if (!this.hasFullSpirit(actor.team)) return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
@@ -2511,6 +2515,10 @@ class DodgeballGame {
     if (actor.characterType === "power") return "iron";
     if (actor.characterType === "speed") return "boomerang";
     return "lightning";
+  }
+
+  getThrowWindupScale(actor) {
+    return actor?.isRobotOverdrive?.() ? ROBOT_OVERDRIVE_CONFIG.windupTimeScale : 1;
   }
 
   getShotAim(actor, target, fallbackAim) {
@@ -2841,7 +2849,8 @@ class DodgeballGame {
   }
 
   getCounterCatchMaxChance(technique) {
-    return this.getNormalCatchMaxChance(technique) * (2 / 3);
+    // カウンター同士の応酬を起こしやすくし、テクニック7では上限70％にする。
+    return this.getNormalCatchMaxChance(technique) * (14 / 15);
   }
 
   getManualCatchResult(catcher, friendly) {
@@ -2934,15 +2943,6 @@ class DodgeballGame {
     if (player.visualDirection === "up") return { x: 0, y: -1 };
     if (player.visualDirection === "down") return { x: 0, y: 1 };
     return { x: player.facing || (player.visualDirection === "left" ? -1 : 1), y: 0 };
-  }
-
-  isFacingIncomingBallLegacy(catcher) {
-    const horizontal = Math.abs(this.ball.vx) >= Math.abs(this.ball.vy);
-    if (horizontal) {
-      return catcher.facing === (this.ball.vx < 0 ? 1 : -1);
-    }
-    if (this.ball.vy < 0) return catcher.visualDirection === "down";
-    return catcher.visualDirection === "up";
   }
 
   getCatchArea(catcher, friendly) {
@@ -3195,7 +3195,7 @@ class DodgeballGame {
       return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
     }
     if (specialType === "iron") {
-      return baseDamage * 2.55;
+      return baseDamage * 3;
     }
     if (specialType === "tsutenkaku") {
       return baseDamage * 2.4;
@@ -3239,6 +3239,43 @@ class DodgeballGame {
     }
 
     this.releaseBallAt(GAME_CONFIG.court.centerX, GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55, "loose");
+  }
+
+  handleLockRocketExit() {
+    if (
+      !this.ball.isFlying ||
+      this.ball.kind !== "shoot" ||
+      this.ball.specialShotType !== "lockRocket" ||
+      this.ball.lockRocketPhase !== "terminal"
+    ) return;
+
+    // 誘導中は画面外から戻る可能性があるため、追尾終了後だけ回収する。
+    const margin = 220;
+    const outside = (
+      this.ball.x < this.ballBounds.x - margin ||
+      this.ball.x > this.ballBounds.x + this.ballBounds.w + margin ||
+      this.ball.y < this.ballBounds.y - margin ||
+      this.ball.y > this.ballBounds.y + this.ballBounds.h + margin
+    );
+    if (!outside) return;
+
+    const throwerTeam = this.ball.thrower?.team;
+    const receiver = throwerTeam
+      ? this.findNearestOutfielder(throwerTeam, this.ball.x, this.ball.y)
+      : null;
+    if (receiver) {
+      this.ball.pickUp(receiver);
+      receiver.throwLockTimer = Math.max(receiver.throwLockTimer, 0.2);
+      this.setControlledMember(receiver.team, receiver);
+      this.spawnEffect(receiver.x, receiver.y - 58, "#55dfff", "catch");
+      return;
+    }
+
+    this.releaseBallAt(
+      GAME_CONFIG.court.centerX,
+      GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55,
+      "loose"
+    );
   }
 
   addSpirit(team, amount) {
@@ -3327,8 +3364,8 @@ class DodgeballGame {
   applyTsutenkakuSplash(primaryTarget, baseDamage, centerX, centerY) {
     const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     const splashRadius = 300;
-    // 直撃強化後も、周辺ダメージが従来値の1.5倍になるよう補正する。
-    const splashDamage = Math.max(1, baseDamage * 0.4375);
+    // 旧直撃2.0倍の20％を基準に、指定どおり1.5倍（通常威力の0.6倍）にする。
+    const splashDamage = Math.max(1, baseDamage * 0.25);
     for (const enemy of enemies) {
       if (enemy === primaryTarget || enemy.defeated || enemy.role !== "inner") continue;
       const dx = enemy.x - centerX;
@@ -4167,6 +4204,8 @@ class DodgeballGame {
     if (specialType === "soul") return "魂";
     if (specialType === "slap") return "張";
     if (specialType === "tsutenkaku") return "\u901a";
+    if (specialType === "clockStop") return "時";
+    if (specialType === "lockRocket") return "ロ";
     return "-";
   }
 
@@ -5901,5 +5940,6 @@ class DodgeballGame {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  new DodgeballGame();
+  // ブラウザ試験やデバッグから、現在の試合状態を安全に参照できるようにする。
+  window.dodgeballGame = new DodgeballGame();
 });
