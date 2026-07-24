@@ -13,6 +13,21 @@ const CPU_CLOSE_SHOT_DEFENSE = {
   maxSuccessChance: 0.94
 };
 
+const CPU_ATTACK_TACTIC_WEIGHTS = {
+  buildUp: 1,
+  quickAttack: 1,
+  sideOverload: 1,
+  aceFocus: 1,
+  trianglePass: 1,
+  oneTwo: 1,
+  sideChange: 1,
+  outfieldRelay: 1,
+  decoyAce: 1,
+  closeAttack: 1,
+  tempoChange: 1,
+  shotFeint: 1
+};
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -30,6 +45,10 @@ class CPUController {
     this.evasionPlans = new Map();
     this.passChainRemaining = 0;
     this.passChainFinisher = false;
+    this.attackTactic = null;
+    this.lastTacticType = null;
+    this.tacticSerial = 0;
+    this.zenmaiSpecialShooterId = null;
   }
 
   update(delta) {
@@ -66,10 +85,15 @@ class CPUController {
     const cpuHolder = holder && holder.team === this.teamName ? holder : null;
     const looseBallChaser = this.getLooseBallChaser();
     const friendlyShotChaser = looseBallChaser ? null : this.getFriendlyFlyingShotChaser();
+    if (cpuHolder && (!this.attackTactic || this.attackTactic.finished)) {
+      this.selectAttackTactic(cpuHolder);
+    }
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
-      this.throwTimer = cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
+      this.throwTimer = this.shouldUseTacticalQuickShot(cpuHolder)
+        ? 0.04 + Math.random() * 0.05
+        : cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
         ? Math.min(this.throwTimer, 0.08 + Math.random() * 0.08)
         : Math.max(this.throwTimer, 0.85 + Math.random() * 0.45);
     } else if (!cpuHolder) {
@@ -112,12 +136,284 @@ class CPUController {
         continue;
       }
 
+      if (cpuHolder) {
+        this.controlOffBallAttack(command, member, cpuHolder);
+        continue;
+      }
+
       this.moveToHome(command, member);
+    }
+  }
+
+  selectAttackTactic(holder) {
+    const weights = this.getAttackTacticWeights();
+    if (!this.config.isSpiritReady?.(this.teamName)) weights.aceFocus = 0;
+    if (this.lastTacticType && weights[this.lastTacticType] != null) {
+      weights[this.lastTacticType] *= 0.35;
+    }
+
+    const entries = Object.entries(weights).filter(([, weight]) => weight > 0);
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    let roll = Math.random() * total;
+    let type = entries[0]?.[0] || "buildUp";
+    for (const [candidate, weight] of entries) {
+      roll -= weight;
+      if (roll <= 0) {
+        type = candidate;
+        break;
+      }
+    }
+    const active = this.getActiveTeammates();
+    const ace = this.getAcePlayer(active);
+    this.attackTactic = {
+      id: ++this.tacticSerial,
+      type,
+      step: 0,
+      finished: false,
+      startedAt: Date.now(),
+      passesRequired: type === "buildUp" ? 2 + Math.floor(Math.random() * 2)
+        : type === "trianglePass" ? 3
+          : type === "tempoChange" ? 2 + Math.floor(Math.random() * 2)
+            : type === "outfieldRelay" ? 3
+              : type === "sideOverload" || type === "oneTwo" || type === "decoyAce" ? 2
+                : type === "quickAttack" || type === "sideChange" || type === "shotFeint" || type === "aceFocus" ? 1
+                  : 0,
+      side: Math.random() < 0.5 ? -1 : 1,
+      firstPasserId: holder.id,
+      lastPasserId: null,
+      aceId: ace?.id || null,
+      participantIds: this.getTriangleParticipants(holder, active).map((member) => member.id),
+      relayIds: this.getOutfieldRelayMembers(holder, active).map((member) => member.id)
+    };
+    this.lastTacticType = type;
+    for (const member of this.team) member.cpuPreferredPassTargetId = null;
+  }
+
+  getAttackTacticWeights() {
+    return {
+      ...CPU_ATTACK_TACTIC_WEIGHTS,
+      ...(this.config.attackTacticWeights || {})
+    };
+  }
+
+  isZenmaiGears() {
+    return this.team.some((member) => member.cpuProfile === "zenmaiGears");
+  }
+
+  shouldUseTacticalQuickShot(holder) {
+    if (!holder || holder.quickShotReadyTimer <= 0 || !this.attackTactic || this.attackTactic.finished) return false;
+    const tactic = this.attackTactic;
+    return (
+      (tactic.type === "quickAttack" && tactic.step >= tactic.passesRequired) ||
+      (tactic.type === "tempoChange" && tactic.step >= tactic.passesRequired) ||
+      (tactic.type === "oneTwo" && tactic.step >= 2)
+    );
+  }
+
+  getTacticalHolderPlan(holder) {
+    const tactic = this.attackTactic;
+    if (!tactic || tactic.finished) return null;
+
+    if (this.shouldUseTacticalQuickShot(holder)) {
+      return this.markTacticalPlan(this.createHolderPlan(holder, "quick-shot", 0), true);
+    }
+
+    const passThenShoot = (target, slowPass = false) => {
+      if (!target) return this.createTacticalShotPlan(holder, "normal-shot");
+      return this.createTacticalPassPlan(holder, target, slowPass);
+    };
+
+    if (tactic.type === "buildUp") {
+      if (tactic.step < tactic.passesRequired) {
+        return passThenShoot(this.getNearestPassTarget(holder, tactic.lastPasserId));
+      }
+      return this.createTacticalShotPlan(holder, Math.random() < 0.55 ? "dash-shot" : "normal-shot");
+    }
+
+    if (tactic.type === "quickAttack") {
+      if (tactic.step < tactic.passesRequired) {
+        const target = this.isZenmaiGears()
+          ? this.getNextTriangleTarget(holder, tactic)
+          : this.getNearestPassTarget(holder);
+        return passThenShoot(target);
+      }
+      return this.createTacticalShotPlan(holder, "normal-shot");
+    }
+
+    if (tactic.type === "sideOverload") {
+      if (tactic.step === 0) return passThenShoot(this.getSameSideTeammate(holder, tactic.side));
+      if (tactic.step === 1) return passThenShoot(this.getOppositeSideTeammate(holder, tactic.side));
+      return this.createTacticalShotPlan(holder, "dash-shot");
+    }
+
+    if (tactic.type === "aceFocus") {
+      const ace = this.team.find((member) => member.id === tactic.aceId && !member.defeated);
+      if (ace && holder !== ace && tactic.step < 1) return passThenShoot(ace);
+      return this.createTacticalShotPlan(holder, Math.random() < 0.55 ? "dash-strong-shot" : "charge-shot");
+    }
+
+    if (tactic.type === "trianglePass") {
+      if (tactic.step < tactic.passesRequired) {
+        return passThenShoot(this.getNextTriangleTarget(holder, tactic));
+      }
+      return this.createTacticalShotPlan(holder, "dash-shot");
+    }
+
+    if (tactic.type === "oneTwo") {
+      if (tactic.step === 0) return passThenShoot(this.getNearestPassTarget(holder));
+      if (tactic.step === 1) {
+        const firstPasser = this.team.find((member) => member.id === tactic.firstPasserId && !member.defeated);
+        return passThenShoot(firstPasser || this.getNearestPassTarget(holder));
+      }
+      return this.createTacticalShotPlan(holder, "dash-shot");
+    }
+
+    if (tactic.type === "sideChange") {
+      if (tactic.step < 1) return passThenShoot(this.getFarthestVerticalTeammate(holder));
+      return this.createTacticalShotPlan(holder, "normal-shot");
+    }
+
+    if (tactic.type === "outfieldRelay") {
+      if (tactic.step < tactic.passesRequired) {
+        return passThenShoot(this.getNextRelayTarget(holder, tactic));
+      }
+      return this.createTacticalShotPlan(holder, "dash-shot");
+    }
+
+    if (tactic.type === "decoyAce") {
+      const ace = this.team.find((member) => member.id === tactic.aceId && !member.defeated);
+      if (tactic.step === 0 && ace && holder !== ace) return passThenShoot(ace);
+      if (tactic.step < 2) return passThenShoot(this.getBestNonAceShooter(holder, tactic.aceId));
+      return this.createTacticalShotPlan(holder, "dash-strong-shot");
+    }
+
+    if (tactic.type === "closeAttack") {
+      return this.createTacticalShotPlan(holder, "center-shot");
+    }
+
+    if (tactic.type === "tempoChange") {
+      if (tactic.step < tactic.passesRequired) {
+        return passThenShoot(this.getNearestPassTarget(holder, tactic.lastPasserId), true);
+      }
+      return this.createTacticalShotPlan(holder, "dash-shot");
+    }
+
+    if (tactic.type === "shotFeint") {
+      if (tactic.step < 1) {
+        const target = this.getFarthestVerticalTeammate(holder) || this.getNearestPassTarget(holder);
+        const plan = this.createTacticalPassPlan(holder, target);
+        plan.type = "shot-feint";
+        plan.feintUntil = Date.now() + 620 + Math.random() * 280;
+        plan.x = this.getAttackLineX(holder);
+        return plan;
+      }
+      return this.createTacticalShotPlan(holder, "normal-shot");
+    }
+
+    return null;
+  }
+
+  createTacticalPassPlan(holder, target, slowPass = false) {
+    const plan = this.createHolderPlan(holder, "pass-chain", 0);
+    plan.tactical = true;
+    plan.passTargetId = target?.id || null;
+    plan.slowPass = slowPass;
+    return plan;
+  }
+
+  createTacticalShotPlan(holder, type) {
+    return this.markTacticalPlan(
+      this.createHolderPlan(holder, type, 0.9 + Math.random() * 0.42),
+      true
+    );
+  }
+
+  markTacticalPlan(plan, finishTactic = false) {
+    plan.tactical = true;
+    plan.finishTactic = finishTactic;
+    return plan;
+  }
+
+  advanceAttackTactic(holder) {
+    if (!this.attackTactic || this.attackTactic.finished) return;
+    this.attackTactic.lastPasserId = holder.id;
+    this.attackTactic.step += 1;
+  }
+
+  finishAttackTactic(plan) {
+    if (plan?.tactical && plan.finishTactic && this.attackTactic) {
+      this.attackTactic.finished = true;
     }
   }
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (plan.type === "lock-rocket-launch") {
+      const now = Date.now();
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      const reachedLaunchPoint = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 46;
+      const approachTimedOut = now - plan.createdAt > 4000;
+
+      if (!plan.launchStarted) {
+        this.moveToward(command, holder, plan.x, plan.y);
+        command.dash = true;
+        if (reachedLaunchPoint || approachTimedOut) {
+          plan.launchStarted = true;
+          plan.startedAt = now;
+        }
+        return;
+      }
+
+      const target = this.nearestActiveOpponent(holder);
+      if (plan.chargeStarted || this.throwTimer <= 0) {
+        if (target) this.moveToward(command, holder, target.x, target.y);
+        command.dash = grounded;
+      } else if (target) {
+        this.facePoint(command, holder, target.x, target.y);
+      } else {
+        this.stop(command);
+      }
+
+      if (this.hasStaleApexChargePlan(plan)) {
+        this.resetHolderPlanSoon();
+        return;
+      }
+      if (!plan.chargeStarted && this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = plan.chargeTime;
+        command.chargeReleaseMode = "apex";
+        plan.chargeStarted = true;
+        plan.startedAt = now;
+        this.throwTimer = plan.chargeTime + 0.95;
+      }
+      if (
+        plan.chargeStarted &&
+        grounded &&
+        now - plan.startedAt > Math.max(220, (plan.chargeTime - 0.72) * 1000)
+      ) {
+        if (plan.jumpAttempted) {
+          if (now - plan.jumpStartedAt > 450) this.resetHolderPlanSoon();
+          return;
+        }
+        command.jump = true;
+        command.dash = true;
+        plan.jumpAttempted = true;
+        plan.jumpStartedAt = now;
+        holder.cpuJumpAttackCooldownUntil = now + 2200;
+        holder.cpuLockRocketLaunchCooldownUntil = now + 3000;
+      }
+      return;
+    }
+    if (plan.type === "quick-shot") {
+      this.faceNearestThreat(command, holder);
+      if (this.throwTimer <= 0) {
+        command.shoot = true;
+        this.finishAttackTactic(plan);
+        this.throwTimer = 0.42 + Math.random() * 0.18;
+        this.holderPlan = null;
+      }
+      return;
+    }
     if (
       plan.type.includes("jump") &&
       !plan.jumpAttempted &&
@@ -128,11 +424,29 @@ class CPUController {
     if (plan.type === "pass-chain") {
       this.moveToHome(command, holder);
       if (this.throwTimer <= 0) {
+        if (plan.passTargetId) holder.cpuPreferredPassTargetId = plan.passTargetId;
         command.pass = true;
-        if (this.passChainRemaining <= 0 && !this.passChainFinisher) {
+        if (plan.tactical) {
+          this.advanceAttackTactic(holder);
+        } else if (this.passChainRemaining <= 0 && !this.passChainFinisher) {
           this.passChainRemaining = 1 + Math.floor(Math.random() * 2);
         }
-        this.throwTimer = 0.42 + Math.random() * 0.32;
+        this.throwTimer = plan.slowPass
+          ? 0.72 + Math.random() * 0.3
+          : 0.42 + Math.random() * 0.32;
+        this.holderPlan = null;
+      }
+      return;
+    }
+
+    if (plan.type === "shot-feint") {
+      this.moveToward(command, holder, plan.x, plan.y);
+      command.dash = true;
+      if (Date.now() >= plan.feintUntil && this.throwTimer <= 0) {
+        if (plan.passTargetId) holder.cpuPreferredPassTargetId = plan.passTargetId;
+        command.pass = true;
+        this.advanceAttackTactic(holder);
+        this.throwTimer = 0.4 + Math.random() * 0.22;
         this.holderPlan = null;
       }
       return;
@@ -146,6 +460,7 @@ class CPUController {
       const waitedTooLong = Date.now() - plan.startedAt > 2200;
       if ((reachedLine || waitedTooLong) && this.throwTimer <= 0) {
         command.shoot = true;
+        this.finishAttackTactic(plan);
         this.throwTimer = 0.36 + Math.random() * 0.24;
         this.holderPlan = null;
       }
@@ -157,6 +472,7 @@ class CPUController {
       if (this.throwTimer <= 0) {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
+        this.finishAttackTactic(plan);
         this.throwTimer = plan.chargeTime + 0.55 + Math.random() * 0.25;
         this.holderPlan = null;
       }
@@ -171,7 +487,9 @@ class CPUController {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
         command.chargeReleaseMode = "time";
+        this.finishAttackTactic(plan);
         this.throwTimer = plan.chargeTime + 0.7 + Math.random() * 0.25;
+        this.holderPlan = null;
       }
       return;
     }
@@ -188,6 +506,7 @@ class CPUController {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
         command.chargeReleaseMode = "apex";
+        this.finishAttackTactic(plan);
         plan.chargeStarted = true;
         plan.startedAt = Date.now();
         this.throwTimer = plan.chargeTime + 0.9 + Math.random() * 0.2;
@@ -222,6 +541,7 @@ class CPUController {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
         command.chargeReleaseMode = "apex";
+        this.finishAttackTactic(plan);
         plan.chargeStarted = true;
         plan.startedAt = Date.now();
         this.throwTimer = plan.chargeTime + 0.95 + Math.random() * 0.22;
@@ -249,6 +569,7 @@ class CPUController {
       command.dash = true;
       if (this.throwTimer <= 0) {
         command.shoot = true;
+        this.finishAttackTactic(plan);
         this.throwTimer = 0.42 + Math.random() * 0.22;
         this.holderPlan = null;
       }
@@ -277,6 +598,7 @@ class CPUController {
       }
       if (this.isNearJumpApex(holder) && this.throwTimer <= 0) {
         command.shoot = true;
+        this.finishAttackTactic(plan);
         this.throwTimer = 0.5 + Math.random() * 0.22;
         this.holderPlan = null;
       } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 1700) {
@@ -292,6 +614,7 @@ class CPUController {
       const missedAerialWindow = holder.jumpZ <= 0 && Date.now() - plan.startedAt > 900;
       if ((holder.jumpZ > 18 || missedAerialWindow) && this.throwTimer <= 0) {
         command.shoot = true;
+        this.finishAttackTactic(plan);
         this.throwTimer = 0.55 + Math.random() * 0.15;
         this.holderPlan = null;
       }
@@ -311,13 +634,31 @@ class CPUController {
     this.faceNearestThreat(command, holder);
     if (this.throwTimer <= 0) {
       command.shoot = true;
+      this.finishAttackTactic(plan);
       this.throwTimer = 0.38 + Math.random() * 0.28;
       this.holderPlan = null;
     }
   }
 
   getHolderPlan(holder) {
+    if (
+      this.holderPlan &&
+      this.holderPlan.holderId === holder.id &&
+      (this.holderPlan.type === "lock-rocket-launch" || this.holderPlan.zenmaiSpecialPlan)
+    ) {
+      return this.holderPlan;
+    }
+    const zenmaiSpecialPlan = this.getZenmaiSpecialHolderPlan(holder);
+    if (zenmaiSpecialPlan) {
+      return zenmaiSpecialPlan;
+    }
+    if (this.shouldUseTacticalQuickShot(holder) && this.holderPlan?.type !== "quick-shot") {
+      return this.markTacticalPlan(this.createHolderPlan(holder, "quick-shot", 0), true);
+    }
     if (this.holderPlan && this.holderPlan.holderId === holder.id) return this.holderPlan;
+
+    const tacticalPlan = this.getTacticalHolderPlan(holder);
+    if (tacticalPlan) return tacticalPlan;
 
     if (holder.aerialPassCatchTimer > 0 && holder.jumpZ > 0) {
       return this.createHolderPlan(holder, "catch-and-shoot", 0.85 + Math.random() * 0.35);
@@ -385,6 +726,88 @@ class CPUController {
     return this.createHolderPlan(holder, type, 1.05 + Math.random() * 0.45);
   }
 
+  getZenmaiSpecialHolderPlan(holder) {
+    if (holder.cpuProfile !== "zenmaiGears") return null;
+    if (!this.config.isSpiritReady?.(this.teamName)) {
+      this.zenmaiSpecialShooterId = null;
+      return null;
+    }
+
+    const shooter = this.getZenmaiSpecialShooter();
+    if (!shooter) return null;
+
+    if (holder.id !== shooter.id) {
+      const passPlan = this.createHolderPlan(holder, "pass-chain", 0);
+      passPlan.passTargetId = shooter.id;
+      passPlan.zenmaiSpecialPlan = true;
+      return passPlan;
+    }
+
+    if (
+      shooter.name === "ゼロ" &&
+      shooter.specialShotType === "lockRocket" &&
+      (shooter.cpuLockRocketLaunchCooldownUntil || 0) <= Date.now()
+    ) {
+      const rocketPlan = this.createLockRocketLaunchPlan(shooter);
+      rocketPlan.zenmaiSpecialPlan = true;
+      return rocketPlan;
+    }
+
+    const clockPlan = this.createHolderPlan(shooter, "dash-jump-strong-shot", 0.92);
+    clockPlan.zenmaiSpecialPlan = true;
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
+    if (this.attackTactic) this.attackTactic.finished = true;
+    return clockPlan;
+  }
+
+  getZenmaiSpecialShooter() {
+    const active = this.team.filter((member) => !member.defeated);
+    const current = active.find((member) => member.id === this.zenmaiSpecialShooterId);
+    if (current) return current;
+
+    const zero = active.find((member) => member.name === "ゼロ");
+    const others = active.filter((member) => member.name !== "ゼロ");
+    const chooseZero = Boolean(zero) && (others.length === 0 || Math.random() < 0.5);
+    const shooter = chooseZero
+      ? zero
+      : others[Math.floor(Math.random() * others.length)] || zero || null;
+    this.zenmaiSpecialShooterId = shooter?.id || null;
+    return shooter;
+  }
+
+  createLockRocketLaunchPlan(holder) {
+    const area = this.config.areas?.[holder.zone];
+    const margin = Math.max(holder.radius || 36, 62);
+    const launchY = area
+      ? this.clampPointToArea({ x: holder.homeX, y: holder.homeY }, area, margin).y
+      : holder.homeY;
+    let launchX = holder.homeX;
+
+    if (area?.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, launchY);
+      if (bounds) {
+        launchX = holder.team === "left"
+          ? bounds.left + margin
+          : bounds.right - margin;
+      }
+    } else if (area) {
+      launchX = holder.team === "left"
+        ? area.x + margin
+        : area.x + area.w - margin;
+    }
+
+    const plan = this.createHolderPlan(holder, "lock-rocket-launch", 0.92);
+    plan.x = launchX;
+    plan.y = launchY;
+    plan.createdAt = Date.now();
+    plan.launchStarted = false;
+    this.passChainRemaining = 0;
+    this.passChainFinisher = false;
+    if (this.attackTactic) this.attackTactic.finished = true;
+    return plan;
+  }
+
   getTownDodgiesHolderPlan(holder) {
     const roll = Math.random();
     let type = "normal-shot";
@@ -431,8 +854,21 @@ class CPUController {
 
   getHinomaruBombersHolderPlan(holder) {
     const roll = Math.random();
+    const spiritReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    const specialShooter = holder.name === "だいち" || holder.name === "しょう";
     let type = "pass-chain";
-    if (this.passChainFinisher) {
+    if (spiritReady && holder.role === "inner" && specialShooter) {
+      type = roll < 0.34 ? "dash-jump-strong-shot"
+        : roll < 0.62 ? "jump-strong-shot"
+          : roll < 0.84 ? "dash-strong-shot"
+            : "charge-shot";
+      this.passChainRemaining = 0;
+      this.passChainFinisher = false;
+    } else if (spiritReady && holder.role === "inner") {
+      type = roll < 0.86 ? "pass-chain"
+        : roll < 0.94 ? "dash-strong-shot"
+          : "jump-strong-shot";
+    } else if (this.passChainFinisher) {
       const finisherRoll = Math.random();
       type = finisherRoll < 0.16 ? "dash-jump-strong-shot"
         : finisherRoll < 0.3 ? "dash-strong-shot"
@@ -587,6 +1023,175 @@ class CPUController {
     return this.holderPlan;
   }
 
+  getActiveTeammates() {
+    return this.team.filter((member) => !member.defeated);
+  }
+
+  getAcePlayer(active = this.getActiveTeammates()) {
+    const inner = active.filter((member) => member.role === "inner");
+    const candidates = inner.length > 0 ? inner : active;
+    return candidates.reduce((best, member) => {
+      const stats = member.stats || {};
+      const score = (stats.power || 5) * 2.2 + (stats.technique || 5) + (member.maxHp || 100) * 0.012;
+      const bestStats = best?.stats || {};
+      const bestScore = best
+        ? (bestStats.power || 5) * 2.2 + (bestStats.technique || 5) + (best.maxHp || 100) * 0.012
+        : -Infinity;
+      return score > bestScore ? member : best;
+    }, null);
+  }
+
+  getTriangleParticipants(holder, active = this.getActiveTeammates()) {
+    const others = active
+      .filter((member) => member !== holder)
+      .sort((a, b) => {
+        const aScore = Math.hypot(a.x - holder.x, a.y - holder.y) - Math.abs(a.y - holder.y) * 0.25;
+        const bScore = Math.hypot(b.x - holder.x, b.y - holder.y) - Math.abs(b.y - holder.y) * 0.25;
+        return aScore - bScore;
+      });
+    return [holder, ...others.slice(0, 2)];
+  }
+
+  getOutfieldRelayMembers(holder, active = this.getActiveTeammates()) {
+    const outfield = active
+      .filter((member) => member.role === "out" && member !== holder)
+      .sort((a, b) => a.homeY - b.homeY);
+    const inner = active
+      .filter((member) => member.role === "inner" && member !== holder)
+      .sort((a, b) => Math.hypot(a.x - holder.x, a.y - holder.y) - Math.hypot(b.x - holder.x, b.y - holder.y));
+    const relay = [...outfield, ...inner.slice(0, 1)];
+    if (holder.role === "out") relay.push(...inner.slice(1, 2));
+    return relay;
+  }
+
+  getNearestPassTarget(holder, excludedId = null) {
+    return this.getActiveTeammates()
+      .filter((member) => member !== holder && member.id !== excludedId)
+      .sort((a, b) => Math.hypot(a.x - holder.x, a.y - holder.y) - Math.hypot(b.x - holder.x, b.y - holder.y))[0] || null;
+  }
+
+  getSameSideTeammate(holder, side) {
+    const centerY = this.config.court.y + this.config.court.h * 0.5;
+    const candidates = this.getActiveTeammates().filter((member) => (
+      member !== holder &&
+      (side < 0 ? member.y <= centerY : member.y >= centerY)
+    ));
+    return candidates.sort((a, b) => Math.abs(b.y - centerY) - Math.abs(a.y - centerY))[0]
+      || this.getNearestPassTarget(holder);
+  }
+
+  getOppositeSideTeammate(holder, side) {
+    return this.getSameSideTeammate(holder, -side);
+  }
+
+  getFarthestVerticalTeammate(holder) {
+    return this.getActiveTeammates()
+      .filter((member) => member !== holder)
+      .sort((a, b) => Math.abs(b.y - holder.y) - Math.abs(a.y - holder.y))[0] || null;
+  }
+
+  getNextTriangleTarget(holder, tactic) {
+    const participants = tactic.participantIds
+      .map((id) => this.team.find((member) => member.id === id && !member.defeated))
+      .filter(Boolean);
+    if (participants.length < 2) return this.getNearestPassTarget(holder);
+    const holderIndex = participants.indexOf(holder);
+    return participants[(holderIndex + 1 + participants.length) % participants.length]
+      || this.getNearestPassTarget(holder);
+  }
+
+  getNextRelayTarget(holder, tactic) {
+    const relay = tactic.relayIds
+      .map((id) => this.team.find((member) => member.id === id && !member.defeated))
+      .filter((member) => member && member !== holder);
+    if (relay.length === 0) return this.getNearestPassTarget(holder);
+    return relay[Math.min(tactic.step, relay.length - 1)] || relay[0];
+  }
+
+  getBestNonAceShooter(holder, aceId) {
+    return this.getActiveTeammates()
+      .filter((member) => member !== holder && member.id !== aceId)
+      .sort((a, b) => {
+        const aScore = (a.stats?.power || 5) * 2 + (a.stats?.speed || 5) + (a.role === "inner" ? 3 : 0);
+        const bScore = (b.stats?.power || 5) * 2 + (b.stats?.speed || 5) + (b.role === "inner" ? 3 : 0);
+        return bScore - aScore;
+      })[0] || this.getNearestPassTarget(holder);
+  }
+
+  controlOffBallAttack(command, member, holder) {
+    const tactic = this.attackTactic;
+    const area = this.config.areas?.[member.zone];
+    const active = this.getActiveTeammates();
+    const index = Math.max(0, active.indexOf(member));
+    const centerY = this.config.court.y + this.config.court.h * 0.5;
+    const attackDirection = holder.team === "left" ? 1 : -1;
+    let point = {
+      x: member.homeX + attackDirection * (member.role === "inner" ? 90 : 0),
+      y: member.homeY
+    };
+    let dash = false;
+
+    if (tactic && !tactic.finished) {
+      if (tactic.type === "sideOverload") {
+        const laneY = centerY + tactic.side * this.config.court.h * 0.28;
+        point.y = laneY + (index % 3 - 1) * 76;
+        point.x = member.homeX + attackDirection * (member.role === "inner" ? 150 : 55);
+        if (index === active.length - 1) point.y = centerY - tactic.side * this.config.court.h * 0.3;
+      } else if (tactic.type === "trianglePass") {
+        const participantIndex = tactic.participantIds.indexOf(member.id);
+        if (participantIndex >= 0) {
+          const triangleOffsets = [
+            { x: -110, y: -190 },
+            { x: 170, y: 0 },
+            { x: -110, y: 190 }
+          ];
+          const offset = triangleOffsets[participantIndex % triangleOffsets.length];
+          point.x = holder.x + offset.x * attackDirection;
+          point.y = holder.y + offset.y;
+        }
+      } else if (tactic.type === "oneTwo") {
+        if (member.id === tactic.firstPasserId && tactic.step > 0) {
+          point.x = this.getAttackLineX(member);
+          point.y = holder.y + (member.homeY < centerY ? -120 : 120);
+          dash = true;
+        }
+      } else if (tactic.type === "sideChange") {
+        point.y = member.homeY < centerY
+          ? this.config.court.y + this.config.court.h * 0.16
+          : this.config.court.y + this.config.court.h * 0.84;
+        dash = true;
+      } else if (tactic.type === "aceFocus" || tactic.type === "decoyAce") {
+        if (member.id === tactic.aceId) {
+          point.x = this.getAttackLineX(member);
+          point.y = centerY;
+        } else {
+          point.y = member.homeY + (index % 2 === 0 ? -100 : 100);
+        }
+      } else if (tactic.type === "closeAttack" || tactic.type === "shotFeint") {
+        point.x = member.role === "inner"
+          ? this.getAttackLineX(member) - attackDirection * (120 + index * 36)
+          : member.homeX;
+        point.y = centerY + (index % 3 - 1) * 170;
+      } else if (tactic.type === "quickAttack" || tactic.type === "tempoChange") {
+        point.x = member.homeX + attackDirection * (member.role === "inner" ? 175 : 35);
+        point.y = member.homeY + (index % 2 === 0 ? -65 : 65);
+        dash = tactic.type === "quickAttack" || tactic.step >= tactic.passesRequired - 1;
+      } else if (tactic.type === "outfieldRelay") {
+        point.x = member.homeX;
+        point.y = member.homeY;
+        dash = member.role === "out";
+      }
+    }
+
+    point = this.clampPointToArea(point, area, member.radius);
+    if (this.teammateCrowding(member, point.x, point.y) > 180) {
+      point.y += member.homeY <= centerY ? -100 : 100;
+      point = this.clampPointToArea(point, area, member.radius);
+    }
+    this.moveToward(command, member, point.x, point.y);
+    command.dash = dash;
+  }
+
   getAttackLineX(holder) {
     const area = this.config.areas ? this.config.areas[holder.zone] : null;
     const margin = Math.max(holder.radius || 36, 54);
@@ -691,12 +1296,13 @@ class CPUController {
   evadeHolder(command, member, holder) {
     const area = this.config.areas ? this.config.areas[member.zone] : null;
     const away = this.normalizedVector(member.x - holder.x, member.y - holder.y);
+    const retreatDirection = member.team === "left" ? -1 : 1;
     const candidates = [
       { x: member.x + away.x * 360, y: member.y + away.y * 240 },
-      { x: member.homeX + 260, y: member.homeY - 170 },
-      { x: member.homeX + 300, y: member.homeY + 170 },
-      { x: member.homeX + 430, y: member.homeY },
-      { x: member.homeX + 180, y: member.homeY }
+      { x: member.homeX + retreatDirection * 260, y: member.homeY - 170 },
+      { x: member.homeX + retreatDirection * 300, y: member.homeY + 170 },
+      { x: member.homeX + retreatDirection * 430, y: member.homeY },
+      { x: member.homeX + retreatDirection * 180, y: member.homeY }
     ];
 
     let best = null;
@@ -720,6 +1326,25 @@ class CPUController {
   }
 
   controlWithoutBall(command, member, holder) {
+    if (member.hp / Math.max(1, member.maxHp) <= 0.32) {
+      this.retreatLowHp(command, member, holder);
+      return;
+    }
+
+    if (this.getPassCutDefender(holder) === member) {
+      const receiver = this.getLikelyPassReceiver(holder);
+      if (receiver) {
+        const area = this.config.areas?.[member.zone];
+        const intercept = this.clampPointToArea({
+          x: holder.x + (receiver.x - holder.x) * 0.58,
+          y: holder.y + (receiver.y - holder.y) * 0.58
+        }, area, member.radius);
+        this.moveToward(command, member, intercept.x, intercept.y);
+        command.dash = Math.hypot(member.x - intercept.x, member.y - intercept.y) > 160;
+        return;
+      }
+    }
+
     const plan = this.getEvasionPlan(member, holder);
     if (plan.type === "side-step") {
       const area = this.config.areas ? this.config.areas[member.zone] : null;
@@ -733,6 +1358,44 @@ class CPUController {
     }
 
     this.evadeHolder(command, member, holder);
+  }
+
+  retreatLowHp(command, member, holder) {
+    const area = this.config.areas?.[member.zone];
+    const bounds = this.getAreaBounds(area);
+    const retreatX = member.team === "left"
+      ? bounds.x + member.radius + 32
+      : bounds.x + bounds.w - member.radius - 32;
+    const teammates = this.team.filter((candidate) => candidate.role === "inner" && !candidate.defeated);
+    const index = Math.max(0, teammates.indexOf(member));
+    const retreatY = bounds.y + bounds.h * ((index + 1) / (teammates.length + 1));
+    const point = this.clampPointToArea({ x: retreatX, y: retreatY }, area, member.radius);
+    this.moveToward(command, member, point.x, point.y);
+    command.dash = Math.hypot(member.x - holder.x, member.y - holder.y) < 520;
+  }
+
+  getPassCutDefender(holder) {
+    const candidates = this.team.filter((member) => (
+      !member.defeated &&
+      member.role === "inner" &&
+      member.hp / Math.max(1, member.maxHp) > 0.32
+    ));
+    return candidates.sort((a, b) => {
+      const aScore = (a.stats?.technique || 5) * 2 + (a.stats?.speed || 5) - Math.hypot(a.x - holder.x, a.y - holder.y) * 0.004;
+      const bScore = (b.stats?.technique || 5) * 2 + (b.stats?.speed || 5) - Math.hypot(b.x - holder.x, b.y - holder.y) * 0.004;
+      return bScore - aScore;
+    })[0] || null;
+  }
+
+  getLikelyPassReceiver(holder) {
+    const active = this.opponents.filter((member) => !member.defeated && member !== holder);
+    return active.sort((a, b) => {
+      const aDistance = Math.hypot(a.x - holder.x, a.y - holder.y);
+      const bDistance = Math.hypot(b.x - holder.x, b.y - holder.y);
+      const aScore = (a.role === "out" ? 150 : 0) + Math.abs(a.y - holder.y) * 0.22 - aDistance * 0.08;
+      const bScore = (b.role === "out" ? 150 : 0) + Math.abs(b.y - holder.y) * 0.22 - bDistance * 0.08;
+      return bScore - aScore;
+    })[0] || null;
   }
 
   isNearJumpApex(member) {
@@ -782,14 +1445,16 @@ class CPUController {
     this.reactionTimer -= delta;
     if (this.reactionTimer > 0 && !this.hasUrgentDefender()) return;
 
-    for (const member of this.team.filter((p) => p.role === "inner" && !p.defeated)) {
+    const activeInner = this.team.filter((p) => p.role === "inner" && !p.defeated);
+    for (const member of activeInner) {
       const command = this.commands.get(member.id);
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       const technique = member.stats?.technique || 5;
       const speed = member.stats?.speed || 5;
       const jump = member.stats?.jump || 5;
       const defenseStat = Math.max(technique, speed, jump);
-      const maxReactDistance = (member.cpuProfile === "hinomaruBombers" ? 620 : 430) + Math.max(0, defenseStat - 5) * 36;
+      const maxReactDistance = (member.cpuProfile === "hinomaruBombers" ? 620 : 430) +
+        Math.max(0, defenseStat - 5) * 36;
       if (distance > maxReactDistance) continue;
 
       const frontShot = this.isFrontShot(member);
@@ -965,7 +1630,9 @@ class CPUController {
       const bodyDistance = Math.hypot(this.ball.x - member.x, ballY - (member.y - 58));
       const ballInFront = (this.ball.x - member.x) * member.facing > 0;
       const veryClose = handDistance < 46 && bodyDistance < 76;
-      if (!ballInFront || !veryClose || Math.random() > 0.28) continue;
+      const technique = member.stats?.technique || 5;
+      const cutChance = Math.max(0.16, Math.min(0.72, 0.22 + (technique - 5) * 0.045));
+      if (!ballInFront || !veryClose || Math.random() > cutChance) continue;
       command.catch = true;
       if (this.ball.z > 120 && handDistance < 42 && member.jumpZ <= 0 && member.jumpVelocity <= 0 && Math.random() < 0.25) command.jump = true;
     }
