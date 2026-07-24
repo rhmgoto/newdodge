@@ -32,7 +32,7 @@ const COUNTER_CONFIG = {
   lockDuration: 0.2,
   windowDuration: 0.55,
   damageScale: 1.65,
-  speedScale: 1.43,
+  speedScale: 1.7875,
   knockbackScale: 1.4,
   staminaCost: 22,
   releaseDelay: 0.16
