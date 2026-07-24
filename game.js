@@ -15,18 +15,18 @@ const QUICK_SHOT_CONFIG = {
   damageScale: 1.1
 };
 const CATCH_DIFFICULTY = {
-  normal: { duration: 0.3, areaScale: 1, chanceScale: 1, perfectTiming: 0.42 },
-  kiai: { duration: 0.24, areaScale: 0.9, maxChance: 0.43, chanceScale: 0.62, perfectTiming: 0.52 },
-  soul: { duration: 0.216, areaScale: 0.88, maxChance: 0.5, chanceScale: 0.51, perfectTiming: 0.5 },
-  triple: { duration: 0.198, areaScale: 0.82, maxChance: 0.4, chanceScale: 0.41, perfectTiming: 0.56 },
-  lightning: { duration: 0.18, areaScale: 0.78, maxChance: 0.35, chanceScale: 0.36, perfectTiming: 0.62 },
-  boomerang: { duration: 0.189, areaScale: 0.78, maxChance: 0.3, chanceScale: 0.31, perfectTiming: 0.64 },
-  boost: { duration: 0.162, areaScale: 0.72, maxChance: 0.25, chanceScale: 0.26, perfectTiming: 0.68 },
-  iron: { duration: 0.153, areaScale: 0.68, maxChance: 0.18, chanceScale: 0.19, perfectTiming: 0.74 },
-  slap: { duration: 0.16, areaScale: 0.72, maxChance: 0.2, chanceScale: 0.21, perfectTiming: 0.72 },
-  tsutenkaku: { duration: 0.17, areaScale: 0.75, maxChance: 0.28, chanceScale: 0.29, perfectTiming: 0.7 },
-  clockStop: { duration: 0.168, areaScale: 0.73, maxChance: 0.25, chanceScale: 0.27, perfectTiming: 0.69 },
-  lockRocket: { duration: 0.165, areaScale: 0.72, maxChance: 0.28, chanceScale: 0.28, perfectTiming: 0.7 }
+  normal: { duration: 0.18, areaScale: 1 },
+  kiai: { duration: 0.11, areaScale: 0.9 },
+  soul: { duration: 0.11, areaScale: 0.88 },
+  triple: { duration: 0.09, areaScale: 0.82 },
+  lightning: { duration: 0.08, areaScale: 0.78 },
+  boomerang: { duration: 0.08, areaScale: 0.78 },
+  boost: { duration: 0.07, areaScale: 0.72 },
+  iron: { duration: 0.06, areaScale: 0.68 },
+  slap: { duration: 0.06, areaScale: 0.72 },
+  tsutenkaku: { duration: 0.07, areaScale: 0.75 },
+  clockStop: { duration: 0.07, areaScale: 0.73 },
+  lockRocket: { duration: 0.07, areaScale: 0.72 }
 };
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
@@ -1604,12 +1604,10 @@ class DodgeballGame {
     const pickupDistance = this.ball.hasBounced && !this.ball.isFlying
       ? GAME_CONFIG.battle.rollingPickupDistance
       : GAME_CONFIG.battle.pickupDistance;
-    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
     const candidates = this.players
       .filter((member) => {
         if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
-        if (!territory) return this.isPointInsideArea(this.ball.x, this.ball.y, 0, this.getMoveArea(member, false));
-        return member.team === territory.team && member.role === territory.role;
+        return this.canPlayerAcquireBallAt(member, this.ball.x, this.ball.y);
       })
       .sort((a, b) => (
         Math.hypot(a.x - this.ball.x, a.y - this.ball.y) -
@@ -1623,6 +1621,15 @@ class DodgeballGame {
         break;
       }
     }
+  }
+
+  canPlayerAcquireBallAt(member, x, y) {
+    if (!member || member.defeated) return false;
+    const territory = this.getLooseBallTerritory(x, y);
+    if (territory) {
+      return member.team === territory.team && member.role === territory.role;
+    }
+    return this.isPointInsideArea(x, y, 0, this.getMoveArea(member, false));
   }
 
   getLooseBallTerritory(x, y) {
@@ -1661,8 +1668,11 @@ class DodgeballGame {
       return;
     }
 
-    const outfield = this.getOutfieldSideForBall(this.ball.x, this.ball.y);
-    if (!outfield) {
+    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
+    const outfield = territory?.role === "out"
+      ? this.getOutfieldSideForBall(this.ball.x, this.ball.y)
+      : null;
+    if (!outfield || outfield.team !== territory.team) {
       this.looseOutfieldRecoveryTimer = 0;
       this.lastLooseOutfieldBallPosition = null;
       this.lastLooseOutfieldReceiverDistance = Infinity;
@@ -1727,12 +1737,10 @@ class DodgeballGame {
       return;
     }
 
-    const territory = this.getLooseBallTerritory(this.ball.x, this.ball.y);
     const candidates = this.players
       .filter((member) => {
         if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
-        if (!territory) return this.isPointInsideArea(this.ball.x, this.ball.y, 0, this.getMoveArea(member, false));
-        return member.team === territory.team && member.role === territory.role;
+        return this.canPlayerAcquireBallAt(member, this.ball.x, this.ball.y);
       })
       .map((member) => ({
         member,
@@ -1841,23 +1849,39 @@ class DodgeballGame {
   }
 
   getOutfieldSideForBall(x, y) {
+    // 内野の球を外野の強制回収対象にしない。
+    if (
+      this.isPointInsideArea(x, y, 0, this.areas.leftInner) ||
+      this.isPointInsideArea(x, y, 0, this.areas.rightInner)
+    ) {
+      return null;
+    }
+
     const candidates = [
       { team: "left", side: "right", zones: ["rightTopOut", "rightBottomOut", "rightSideOut"] },
       { team: "right", side: "left", zones: ["leftTopOut", "leftBottomOut", "leftSideOut"] }
     ];
 
     for (const candidate of candidates) {
-      const rects = candidate.zones.map((zone) => this.areas[zone]);
-      const minX = Math.min(...rects.map((rect) => rect.x)) - 38;
-      const maxX = Math.max(...rects.map((rect) => rect.x + rect.w)) + 38;
-      const minY = Math.min(...rects.map((rect) => rect.y)) - 38;
-      const maxY = Math.max(...rects.map((rect) => rect.y + rect.h)) + 38;
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      const area = { rects: candidate.zones.map((zone) => this.areas[zone]) };
+      if (this.isPointInsideArea(x, y, 0, area)) {
         return candidate;
       }
     }
 
-    return null;
+    // ボール境界の外側へ少し出た球だけ、最寄りの外野へ帰属させる。
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const candidate of candidates) {
+      const area = { rects: candidate.zones.map((zone) => this.areas[zone]) };
+      const point = this.clampPointToArea({ x, y }, area, 0);
+      const distance = Math.hypot(x - point.x, y - point.y);
+      if (distance < nearestDistance) {
+        nearest = candidate;
+        nearestDistance = distance;
+      }
+    }
+    return nearestDistance <= 140 ? nearest : null;
   }
 
   findNearestOutfielder(team, x, y) {
@@ -2710,6 +2734,7 @@ class DodgeballGame {
     const nearEndOfArc = this.ball.passDuration > 0 && this.ball.passTime >= this.ball.passDuration * 0.78;
     const catchReach = this.ball.radius + 82 + Math.min(1, horizontalDistance / 1400) * 30;
     if (nearEndOfArc && visualDistance < catchReach) {
+      if (!this.canPlayerAcquireBallAt(target, this.ball.x, this.ball.y)) return;
       const passingTeam = this.ball.thrower?.team;
       if (target.jumpZ > 18) {
         target.aerialPassCatchTimer = 1.1;
@@ -2749,6 +2774,7 @@ class DodgeballGame {
       const friendly = catcher.team === this.ball.thrower.team;
       if (friendly && this.ball.kind === "shoot") continue;
       if (friendly && this.ball.specialShotType === "boomerang") continue;
+      if (!this.canPlayerAcquireBallAt(catcher, this.ball.x, this.ball.y)) continue;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
       const catchResult = this.getManualCatchResult(catcher, friendly);
@@ -2823,18 +2849,46 @@ class DodgeballGame {
   }
 
   getCatchDuration(catcher) {
-    return this.getCatchDifficulty(catcher).duration;
+    const enemyShot = (
+      this.ball?.isFlying &&
+      this.ball.kind === "shoot" &&
+      this.ball.thrower &&
+      this.ball.thrower.team !== catcher.team
+    );
+    if (!enemyShot) return 0.3;
+
+    const difficulty = this.getCatchDifficulty(catcher);
+    const baseDuration = this.ball.counterShot
+      ? 0.19
+      : this.ball.quickShot
+        ? 0.14
+        : difficulty.duration;
+    const techniqueScale = this.getCatchTechniqueWindowScale(catcher.stats?.technique || 5);
+    const facingQuality = this.getIncomingFacingQuality(catcher);
+    const facingScale = facingQuality === "front" ? 1 : facingQuality === "side" ? 0.55 : 0.2;
+    const travelRatio = Math.max(0, Math.min(1, (this.ball.travelDistance || 0) / 850));
+    const distanceScale = 0.75 + travelRatio * 0.4;
+    const projectedDamage = this.ball.specialShotType
+      ? this.getSpecialShotDamage(this.ball.power || 20, this.ball.specialShotType, this.ball.travelDistance)
+      : this.ball.power || 20;
+    const powerScale = Math.max(0.72, Math.min(1.08, 1.06 - Math.max(0, projectedDamage - 20) * 0.004));
+
+    // 入力時に決まった受付時間内へボールが入れば成功する。乱数は使用しない。
+    return Math.max(
+      0.045,
+      Math.min(0.2, baseDuration * techniqueScale * facingScale * distanceScale * powerScale)
+    );
   }
 
-  getNormalCatchMaxChance(technique) {
+  getCatchTechniqueWindowScale(technique) {
     const value = Math.max(1, Math.min(20, technique || 5));
     const points = [
-      { technique: 1, chance: 0.49 },
-      { technique: 5, chance: 0.65 },
-      { technique: 7, chance: 0.75 },
-      { technique: 10, chance: 0.82 },
-      { technique: 15, chance: 0.9 },
-      { technique: 20, chance: 0.94 }
+      { technique: 1, scale: 0.75 },
+      { technique: 5, scale: 0.9 },
+      { technique: 7, scale: 1 },
+      { technique: 10, scale: 1.12 },
+      { technique: 15, scale: 1.3 },
+      { technique: 20, scale: 1.45 }
     ];
 
     for (let index = 1; index < points.length; index += 1) {
@@ -2842,15 +2896,10 @@ class DodgeballGame {
       if (value > next.technique) continue;
       const previous = points[index - 1];
       const ratio = (value - previous.technique) / (next.technique - previous.technique);
-      return previous.chance + (next.chance - previous.chance) * ratio;
+      return previous.scale + (next.scale - previous.scale) * ratio;
     }
 
-    return points[points.length - 1].chance;
-  }
-
-  getCounterCatchMaxChance(technique) {
-    // カウンター同士の応酬を起こしやすくし、テクニック7では上限70％にする。
-    return this.getNormalCatchMaxChance(technique) * (14 / 15);
+    return points[points.length - 1].scale;
   }
 
   getManualCatchResult(catcher, friendly) {
@@ -2863,52 +2912,7 @@ class DodgeballGame {
     }
 
     if (friendly) return "perfect";
-
-    const thrower = this.ball.thrower;
-    const difficulty = this.getCatchDifficulty(catcher);
-    const throwDistance = thrower ? Math.hypot(catcher.x - thrower.x, catcher.y - thrower.y) : 700;
-    const facingQuality = this.getIncomingFacingQuality(catcher);
-    const technique = catcher.stats?.technique || 5;
-    const visualDistance = Math.hypot(this.ball.x - catcher.x, this.ball.y - this.ball.z - (catcher.y - catcher.jumpZ - 62));
-    const timing = Math.max(0, 1 - visualDistance / 250);
-    const distanceFactor = Math.max(0.42, Math.min(1.08, throwDistance / 620));
-    let facingFactor = facingQuality === "front" ? 1.36 : facingQuality === "side" ? 0.58 : 0.08;
-    if (this.ball.quickShot && facingQuality !== "front") {
-      facingFactor *= facingQuality === "side" ? 0.78 : 0.55;
-    }
-    const techniqueAboveBase = Math.max(0, Math.min(20, technique) - 5);
-    const techniqueBonus = Math.min(5, techniqueAboveBase) * 0.04 + Math.max(0, techniqueAboveBase - 5) * 0.018;
-    const expertCloseCatchBonus = technique >= 10 && facingQuality === "front" && visualDistance < 170
-      ? 0.08 + Math.min(0.04, Math.max(0, technique - 10) * 0.004)
-      : 0;
-    const throwerPower = Math.max(1, Math.min(20, thrower?.stats?.power || 5));
-    const throwerPowerAboveBase = Math.max(0, throwerPower - 5);
-    const throwerPowerPenalty = 1 - (
-      Math.min(5, throwerPowerAboveBase) * 0.01 +
-      Math.max(0, throwerPowerAboveBase - 5) * 0.007
-    );
-    const projectedDamage = this.ball.specialShotType
-      ? this.getSpecialShotDamage(this.ball.power || 20, this.ball.specialShotType, this.ball.travelDistance)
-      : this.ball.power || 20;
-    const shotPowerRatio = Math.max(0, projectedDamage / 20 - 1);
-    const shotPowerPenalty = 1 - Math.min(0.38, shotPowerRatio * 0.18);
-    const normalChance = Math.max(0.03, Math.min(0.98,
-      (0.46 + timing * 0.54 + techniqueBonus + expertCloseCatchBonus) *
-      distanceFactor * facingFactor * throwerPowerPenalty * shotPowerPenalty
-    ));
-    const maxChance = this.ball.specialShotType
-      ? difficulty.maxChance
-      : this.ball.counterShot
-        ? this.getCounterCatchMaxChance(technique)
-        : this.getNormalCatchMaxChance(technique);
-    const chance = Math.min(maxChance, normalChance * difficulty.chanceScale);
-
-    if (timing < difficulty.perfectTiming) {
-      if (catcher.catchTimer > 0.055) return "wait";
-      return "miss";
-    }
-
-    return Math.random() <= chance ? "perfect" : "miss";
+    return "perfect";
   }
 
   spawnCatchResultLabel(catcher, text, color) {
@@ -3104,7 +3108,8 @@ class DodgeballGame {
     this.ball.y = point.y;
     this.ball.z = Math.min(42, Math.max(0, target.jumpZ * 0.2));
     this.ball.bounceFromHit(0, damage / 28);
-    const areaCenterX = area?.x + area?.w * 0.5 || target.x;
+    const areaBounds = this.getAreaBounds(area);
+    const areaCenterX = areaBounds.x + areaBounds.w * 0.5;
     const towardAreaCenter = Math.sign(areaCenterX - point.x) || -direction || 1;
     const speed = Math.max(80, Math.min(190, GAME_CONFIG.ball.hitBounceX * 0.34));
     this.ball.vx = towardAreaCenter * speed;
