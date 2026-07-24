@@ -336,7 +336,8 @@ class Ball {
     this.quickShot = false;
     this.quickFlightZ = 0;
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
-    this.power = kind === "shoot" ? actor.throwPower * powerMultiplier : 0;
+    const throwPower = actor.getEffectiveThrowPower?.() ?? actor.throwPower;
+    this.power = kind === "shoot" ? throwPower * powerMultiplier : 0;
     this.isFlying = true;
     this.isLoose = false;
     this.catchable = true;

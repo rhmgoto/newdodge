@@ -25,6 +25,7 @@ const ROBOT_OVERDRIVE_CONFIG = {
   hpRatio: 0.3,
   moveSpeedScale: 1.2,
   jumpScale: 1.2,
+  powerScale: 1.3,
   reactionTimeScale: 0.75,
   windupTimeScale: 0.9,
   dodgeChanceScale: 1.12,
@@ -1059,6 +1060,10 @@ class Player {
       this.hp > 0 &&
       this.hp / Math.max(1, this.maxHp) <= ROBOT_OVERDRIVE_CONFIG.hpRatio
     );
+  }
+
+  getEffectiveThrowPower() {
+    return this.throwPower * (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1);
   }
 
   getRobotManufacturingNumber() {

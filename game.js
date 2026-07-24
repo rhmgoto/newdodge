@@ -664,19 +664,19 @@ class DodgeballGame {
         trimColor: "#42e5d0",
         eyeColor: "#37f3df",
         uniformEmblem: "robot",
-        maxHp: 220,
+        maxHp: 200,
         maxStamina: 200,
-        stats: { power: 10, speed: 7, jump: 6, technique: 9 },
+        stats: { power: 11, speed: 7, jump: 6, technique: 11 },
         cpuProfile: "zenmaiGears",
         players: [
-          player("ゼロ", "inner", "normal", 320, 200, 12, 8, 8, 12, "lockRocket", { captain: true, uniformEmblem: "robotCaptain" }),
-          player("ボルト", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("ギア", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("ピストン", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("センサー", "inner", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("レーダー", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("コイル", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" }),
-          player("ビット", "out", "normal", 220, 200, 10, 7, 6, 9, "clockStop", { uniformEmblem: "robot" })
+          player("ゼロ", "inner", "normal", 320, 200, 14, 8, 8, 14, "lockRocket", { captain: true, uniformEmblem: "robotCaptain" }),
+          player("ボルト", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ギア", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ピストン", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("センサー", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("レーダー", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("コイル", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ビット", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" })
         ]
       }
     ];
@@ -1273,7 +1273,7 @@ class DodgeballGame {
         radius: GAME_CONFIG.ball.radius * 0.88 * 1.3,
         team: actor.team,
         thrower: actor,
-        power: actor.throwPower * Math.max(0.7, multiplier) * 0.2,
+        power: (actor.getEffectiveThrowPower?.() ?? actor.throwPower) * Math.max(0.7, multiplier) * 0.2,
         life: 1.85,
         age: 0,
         lane: angle < 0 ? -1 : 1,
@@ -2302,7 +2302,7 @@ class DodgeballGame {
         this.ball.vy *= QUICK_SHOT_CONFIG.speedScale;
         this.ball.z = Math.min(62, this.ball.z);
         this.ball.vz = 0;
-        this.ball.power = pending.actor.throwPower * QUICK_SHOT_CONFIG.damageScale;
+        this.ball.power = (pending.actor.getEffectiveThrowPower?.() ?? pending.actor.throwPower) * QUICK_SHOT_CONFIG.damageScale;
         this.ball.shotMultiplier = QUICK_SHOT_CONFIG.damageScale;
         this.ball.quickShot = true;
         this.ball.quickFlightZ = this.ball.z;
