@@ -168,6 +168,7 @@ class DodgeballGame {
     this.boostEffectStage = 0;
     this.boomerangTurnPresented = false;
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseOutfieldTotalTimer = 0;
     this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
@@ -193,6 +194,7 @@ class DodgeballGame {
     this.boostEffectStage = 0;
     this.boomerangTurnPresented = false;
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseOutfieldTotalTimer = 0;
     this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
@@ -205,7 +207,9 @@ class DodgeballGame {
         areas: this.areas,
         teamName: "left",
         opponentName: "right",
-        isSpiritReady: (team) => this.hasFullSpirit(team)
+        isSpiritReady: (team) => this.hasFullSpirit(team),
+        isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
+        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y)
       })
       : null;
     this.cpuController = this.gameMode !== "versus"
@@ -215,7 +219,9 @@ class DodgeballGame {
         areas: this.areas,
         teamName: "right",
         opponentName: "left",
-        isSpiritReady: (team) => this.hasFullSpirit(team)
+        isSpiritReady: (team) => this.hasFullSpirit(team),
+        isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
+        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y)
       })
       : null;
     this.effects = [];
@@ -245,7 +251,9 @@ class DodgeballGame {
     const topY = c.y + 10;
     const backY = c.y + 96;
     const frontY = c.y + c.h - 38;
-    const outfieldDepth = 204;
+    const outfieldDepth = 280;
+    const sideOutWidth = 500;
+    const outerExtension = 230;
     const sideOutTop = c.y + 96;
     const sideOutBottom = c.y + c.h - 38;
     const projectedX = (x, y) => this.projectCourtX(x, y, topY, c.y + c.h);
@@ -273,25 +281,25 @@ class DodgeballGame {
         projectedX(c.centerX, frontY) + 16,
         projectedX(c.x + c.w, frontY) - 16
       ),
-      leftTopOut: { x: c.x + 22, y: backY - outfieldDepth, w: halfW - 44, h: outfieldDepth },
-      leftBottomOut: { x: c.x + 22, y: frontY, w: halfW - 44, h: outfieldDepth },
+      leftTopOut: { x: c.x - outerExtension, y: backY - outfieldDepth, w: halfW + outerExtension - 22, h: outfieldDepth },
+      leftBottomOut: { x: c.x - outerExtension, y: frontY, w: halfW + outerExtension - 22, h: outfieldDepth },
       leftSideOut: trapezoid(
         sideOutTop,
         sideOutBottom,
-        projectedX(c.x, sideOutTop) - 360,
+        projectedX(c.x, sideOutTop) - sideOutWidth,
         projectedX(c.x, sideOutTop) - 10,
-        projectedX(c.x, sideOutBottom) - 360,
+        projectedX(c.x, sideOutBottom) - sideOutWidth,
         projectedX(c.x, sideOutBottom) - 10
       ),
-      rightTopOut: { x: c.centerX + 22, y: backY - outfieldDepth, w: halfW - 44, h: outfieldDepth },
-      rightBottomOut: { x: c.centerX + 22, y: frontY, w: halfW - 44, h: outfieldDepth },
+      rightTopOut: { x: c.centerX + 22, y: backY - outfieldDepth, w: halfW + outerExtension - 22, h: outfieldDepth },
+      rightBottomOut: { x: c.centerX + 22, y: frontY, w: halfW + outerExtension - 22, h: outfieldDepth },
       rightSideOut: trapezoid(
         sideOutTop,
         sideOutBottom,
         projectedX(c.x + c.w, sideOutTop) + 10,
-        projectedX(c.x + c.w, sideOutTop) + 360,
+        projectedX(c.x + c.w, sideOutTop) + sideOutWidth,
         projectedX(c.x + c.w, sideOutBottom) + 10,
-        projectedX(c.x + c.w, sideOutBottom) + 360
+        projectedX(c.x + c.w, sideOutBottom) + sideOutWidth
       )
     };
   }
@@ -1478,7 +1486,46 @@ class DodgeballGame {
     const zones = team === "left"
       ? ["rightTopOut", "rightBottomOut", "rightSideOut"]
       : ["leftTopOut", "leftBottomOut", "leftSideOut"];
-    return { rects: zones.map((zone) => this.areas[zone]) };
+    return {
+      rects: [
+        ...zones.map((zone) => this.areas[zone]),
+        ...this.getOutfieldConnectorAreas(team)
+      ]
+    };
+  }
+
+  getOutfieldConnectorAreas(team) {
+    const rightSide = team === "left";
+    const topArea = this.areas[rightSide ? "rightTopOut" : "leftTopOut"];
+    const bottomArea = this.areas[rightSide ? "rightBottomOut" : "leftBottomOut"];
+    const sideArea = this.areas[rightSide ? "rightSideOut" : "leftSideOut"];
+    const side = sideArea?.trapezoid;
+    if (!side) return [];
+
+    const depth = 120;
+    const topSample = this.getTrapezoidBoundsAtY(side, Math.min(side.yBottom, side.yTop + depth));
+    const bottomSample = this.getTrapezoidBoundsAtY(side, side.yBottom);
+    if (!topSample || !bottomSample) return [];
+
+    const makeConnector = (sample, area, y) => {
+      const bounds = this.getAreaBounds(area);
+      if (rightSide) {
+        const right = Math.max(sample.right, bounds.x + bounds.w);
+        return { x: sample.left, y, w: right - sample.left, h: depth * 2 };
+      }
+      const left = Math.min(sample.left, bounds.x);
+      return { x: left, y, w: sample.right - left, h: depth * 2 };
+    };
+
+    return [
+      makeConnector(topSample, topArea, side.yTop - depth),
+      makeConnector(bottomSample, bottomArea, side.yBottom - depth)
+    ];
+  }
+
+  isOutfieldBallForTeam(team, x, y) {
+    const territory = this.getLooseBallTerritory(x, y);
+    return territory?.team === team && territory.role === "out";
   }
 
   shouldReturnToLegalArea(member, area) {
@@ -1663,6 +1710,7 @@ class DodgeballGame {
   resetUnreachableOutfieldBall(delta = 0) {
     if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) {
       this.looseOutfieldRecoveryTimer = 0;
+      this.looseOutfieldTotalTimer = 0;
       this.lastLooseOutfieldBallPosition = null;
       this.lastLooseOutfieldReceiverDistance = Infinity;
       return;
@@ -1674,10 +1722,12 @@ class DodgeballGame {
       : null;
     if (!outfield || outfield.team !== territory.team) {
       this.looseOutfieldRecoveryTimer = 0;
+      this.looseOutfieldTotalTimer = 0;
       this.lastLooseOutfieldBallPosition = null;
       this.lastLooseOutfieldReceiverDistance = Infinity;
       return;
     }
+    this.looseOutfieldTotalTimer += delta;
 
     const outerLimit = outfield.side === "right"
       ? this.areas.rightSideOut.x + this.areas.rightSideOut.w + 18
@@ -1709,7 +1759,10 @@ class DodgeballGame {
       this.ball.y > this.ballBounds.y + this.ballBounds.h - screenMargin
     );
 
-    const recoveryTimedOut = this.looseOutfieldRecoveryTimer >= 1.2;
+    const recoveryTimedOut = (
+      this.looseOutfieldRecoveryTimer >= 1.2 ||
+      this.looseOutfieldTotalTimer >= 3
+    );
     if (!beyondSide && !beyondBottom && !beyondTop && !rollingFarAway && !outsideScreen && !recoveryTimedOut) return;
 
     const area = this.getTeamOutfieldArea(receiver.team);
@@ -1719,6 +1772,7 @@ class DodgeballGame {
     this.ball.pickUp(receiver);
     this.setControlledMember(receiver.team, receiver);
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseOutfieldTotalTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.spawnEffect(receiver.x, receiver.y - 58, "#ffffff", "catch");
@@ -1863,17 +1917,17 @@ class DodgeballGame {
     ];
 
     for (const candidate of candidates) {
-      const area = { rects: candidate.zones.map((zone) => this.areas[zone]) };
+      const area = this.getTeamOutfieldArea(candidate.team);
       if (this.isPointInsideArea(x, y, 0, area)) {
         return candidate;
       }
     }
 
-    // ボール境界の外側へ少し出た球だけ、最寄りの外野へ帰属させる。
+    // 内野以外へ出た球は、距離にかかわらず最寄りの外野へ帰属させる。
     let nearest = null;
     let nearestDistance = Infinity;
     for (const candidate of candidates) {
-      const area = { rects: candidate.zones.map((zone) => this.areas[zone]) };
+      const area = this.getTeamOutfieldArea(candidate.team);
       const point = this.clampPointToArea({ x, y }, area, 0);
       const distance = Math.hypot(x - point.x, y - point.y);
       if (distance < nearestDistance) {
@@ -1881,7 +1935,7 @@ class DodgeballGame {
         nearestDistance = distance;
       }
     }
-    return nearestDistance <= 140 ? nearest : null;
+    return nearest;
   }
 
   findNearestOutfielder(team, x, y) {
@@ -3116,6 +3170,7 @@ class DodgeballGame {
     this.ball.vy = (Math.random() - 0.5) * Math.max(60, GAME_CONFIG.ball.hitBounceY * 0.28);
     this.ball.vz = Math.max(70, Math.min(135, damage * 1.4));
     this.looseOutfieldRecoveryTimer = 0;
+    this.looseOutfieldTotalTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
   }

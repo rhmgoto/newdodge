@@ -1059,6 +1059,9 @@ class CPUController {
 
   canReachLooseBall(member) {
     if (!this.ball.isLoose || this.ball.owner || this.ball.isFlying) return false;
+    if (this.config.canAcquireBallAt && !this.config.canAcquireBallAt(member, this.ball.x, this.ball.y)) {
+      return false;
+    }
     const area = this.config.areas ? this.config.areas[member.zone] : null;
     if (!area) return false;
     if (member.role === "out" && this.isLooseBallInTeamOutfield()) return true;
@@ -1074,6 +1077,10 @@ class CPUController {
   }
 
   isLooseBallInTeamOutfield() {
+    if (this.config.isOutfieldBallForTeam) {
+      return this.config.isOutfieldBallForTeam(this.teamName, this.ball.x, this.ball.y);
+    }
+
     const zones = this.teamName === "left"
       ? ["rightTopOut", "rightBottomOut", "rightSideOut"]
       : ["leftTopOut", "leftBottomOut", "leftSideOut"];
