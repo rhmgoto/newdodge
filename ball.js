@@ -4,11 +4,13 @@ const TSUTENKAKU_WARNING_MAX_TIME = 2.5;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
-const CLOCK_STOP_DURATION = 0.55;
-const LOCK_ROCKET_COAST_TIME = 0.2;
-const LOCK_ROCKET_CRUISE_TIME = 1.2;
+const CLOCK_STOP_DURATION = 0.8;
+const LOCK_ROCKET_ESCAPE_TIME = 1;
+const LOCK_ROCKET_TURN_TIME = 0.7;
 const LOCK_ROCKET_GUIDE_TIME = 2.5;
 const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
+const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
+const UFO_SPIN_WOBBLE_FORCE = 220;
 
 class Ball {
   constructor(config) {
@@ -62,6 +64,9 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.ufoSpinElapsed = 0;
+    this.ufoSpinFlightZ = 0;
+    this.ufoSpinTrail = [];
     this.clockStopPhase = "none";
     this.clockStopElapsed = 0;
     this.clockStopX = 0;
@@ -190,6 +195,7 @@ class Ball {
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
+    const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin";
     const straightClockFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "clockStop";
     const straightLockRocketFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "lockRocket";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
@@ -203,6 +209,9 @@ class Ball {
         this.vz = 0;
       } else if (straightKiaiFlight) {
         this.z = this.kiaiFlightZ;
+        this.vz = 0;
+      } else if (straightUfoSpinFlight) {
+        this.z = this.ufoSpinFlightZ + Math.sin(this.ufoSpinElapsed * 12) * 9;
         this.vz = 0;
       } else if (straightClockFlight) {
         this.z = this.clockStopZ;
@@ -230,7 +239,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightUfoSpinFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -311,6 +320,9 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.ufoSpinElapsed = 0;
+    this.ufoSpinFlightZ = 0;
+    this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
@@ -351,6 +363,8 @@ class Ball {
       this.z = Math.min(76, 42 + actor.jumpZ * 0.18);
     } else if (this.specialShotType === "kiai") {
       this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
+    } else if (this.specialShotType === "ufoSpin") {
+      this.z = Math.min(70, 42 + actor.jumpZ * 0.1);
     } else if (this.specialShotType === "clockStop") {
       this.z = Math.min(58, 36 + actor.jumpZ * 0.08);
     } else if (this.specialShotType === "lockRocket") {
@@ -371,6 +385,8 @@ class Ball {
       this.radius = this.baseRadius * 1.3;
     } else if (this.specialShotType === "boomerang") {
       this.radius = this.baseRadius * BOOMERANG_SIZE_SCALE;
+    } else if (this.specialShotType === "ufoSpin") {
+      this.radius = this.baseRadius * 1.2;
     } else if (this.specialShotType === "lockRocket") {
       this.radius = this.baseRadius * 1.15;
     }
@@ -398,6 +414,9 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = this.specialShotType === "kiai" ? this.z : 0;
+    this.ufoSpinElapsed = 0;
+    this.ufoSpinFlightZ = this.specialShotType === "ufoSpin" ? this.z : 0;
+    this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
@@ -479,21 +498,25 @@ class Ball {
       this.clockApproachDistance = Math.hypot(this.clockStopX - this.x, this.clockStopY - this.y);
       const normalSpeedRatio = 1 + Math.max(0, Math.min(1, (throwMultiplier - 0.7) / 1.45)) * 0.24;
       this.clockBurstSpeed = this.config.shootSpeed * normalSpeedRatio * 1.8;
-      this.vx = directX * speed * 0.92 + actor.vx * moveBonus;
-      this.vy = directY * speed * 0.92 + actor.vy * moveBonus;
+      this.vx = directX * speed * 0.7 + actor.vx * moveBonus;
+      this.vy = directY * speed * 0.7 + actor.vy * moveBonus;
       this.vz = 0;
       this.catchable = true;
       return true;
     }
     if (this.specialShotType === "lockRocket") {
-      this.lockRocketPhase = "coast";
+      this.lockRocketPhase = "escape";
       this.lockRocketElapsed = 0;
       this.lockRocketFlightZ = this.z;
       this.lockRocketBaseSpeed = this.config.shootSpeed * speedRatio;
       this.lockRocketTargetX = targetX;
       this.lockRocketTargetY = targetY;
-      this.vx = directX * this.lockRocketBaseSpeed * 0.3;
-      this.vy = directY * this.lockRocketBaseSpeed * 0.3;
+      const escapeSide = ((actor.id?.length || 0) % 2 === 0 ? 1 : -1) * (actor.team === "left" ? 1 : -1);
+      const escapeX = -directX * 0.78 + -directY * escapeSide * 0.62;
+      const escapeY = -directY * 0.78 + directX * escapeSide * 0.62;
+      const escapeLength = Math.hypot(escapeX, escapeY) || 1;
+      this.vx = escapeX / escapeLength * this.lockRocketBaseSpeed * 0.58;
+      this.vy = escapeY / escapeLength * this.lockRocketBaseSpeed * 0.58;
       this.vz = 0;
       this.catchable = true;
       return true;
@@ -514,7 +537,7 @@ class Ball {
         ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
-      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
+      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "ufoSpin" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
       const targetZ = lowAimSpecial ? 26 : (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
       const arcLift = lowAimSpecial
@@ -547,6 +570,13 @@ class Ball {
       this.kiaiFlightZ = this.z;
       this.vx = directionX * speed * 1.16;
       this.vy = directionY * speed * 1.16;
+      this.vz = 0;
+    }
+    if (this.specialShotType === "ufoSpin") {
+      const directionLength = Math.hypot(this.vx, this.vy) || 1;
+      this.ufoSpinFlightZ = this.z;
+      this.vx = this.vx / directionLength * speed * 1.06;
+      this.vy = this.vy / directionLength * speed * 1.06;
       this.vz = 0;
     }
     return true;
@@ -740,6 +770,22 @@ class Ball {
         }
       }
     }
+    if (this.specialShotType === "ufoSpin") {
+      this.ufoSpinElapsed += delta;
+      const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
+      const dirX = this.vx / currentSpeed;
+      const dirY = this.vy / currentSpeed;
+      const sideX = -dirY;
+      const sideY = dirX;
+      const wobble = Math.sin(this.ufoSpinElapsed * 10.5) * UFO_SPIN_WOBBLE_FORCE;
+      const baseSpeed = (this.config.specialShootSpeed || this.config.shootSpeed) * 1.18;
+      this.vx = dirX * baseSpeed + sideX * wobble;
+      this.vy = dirY * baseSpeed + sideY * wobble;
+      this.z = this.ufoSpinFlightZ + Math.sin(this.ufoSpinElapsed * 12) * 9;
+      this.vz = 0;
+      this.ufoSpinTrail.push({ x: this.x, y: this.y - this.z, spin: this.spin });
+      if (this.ufoSpinTrail.length > 18) this.ufoSpinTrail.shift();
+    }
   }
 
   updateClockStopShot(delta) {
@@ -757,6 +803,12 @@ class Ball {
       this.vz = 0;
       this.clockStopPhase = "hold";
       this.clockStopElapsed = 0;
+      this.clockBurstTargetX = this.target && !this.target.defeated
+        ? this.target.x
+        : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
+      this.clockBurstTargetY = this.target && !this.target.defeated
+        ? this.target.y - 38
+        : this.clockStopY;
       this.catchable = false;
       return;
     }
@@ -771,12 +823,6 @@ class Ball {
       this.vz = 0;
       if (this.clockStopElapsed < CLOCK_STOP_DURATION) return;
 
-      this.clockBurstTargetX = this.target && !this.target.defeated
-        ? this.target.x
-        : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
-      this.clockBurstTargetY = this.target && !this.target.defeated
-        ? this.target.y - 38
-        : this.clockStopY;
       const dx = this.clockBurstTargetX - this.x;
       const dy = this.clockBurstTargetY - this.y;
       const length = Math.hypot(dx, dy) || 1;
@@ -812,26 +858,17 @@ class Ball {
     this.lockRocketTrail.push({ x: this.x, y: this.y, z: this.z });
     if (this.lockRocketTrail.length > 18) this.lockRocketTrail.shift();
 
-    if (this.lockRocketPhase === "coast") {
-      if (this.lockRocketElapsed < LOCK_ROCKET_COAST_TIME) return;
-      this.lockRocketPhase = "cruise";
-      this.lockRocketElapsed = 0;
+    if (this.lockRocketPhase === "escape") {
       const speed = Math.hypot(this.vx, this.vy) || 1;
-      this.vx = this.vx / speed * this.lockRocketBaseSpeed * 0.4;
-      this.vy = this.vy / speed * this.lockRocketBaseSpeed * 0.4;
+      this.vx = this.vx / speed * this.lockRocketBaseSpeed * 0.58;
+      this.vy = this.vy / speed * this.lockRocketBaseSpeed * 0.58;
+      if (this.lockRocketElapsed < LOCK_ROCKET_ESCAPE_TIME) return;
+      this.lockRocketPhase = "turn";
+      this.lockRocketElapsed = 0;
       return;
     }
 
-    if (this.lockRocketPhase === "cruise") {
-      const speed = Math.hypot(this.vx, this.vy) || 1;
-      this.vx = this.vx / speed * this.lockRocketBaseSpeed * 0.4;
-      this.vy = this.vy / speed * this.lockRocketBaseSpeed * 0.4;
-      if (this.lockRocketElapsed < LOCK_ROCKET_CRUISE_TIME) return;
-      this.lockRocketPhase = "guide";
-      this.lockRocketElapsed = 0;
-    }
-
-    if (this.lockRocketPhase === "guide") {
+    if (this.lockRocketPhase === "turn" || this.lockRocketPhase === "guide") {
       const targetAvailable = this.target && !this.target.defeated;
       const targetX = targetAvailable ? this.target.x : this.lockRocketTargetX;
       const targetY = targetAvailable ? this.target.y - 38 : this.lockRocketTargetY;
@@ -840,11 +877,18 @@ class Ball {
       let angleDifference = desiredAngle - currentAngle;
       while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
       while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
-      const maxTurn = LOCK_ROCKET_MAX_TURN_RATE * delta;
+      const maxTurn = (this.lockRocketPhase === "turn" ? LOCK_ROCKET_TURN_RATE : LOCK_ROCKET_MAX_TURN_RATE) * delta;
       const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
-      const guideSpeed = this.lockRocketBaseSpeed * 0.7;
+      const guideSpeed = this.lockRocketBaseSpeed * (this.lockRocketPhase === "turn" ? 0.72 : 0.7);
       this.vx = Math.cos(nextAngle) * guideSpeed;
       this.vy = Math.sin(nextAngle) * guideSpeed;
+
+      if (this.lockRocketPhase === "turn") {
+        if (this.lockRocketElapsed < LOCK_ROCKET_TURN_TIME) return;
+        this.lockRocketPhase = "guide";
+        this.lockRocketElapsed = 0;
+        return;
+      }
 
       if (this.lockRocketElapsed >= LOCK_ROCKET_GUIDE_TIME) {
         this.lockRocketPhase = "terminal";
@@ -953,6 +997,10 @@ class Ball {
       return 0.35;
     }
 
+    if (this.specialShotType === "ufoSpin") {
+      return Math.min(1.55, 1.28 + t * 0.25);
+    }
+
     if (this.specialShotType === "soul") {
       return Math.min(2.4, (1.25 + t * 0.3) * 1.5);
     }
@@ -1043,6 +1091,9 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.ufoSpinElapsed = 0;
+    this.ufoSpinFlightZ = 0;
+    this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
@@ -1082,6 +1133,9 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.ufoSpinElapsed = 0;
+    this.ufoSpinFlightZ = 0;
+    this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
@@ -1101,6 +1155,7 @@ class Ball {
     if (this.specialShotType === "tsutenkaku") return "#ffd83d";
     if (this.specialShotType === "clockStop") return "#50f5e0";
     if (this.specialShotType === "lockRocket") return "#55dfff";
+    if (this.specialShotType === "ufoSpin") return "#7cffcb";
     return "#ffe46a";
   }
 
@@ -1148,6 +1203,9 @@ class Ball {
     }
 
     const drawY = this.y - this.z;
+    if (this.isFlying && this.specialShotType === "ufoSpin") {
+      this.drawUfoSpinFlightEffects(context, drawY);
+    }
     if (this.isFlying && this.specialShotType === "boomerang") {
       this.drawBoomerangFlightEffects(context, drawY);
     }
@@ -1598,17 +1656,62 @@ class Ball {
     context.restore();
   }
 
+  drawUfoSpinFlightEffects(context, drawY) {
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const tailX = -this.vx / speed;
+    const tailY = -this.vy / speed;
+    const sideX = -tailY;
+    const sideY = tailX;
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    for (let i = 0; i < this.ufoSpinTrail.length; i += 1) {
+      const point = this.ufoSpinTrail[i];
+      const age = (i + 1) / Math.max(1, this.ufoSpinTrail.length);
+      context.globalAlpha = age * 0.34;
+      context.strokeStyle = i % 2 === 0 ? "#7cffcb" : "#58d7ff";
+      context.lineWidth = 2 + age * 5;
+      context.beginPath();
+      context.ellipse(point.x, point.y, this.radius * (1.15 + age * 0.25), this.radius * (0.32 + age * 0.08), point.spin * 0.1, 0, Math.PI * 2);
+      context.stroke();
+    }
+
+    context.globalAlpha = 0.72;
+    context.strokeStyle = "#cafff7";
+    context.lineWidth = 6;
+    for (let ring = 0; ring < 3; ring += 1) {
+      const distance = 34 + ring * 32;
+      const wobble = Math.sin(this.ufoSpinElapsed * 10 + ring) * 16;
+      context.beginPath();
+      context.ellipse(
+        this.x + tailX * distance + sideX * wobble,
+        drawY + tailY * distance + sideY * wobble,
+        this.radius * (0.85 + ring * 0.18),
+        this.radius * 0.24,
+        this.spin * 0.08 + ring * 0.5,
+        0,
+        Math.PI * 2
+      );
+      context.stroke();
+    }
+    context.globalAlpha = 0.46;
+    context.fillStyle = "#58d7ff";
+    context.beginPath();
+    context.ellipse(this.x, drawY, this.radius * 1.55, this.radius * 0.38, this.spin * 0.08, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
   drawLockRocket(context, debugMode) {
     const drawY = this.y - this.z;
     const speed = Math.hypot(this.vx, this.vy) || 1;
     const angle = Math.atan2(this.vy, this.vx);
     const pulse = 1 + Math.sin(performance.now() / 55) * 0.08;
 
-    if (this.lockRocketPhase === "guide" && this.target && !this.target.defeated) {
+    if ((this.lockRocketPhase === "turn" || this.lockRocketPhase === "guide") && this.target && !this.target.defeated) {
       context.save();
       context.translate(this.target.x, this.target.y - (this.target.jumpZ || 0) - 48);
-      context.strokeStyle = "rgba(74, 255, 231, 0.82)";
-      context.lineWidth = 4;
+      context.strokeStyle = this.lockRocketPhase === "turn" ? "rgba(255, 207, 87, 0.9)" : "rgba(74, 255, 231, 0.82)";
+      context.lineWidth = this.lockRocketPhase === "turn" ? 6 : 4;
       context.setLineDash([12, 8]);
       context.rotate(performance.now() / 420);
       context.beginPath();
@@ -1655,9 +1758,9 @@ class Ball {
       ? 94
       : this.lockRocketPhase === "guide"
         ? 68
-        : this.lockRocketPhase === "cruise"
+        : this.lockRocketPhase === "turn"
           ? 52
-          : 34;
+          : 42;
     const flame = context.createLinearGradient(-this.radius - flameLength, 0, -this.radius, 0);
     flame.addColorStop(0, "rgba(98, 204, 255, 0)");
     flame.addColorStop(0.34, "#69d8ff");

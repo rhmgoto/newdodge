@@ -100,6 +100,20 @@ const CHARACTER_TYPES = {
     legWidth: 0.85,
     legLength: 0.76,
     mage: true
+  },
+  alien: {
+    maxHp: 55,
+    maxStamina: 110,
+    stats: { power: 5, speed: 6, jump: 9, technique: 9 },
+    label: "Alien",
+    scaleX: 1,
+    scaleY: 1,
+    torsoX: 1,
+    torsoY: 1,
+    armWidth: 1,
+    legWidth: 1,
+    legLength: 1,
+    alien: true
   }
 };
 
@@ -181,6 +195,7 @@ class Player {
     this.runupDirY = 0;
     this.aerialPassCatchTimer = 0;
     this.quickShotReadyTimer = 0;
+    this.passChainBlockTimer = 0;
     this.maxStamina = options.maxStamina ?? typeDefinition.maxStamina ?? 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
@@ -236,6 +251,7 @@ class Player {
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
     this.aerialPassCatchTimer = Math.max(0, this.aerialPassCatchTimer - delta);
     this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
+    this.passChainBlockTimer = Math.max(0, this.passChainBlockTimer - delta);
     if (!this.hasBall) this.quickShotReadyTimer = 0;
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
@@ -733,6 +749,11 @@ class Player {
   }
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
+    if (this.isAlienStyle()) {
+      this.drawAlienCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
     if (this.isRobotStyle()) {
       this.drawRobotCharacter(context, scale, drawY, motionTime, config);
       return;
@@ -1053,6 +1074,10 @@ class Player {
     return this.uniformEmblem === "robot" || this.uniformEmblem === "robotCaptain";
   }
 
+  isAlienStyle() {
+    return this.characterType === "alien" || this.uniformEmblem === "galactako";
+  }
+
   isRobotOverdrive() {
     return (
       this.isRobotStyle() &&
@@ -1064,6 +1089,148 @@ class Player {
 
   getEffectiveThrowPower() {
     return this.throwPower * (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1);
+  }
+
+  getAlienFloatOffset(motionTime = performance.now()) {
+    if (!this.isAlienStyle()) return 0;
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const base = 15 + Math.sin(motionTime / 420 + this.x * 0.018 + this.y * 0.01) * 5;
+    return base + (moving ? Math.sin(motionTime / 180) * 3 : 0);
+  }
+
+  drawAlienCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const catchProgress = this.catchTimer > 0 ? 1 : this.catchSuccessTimer > 0 ? 0.6 : 0;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const floatLift = this.getAlienFloatOffset(motionTime);
+    const drift = moving ? Math.sin(motionTime / (this.isDashing ? 90 : 150) + this.x * 0.02) : 0;
+    const lean = this.isDashing ? -this.facing * 0.12 : moving ? -this.facing * 0.05 : 0;
+    const bodyColor = this.faceColor || "#48d7b8";
+    const shadeColor = this.hairColor || "#167f9d";
+    const eyeColor = this.eyeColor || "#cafff7";
+    const trimColor = this.trimColor || "#7cffcb";
+    const suitColor = this.uniformColor || "#1d9ec4";
+
+    context.save();
+    context.translate(this.x, drawY - floatLift);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-0.95);
+      context.scale(1.1, 0.8);
+    } else {
+      context.rotate(lean + (damaged ? -0.12 : 0));
+      if (crouch) context.scale(1.08, 0.82);
+    }
+
+    context.fillStyle = "rgba(35, 80, 82, 0.18)";
+    context.beginPath();
+    context.ellipse(0, 28 + floatLift * 0.16, 38, 10, 0, 0, Math.PI * 2);
+    context.fill();
+
+    const tentacleBaseY = -38;
+    for (let index = 0; index < 5; index += 1) {
+      const t = index - 2;
+      const phase = motionTime / 190 + index * 1.35 + this.x * 0.015;
+      const sway = Math.sin(phase) * (moving ? 10 : 5) + drift * 4;
+      const dashBend = this.isDashing ? -this.facing * (8 + index * 1.5) : 0;
+      const startX = t * 12;
+      const midX = startX + sway * 0.35 + dashBend * 0.35;
+      const endX = startX + sway + dashBend;
+      const endY = 20 + Math.cos(phase * 0.8) * 5;
+      context.strokeStyle = index % 2 === 0 ? shadeColor : bodyColor;
+      context.lineWidth = 10 - Math.abs(t);
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(startX, tentacleBaseY);
+      context.quadraticCurveTo(midX, -10, endX, endY);
+      context.stroke();
+
+      context.fillStyle = "rgba(202,255,247,0.45)";
+      context.beginPath();
+      context.arc(endX - this.facing * 2, endY - 2, 2.5, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    const bodyGradient = context.createRadialGradient(-18, -120, 10, 0, -84, 82);
+    bodyGradient.addColorStop(0, "#8fffe4");
+    bodyGradient.addColorStop(0.55, bodyColor);
+    bodyGradient.addColorStop(1, shadeColor);
+    context.fillStyle = bodyGradient;
+    context.beginPath();
+    context.ellipse(0, -83, 55, 70, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = suitColor;
+    context.beginPath();
+    context.ellipse(0, -35, 32, 25, 0, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = trimColor;
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(0, -40, 29, 0.12, Math.PI - 0.12);
+    context.stroke();
+
+    if (this.isCaptain || this.uniformEmblem === "galactakoCaptain") {
+      context.fillStyle = "#f7f7f2";
+      this.roundRect(context, -14, -47, 28, 27, 4);
+      context.fill();
+      context.fillStyle = "#157f9d";
+      context.font = "bold 15px Meiryo, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("G", 0, -33);
+    }
+
+    const eyeY = -102 + (catchProgress ? -4 : 0);
+    const eyeSpread = this.visualDirection === "up" || this.visualDirection === "down" ? 18 : 20;
+    context.fillStyle = "#eaffff";
+    context.strokeStyle = "#124d62";
+    context.lineWidth = 3;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * eyeSpread, eyeY, 13, 17, side * 0.08, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = eyeColor;
+      context.beginPath();
+      context.arc(side * eyeSpread + side * (throwRelease ? 4 : throwWindup ? -3 : 0), eyeY + 2, 5.5, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#eaffff";
+    }
+
+    context.strokeStyle = damaged ? "#ffffff" : "#145466";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, -77, damaged ? 8 : 5, 0.1, Math.PI - 0.1);
+    context.stroke();
+
+    if (throwWindup || throwRelease) {
+      context.strokeStyle = "#cafff7";
+      context.lineWidth = 7;
+      context.lineCap = "round";
+      const armBack = throwWindup ? -44 : 32;
+      const armFront = throwWindup ? -70 : 58;
+      context.beginPath();
+      context.moveTo(22, -49);
+      context.quadraticCurveTo(armBack, -78, armFront, -100);
+      context.stroke();
+    } else if (catchProgress > 0) {
+      context.strokeStyle = "#cafff7";
+      context.lineWidth = 7;
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(-24, -58);
+      context.quadraticCurveTo(-18, -104, -6, -122);
+      context.moveTo(24, -58);
+      context.quadraticCurveTo(18, -104, 6, -122);
+      context.stroke();
+    }
+
+    context.restore();
   }
 
   getRobotManufacturingNumber() {
@@ -1733,14 +1900,15 @@ class Player {
   }
 
   drawHeldBall(context, scale) {
+    const floatOffset = this.isAlienStyle() ? this.getAlienFloatOffset() * scale : 0;
     let bx = this.x + this.facing * 34 * scale;
-    let by = this.y - this.jumpZ - 48 * scale;
+    let by = this.y - this.jumpZ - 48 * scale - floatOffset;
     if (this.state === "throwing" && this.throwPhase === "windup") {
       bx = this.x - this.facing * (this.throwKind === "shoot" ? 62 : 44) * scale;
-      by = this.y - this.jumpZ - (this.throwKind === "shoot" ? 126 : 92) * scale;
+      by = this.y - this.jumpZ - (this.throwKind === "shoot" ? 126 : 92) * scale - floatOffset;
     } else if (this.state === "catching" || this.catchSuccessTimer > 0) {
       bx = this.x;
-      by = this.y - this.jumpZ - (this.catchSuccessTimer > 0 ? 108 : 130) * scale;
+      by = this.y - this.jumpZ - (this.catchSuccessTimer > 0 ? 108 : 130) * scale - floatOffset;
     }
     context.fillStyle = "#f06a32";
     context.beginPath();

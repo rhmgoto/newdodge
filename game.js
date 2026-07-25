@@ -8,6 +8,7 @@ const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
 const SHOT_WINDUP_TIME = 0.38 * 1.3;
+const SHOT_DAMAGE_SCALE = 1.3;
 const QUICK_SHOT_CONFIG = {
   windowDuration: 0.55,
   windupTime: SHOT_WINDUP_TIME * 0.5,
@@ -26,12 +27,13 @@ const CATCH_DIFFICULTY = {
   slap: { duration: 0.06, areaScale: 0.72 },
   tsutenkaku: { duration: 0.07, areaScale: 0.75 },
   clockStop: { duration: 0.07, areaScale: 0.73 },
-  lockRocket: { duration: 0.07, areaScale: 0.72 }
+  lockRocket: { duration: 0.07, areaScale: 0.72 },
+  ufoSpin: { duration: 0.08, areaScale: 0.76 }
 };
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
   windowDuration: 0.55,
-  damageScale: 1.65,
+  damageScale: 1.5,
   speedScale: 1.7875,
   knockbackScale: 1.4,
   staminaCost: 22,
@@ -371,6 +373,7 @@ class DodgeballGame {
         maxStamina: cpuPlayer?.maxStamina ?? teamDefinition?.maxStamina,
         stats: cpuPlayer?.stats || teamDefinition?.stats,
         hairColor: cpuPlayer?.hairColor || teamDefinition?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
+        faceColor: cpuPlayer?.faceColor || teamDefinition?.faceColor,
         eyeColor: cpuPlayer?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: cpuPlayer?.uniformEmblem || teamDefinition?.uniformEmblem,
         captain: Boolean(cpuPlayer?.captain),
@@ -392,6 +395,7 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(5)?.stats || teamDefinition?.stats,
         hairColor: getCpuPlayer(5)?.hairColor || teamDefinition?.hairColor,
+        faceColor: getCpuPlayer(5)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(5)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(5)?.uniformEmblem || teamDefinition?.uniformEmblem,
         captain: Boolean(getCpuPlayer(5)?.captain),
@@ -410,6 +414,7 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(6)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(6)?.stats || teamDefinition?.stats,
         hairColor: getCpuPlayer(6)?.hairColor || teamDefinition?.hairColor,
+        faceColor: getCpuPlayer(6)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(6)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(6)?.uniformEmblem || teamDefinition?.uniformEmblem,
         captain: Boolean(getCpuPlayer(6)?.captain),
@@ -428,6 +433,7 @@ class DodgeballGame {
         maxStamina: getCpuPlayer(7)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(7)?.stats || teamDefinition?.stats,
         hairColor: getCpuPlayer(7)?.hairColor || teamDefinition?.hairColor,
+        faceColor: getCpuPlayer(7)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(7)?.eyeColor || teamDefinition?.eyeColor,
         uniformEmblem: getCpuPlayer(7)?.uniformEmblem || teamDefinition?.uniformEmblem,
         captain: Boolean(getCpuPlayer(7)?.captain),
@@ -650,6 +656,35 @@ class DodgeballGame {
           player("だいふんか", "out", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
           player("かいりきやま", "out", "power", 170, 100, 12, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
           player("ちゃんこまる", "out", "power", 170, 100, 9, 4, 8, 6, "slap", { uniformEmblem: "sumo" })
+        ]
+      },
+      {
+        id: "galactakos",
+        name: "\u30ae\u30e3\u30e9\u30af\u30bf\u30b3\u30fc\u30ba",
+        description: "\u5b87\u5b99\u304b\u3089\u6765\u305f\u6d6e\u904a\u578b\u30bf\u30b3\u30c1\u30fc\u30e0",
+        characterType: "alien",
+        innerNames: ["\u30aa\u30af\u30c8", "\u30d4\u30b3", "\u30b0\u30cb\u30e3", "\u30d5\u30ef\u30f3", "\u30ad\u30e5\u30eb"],
+        outNames: ["\u30dd\u30eb", "\u30cb\u30e5\u30eb", "\u30e2\u30cb\u30e7"],
+        uniformColor: "#1d9ec4",
+        pantsColor: "#167f9d",
+        trimColor: "#7cffcb",
+        hairColor: "#167f9d",
+        faceColor: "#48d7b8",
+        eyeColor: "#7cffcb",
+        uniformEmblem: "galactako",
+        maxHp: 105,
+        maxStamina: 115,
+        stats: { power: 6, speed: 7, jump: 10, technique: 10 },
+        cpuProfile: "galactakos",
+        players: [
+          player("\u30aa\u30af\u30c8", "inner", "alien", 150, 130, 7, 8, 12, 12, "ufoSpin", { captain: true, uniformEmblem: "galactakoCaptain" }),
+          player("\u30d4\u30b3", "inner", "alien", 105, 115, 5, 8, 10, 10, "ufoSpin"),
+          player("\u30b0\u30cb\u30e3", "inner", "alien", 110, 115, 6, 6, 11, 10, "ufoSpin"),
+          player("\u30d5\u30ef\u30f3", "inner", "alien", 100, 120, 5, 7, 12, 11, "ufoSpin"),
+          player("\u30ad\u30e5\u30eb", "inner", "alien", 105, 115, 6, 8, 10, 9, "ufoSpin"),
+          player("\u30dd\u30eb", "out", "alien", 105, 115, 6, 7, 10, 9, "ufoSpin"),
+          player("\u30cb\u30e5\u30eb", "out", "alien", 100, 120, 5, 8, 11, 10, "ufoSpin"),
+          player("\u30e2\u30cb\u30e7", "out", "alien", 105, 115, 6, 6, 10, 11, "ufoSpin")
         ]
       },
       {
@@ -1196,6 +1231,7 @@ class DodgeballGame {
       this.autoSwitchToIncomingShotTarget();
       this.updateControlSwitching(delta);
     }
+    this.handleForcedCounterThrows();
     this.handlePlayerButtons();
     this.handleCpuButtons();
     this.updateChargingThrow(delta);
@@ -1273,7 +1309,7 @@ class DodgeballGame {
         radius: GAME_CONFIG.ball.radius * 0.88 * 1.3,
         team: actor.team,
         thrower: actor,
-        power: (actor.getEffectiveThrowPower?.() ?? actor.throwPower) * Math.max(0.7, multiplier) * 0.2,
+        power: (actor.getEffectiveThrowPower?.() ?? actor.throwPower) * Math.max(0.7, multiplier) * 0.2 * SHOT_DAMAGE_SCALE,
         life: 1.85,
         age: 0,
         lane: angle < 0 ? -1 : 1,
@@ -1366,16 +1402,22 @@ class DodgeballGame {
     this.handleCpuTeamButtons(this.rightTeam, this.cpuController, this.leftTeam);
   }
 
+  handleForcedCounterThrows() {
+    const holder = this.ball.owner;
+    if (!holder || !holder.canCounterThrow?.() || holder.counterAutoTimer > 0) return;
+    const playerIndex = this.gameMode === "versus" && holder.team === "right" ? 2 : holder.team === "left" ? 1 : 0;
+    this.startCounterThrow(holder, playerIndex, true);
+  }
+
   handleCpuTeamButtons(team, controller, opponents) {
     if (!controller) return;
     for (const member of team) {
       const command = controller.getCommand(member);
       if (
         this.ball.owner === member &&
-        !this.hasFullSpirit(member.team) &&
         member.canCounterThrow() &&
         member.counterAutoTimer <= 0 &&
-        this.startCounterThrow(member)
+        this.startCounterThrow(member, 0, true)
       ) {
         continue;
       }
@@ -1383,7 +1425,8 @@ class DodgeballGame {
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
-        this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
+        const started = this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
+        if (!started) controller.resetHolderPlanSoon?.();
       }
       if (command.shoot && this.ball.owner === member) {
         if (member.quickShotReadyTimer > 0 && !this.hasFullSpirit(member.team)) this.startQuickShot(member);
@@ -1990,7 +2033,7 @@ class DodgeballGame {
     return true;
   }
 
-  startCounterThrow(actor, playerIndex = 0) {
+  startCounterThrow(actor, playerIndex = 0, ignoreStamina = false) {
     if (
       this.pendingThrow ||
       this.chargingThrow ||
@@ -2001,10 +2044,13 @@ class DodgeballGame {
     ) return false;
     const target = this.getCounterTarget(actor, playerIndex);
     if (!target) return false;
-    if (!actor.consumeStamina(COUNTER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay)) return false;
+    if (
+      !ignoreStamina &&
+      !actor.consumeStamina(COUNTER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay)
+    ) return false;
 
     const aim = this.normalizedVector(target.x - actor.x, target.y - actor.y);
-    const counterDamage = actor.counterSourceDamage * COUNTER_CONFIG.damageScale;
+    const counterDamage = actor.counterSourceDamage * COUNTER_CONFIG.damageScale / SHOT_DAMAGE_SCALE;
     const counterIntensity = actor.counterVisualIntensity || 1;
     const windupScale = this.getThrowWindupScale(actor);
     actor.clearCounterOpportunity();
@@ -2590,6 +2636,7 @@ class DodgeballGame {
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";
+    if (actor.characterType === "alien") return "ufoSpin";
     if (actor.characterType === "power") return "iron";
     if (actor.characterType === "speed") return "boomerang";
     return "lightning";
@@ -2793,6 +2840,7 @@ class DodgeballGame {
       if (target.jumpZ > 18) {
         target.aerialPassCatchTimer = 1.1;
       }
+      target.passChainBlockTimer = 1.4;
       target.startCatch(0.34);
       this.ball.pickUp(target);
       this.addSpirit(passingTeam, GAME_CONFIG.battle.spiritPassGain);
@@ -2854,6 +2902,7 @@ class DodgeballGame {
       if (caughtFriendlyPass) {
         this.addSpirit(throwingTeam, GAME_CONFIG.battle.spiritPassGain);
         catcher.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
+        catcher.passChainBlockTimer = 1.4;
       }
       if (cutEnemyPass) {
         this.addSpirit(catcher.team, GAME_CONFIG.battle.spiritPassCutGain);
@@ -3116,6 +3165,9 @@ class DodgeballGame {
         if (specialType === "lockRocket") {
           this.startScreenShake(15, 0.18);
         }
+        if (specialType === "ufoSpin") {
+          this.startScreenShake(10, 0.12);
+        }
         this.spawnEffect(
           this.ball.x,
           ballY,
@@ -3126,6 +3178,7 @@ class DodgeballGame {
             : specialType === "boomerang" ? "bananaImpact"
             : specialType === "clockStop" ? "clockImpact"
             : specialType === "lockRocket" ? "lockRocketImpact"
+            : specialType === "ufoSpin" ? "ufoSpinImpact"
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
         );
@@ -3243,38 +3296,32 @@ class DodgeballGame {
   }
 
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
+    let damage = baseDamage;
     if (specialType === "kiai") {
-      return baseDamage * 1.7;
-    }
-    if (specialType === "lightning" || specialType === "triple") {
-      return baseDamage * 2;
-    }
-    if (specialType === "boomerang") {
-      return baseDamage * 2.2;
-    }
-    if (specialType === "boost") {
-      return baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
-    }
-    if (specialType === "iron") {
-      return baseDamage * 3;
-    }
-    if (specialType === "tsutenkaku") {
-      return baseDamage * 2.4;
-    }
-    if (specialType === "soul") {
-      return baseDamage * 1.2;
-    }
-    if (specialType === "slap") {
+      damage = baseDamage * 1.7;
+    } else if (specialType === "lightning" || specialType === "triple") {
+      damage = baseDamage * 2;
+    } else if (specialType === "boomerang") {
+      damage = baseDamage * 2.2;
+    } else if (specialType === "boost") {
+      damage = baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
+    } else if (specialType === "iron") {
+      damage = baseDamage * 3;
+    } else if (specialType === "tsutenkaku") {
+      damage = baseDamage * 2.4;
+    } else if (specialType === "soul") {
+      damage = baseDamage * 1.2;
+    } else if (specialType === "slap") {
       const distancePenalty = Math.min(1.75, Math.max(0, travelDistance) / 690);
-      return baseDamage * (2.8 - distancePenalty);
+      damage = baseDamage * (2.8 - distancePenalty);
+    } else if (specialType === "clockStop") {
+      damage = baseDamage * 2.2;
+    } else if (specialType === "lockRocket") {
+      damage = baseDamage * 2.415;
+    } else if (specialType === "ufoSpin") {
+      damage = baseDamage * 1.8;
     }
-    if (specialType === "clockStop") {
-      return baseDamage * 2.2;
-    }
-    if (specialType === "lockRocket") {
-      return baseDamage * 2.1;
-    }
-    return baseDamage;
+    return damage * SHOT_DAMAGE_SCALE;
   }
 
   handleBoostShotExit() {
@@ -3473,6 +3520,7 @@ class DodgeballGame {
     if (specialType === "tsutenkaku") return "#ffd83d";
     if (specialType === "clockStop") return "#50f5e0";
     if (specialType === "lockRocket") return "#55dfff";
+    if (specialType === "ufoSpin") return "#7cffcb";
     return "#ffe46a";
   }
 
@@ -3802,7 +3850,7 @@ class DodgeballGame {
     const duration = type === "counterImpact"
       ? 0.5
       : type === "tripleSplit" ? 0.42
-      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" || type === "lockRocketImpact" ? 0.52
+      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" ? 0.52
       : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
@@ -3880,6 +3928,7 @@ class DodgeballGame {
     if (specialType === "tsutenkaku") return "\u901a\u5929\u95a3\u843d\u3068\u3057";
     if (specialType === "clockStop") return "クロックストップ";
     if (specialType === "lockRocket") return "ロックオン・ロケット";
+    if (specialType === "ufoSpin") return "UFO SPIN";
     return "";
   }
 
@@ -4267,6 +4316,7 @@ class DodgeballGame {
     if (specialType === "tsutenkaku") return "\u901a";
     if (specialType === "clockStop") return "時";
     if (specialType === "lockRocket") return "ロ";
+    if (specialType === "ufoSpin") return "G";
     return "-";
   }
 
@@ -5449,6 +5499,38 @@ class DodgeballGame {
             Math.PI * 2
           );
           context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "ufoSpinImpact") {
+        const radius = 26 + progress * 150;
+        context.save();
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.strokeStyle = "#7cffcb";
+        context.lineWidth = 10 - progress * 6;
+        for (let ring = 0; ring < 4; ring += 1) {
+          context.save();
+          context.rotate(progress * (ring % 2 === 0 ? 4.5 : -3.8) + ring * 0.7);
+          context.beginPath();
+          context.ellipse(0, 0, radius * (0.48 + ring * 0.18), radius * (0.12 + ring * 0.04), 0, 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+        }
+        context.fillStyle = "rgba(88, 215, 255, 0.42)";
+        context.beginPath();
+        context.ellipse(0, 0, radius * 0.62, radius * 0.18, progress * 4, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 4;
+        for (let spark = 0; spark < 12; spark += 1) {
+          const angle = spark * Math.PI * 2 / 12 + progress * 2;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * radius * 0.25, Math.sin(angle) * radius * 0.1);
+          context.lineTo(Math.cos(angle) * radius * 0.9, Math.sin(angle) * radius * 0.36);
+          context.stroke();
         }
         context.restore();
         continue;

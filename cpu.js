@@ -662,6 +662,16 @@ class CPUController {
     }
     if (this.holderPlan && this.holderPlan.holderId === holder.id) return this.holderPlan;
 
+    if (holder.passChainBlockTimer > 0) {
+      if (this.attackTactic) this.attackTactic.finished = true;
+      const aerial = holder.aerialPassCatchTimer > 0 && holder.jumpZ > 0;
+      return this.createHolderPlan(
+        holder,
+        aerial ? "catch-and-shoot" : (holder.role === "out" ? "dash-strong-shot" : "dash-shot"),
+        aerial ? 0.85 + Math.random() * 0.25 : 0.85 + Math.random() * 0.35
+      );
+    }
+
     if (this.isRobotOverdrive(holder)) {
       const roll = Math.random();
       const type = roll < 0.45 ? "dash-shot" : roll < 0.72 ? "charge-shot" : "normal-shot";
