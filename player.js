@@ -181,6 +181,7 @@ class Player {
     this.counterSourceDamage = 0;
     this.counterTarget = null;
     this.counterVisualIntensity = 0;
+    this.counterChainCount = 0;
     this.counterThrowTimer = 0;
     this.counterThrowIntensity = 0;
     this.dodgeTimer = 0;
@@ -396,7 +397,7 @@ class Player {
     this.state = "catching";
   }
 
-  startCounterOpportunity(sourceDamage, target, config) {
+  startCounterOpportunity(sourceDamage, target, config, chainCount = 0) {
     if (this.defeated || this.downTimer > 0 || !this.hasBall) return;
     this.counterReadyTimer = config.lockDuration;
     this.counterWindowTimer = config.lockDuration + config.windowDuration;
@@ -404,6 +405,7 @@ class Player {
     this.counterSourceDamage = Math.max(0, sourceDamage || 0);
     this.counterTarget = target || null;
     this.counterVisualIntensity = Math.max(1, Math.min(2.5, this.counterSourceDamage / 32));
+    this.counterChainCount = Math.max(0, chainCount || 0);
   }
 
   canCounterThrow() {
@@ -417,6 +419,7 @@ class Player {
     this.counterSourceDamage = 0;
     this.counterTarget = null;
     this.counterVisualIntensity = 0;
+    this.counterChainCount = 0;
   }
 
   stun(duration) {

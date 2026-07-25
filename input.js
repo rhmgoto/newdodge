@@ -2,6 +2,7 @@ class InputManager {
   constructor() {
     // ボタン割り当てはここを変更する。番号は画面右下の表示で確認できる。
     this.gamepadMap = {
+      button0: 0,
       button1: 1, // パス（相手ボール時はしゃがみ回避と共用）
       button2: 2, // シュート
       catch: 2, // キャッチ
@@ -52,6 +53,7 @@ class InputManager {
       moveY: 0,
       rightX: 0,
       rightY: 0,
+      button0: false,
       button1: false,
       button2: false,
       catch: false,
@@ -75,6 +77,7 @@ class InputManager {
       moveY: this.clampAxis(keyboard.moveY || gamepad.moveY),
       rightX: this.clampAxis(gamepad.rightX),
       rightY: this.clampAxis(gamepad.rightY),
+      button0: keyboard.button0 || gamepad.button0,
       button1: keyboard.button1 || gamepad.button1,
       button2: keyboard.button2 || gamepad.button2,
       catch: keyboard.catch || gamepad.catch,
@@ -99,6 +102,7 @@ class InputManager {
       moveY: (down ? 1 : 0) - (up ? 1 : 0),
       rightX: 0,
       rightY: 0,
+      button0: this.keys.has("KeyX"),
       button1: this.keys.has("Space"),
       button2: this.keys.has("KeyC"),
       catch: this.keys.has("KeyC"),
@@ -146,6 +150,7 @@ class InputManager {
       moveY: this.clampAxis(leftY + (dDown ? 1 : 0) - (dUp ? 1 : 0)),
       rightX: this.clampAxis(rightX),
       rightY: this.clampAxis(rightY),
+      button0: this.isPressed(pad.buttons[this.gamepadMap.button0]),
       button1: this.isPressed(pad.buttons[this.gamepadMap.button1]),
       button2: this.isPressed(pad.buttons[this.gamepadMap.button2]),
       catch: this.isPressed(pad.buttons[this.gamepadMap.catch]),

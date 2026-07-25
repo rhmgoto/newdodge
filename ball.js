@@ -10,7 +10,7 @@ const LOCK_ROCKET_TURN_TIME = 0.7;
 const LOCK_ROCKET_GUIDE_TIME = 2.5;
 const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
-const UFO_SPIN_WOBBLE_FORCE = 220;
+const UFO_SPIN_WOBBLE_FORCE = 1320;
 
 class Ball {
   constructor(config) {
@@ -37,6 +37,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.counterChainCount = 0;
+    this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
     this.baseRadius = this.config.radius;
@@ -66,6 +68,8 @@ class Ball {
     this.kiaiFlightZ = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
+    this.ufoSpinBaseDirX = 0;
+    this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
     this.clockStopPhase = "none";
     this.clockStopElapsed = 0;
@@ -106,6 +110,7 @@ class Ball {
     this.lightningImpactPending = false;
     this.lightningTrail = [];
     this.hitPlayerIds = new Set();
+    this.flightSerial = 0;
     this.isFlying = false;
     this.isLoose = true;
     this.catchable = false;
@@ -192,13 +197,13 @@ class Ball {
       return;
     }
 
-    const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost";
-    const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap";
-    const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai";
-    const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin";
+    const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost" && !this.aerialShot;
+    const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap" && !this.aerialShot;
+    const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai" && !this.aerialShot;
+    const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin" && !this.aerialShot;
     const straightClockFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "clockStop";
     const straightLockRocketFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "lockRocket";
-    const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot;
+    const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot && !this.aerialShot;
     const straightQuickFlight = this.isFlying && this.kind === "shoot" && this.quickShot;
     if (this.isFlying) {
       if (straightBoostFlight) {
@@ -303,6 +308,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.counterChainCount = 0;
+    this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
     this.radius = this.baseRadius;
@@ -322,6 +329,8 @@ class Ball {
     this.kiaiFlightZ = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
+    this.ufoSpinBaseDirX = 0;
+    this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
@@ -335,6 +344,7 @@ class Ball {
     if ((kind !== "shoot" && !target) || actor.defeated) return false;
 
     actor.hasBall = false;
+    this.flightSerial = (this.flightSerial || 0) + 1;
     this.owner = null;
     this.thrower = actor;
     this.target = target;
@@ -345,6 +355,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.counterChainCount = 0;
+    this.aerialShot = kind === "shoot" && actor.jumpZ > 20;
     this.quickShot = false;
     this.quickFlightZ = 0;
     const powerMultiplier = kind === "shoot" ? throwMultiplier : 1;
@@ -357,17 +369,17 @@ class Ball {
     this.x = actor.x + actor.facing * 42;
     this.y = actor.y - 42;
     this.z = actor.jumpZ + 28;
-    if (this.specialShotType === "boost") {
+    if (!this.aerialShot && this.specialShotType === "boost") {
       this.z = 28;
-    } else if (this.specialShotType === "slap") {
+    } else if (!this.aerialShot && this.specialShotType === "slap") {
       this.z = Math.min(76, 42 + actor.jumpZ * 0.18);
-    } else if (this.specialShotType === "kiai") {
+    } else if (!this.aerialShot && this.specialShotType === "kiai") {
       this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
-    } else if (this.specialShotType === "ufoSpin") {
+    } else if (!this.aerialShot && this.specialShotType === "ufoSpin") {
       this.z = Math.min(70, 42 + actor.jumpZ * 0.1);
-    } else if (this.specialShotType === "clockStop") {
+    } else if (!this.aerialShot && this.specialShotType === "clockStop") {
       this.z = Math.min(58, 36 + actor.jumpZ * 0.08);
-    } else if (this.specialShotType === "lockRocket") {
+    } else if (!this.aerialShot && this.specialShotType === "lockRocket") {
       this.z = Math.min(62, 38 + actor.jumpZ * 0.08);
     }
     this.passTime = 0;
@@ -416,6 +428,8 @@ class Ball {
     this.kiaiFlightZ = this.specialShotType === "kiai" ? this.z : 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = this.specialShotType === "ufoSpin" ? this.z : 0;
+    this.ufoSpinBaseDirX = 0;
+    this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
@@ -538,7 +552,9 @@ class Ball {
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
       const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "ufoSpin" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
-      const targetZ = lowAimSpecial ? 26 : (target.jumpZ || 0) + 22;
+      const targetZ = lowAimSpecial
+        ? (this.aerialShot ? (target.jumpZ || 0) + 40 : 26)
+        : (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
       const arcLift = lowAimSpecial
         ? 0
@@ -560,7 +576,7 @@ class Ball {
     if (this.specialShotType === "slap") {
       this.slapInitialSpeed = Math.hypot(this.vx, this.vy);
       this.slapFlightZ = this.z;
-      this.vz = 0;
+      if (!this.aerialShot) this.vz = 0;
     }
     if (this.specialShotType === "kiai") {
       const directionLength = Math.hypot(this.vx, this.vy) || 1;
@@ -570,14 +586,16 @@ class Ball {
       this.kiaiFlightZ = this.z;
       this.vx = directionX * speed * 1.16;
       this.vy = directionY * speed * 1.16;
-      this.vz = 0;
+      if (!this.aerialShot) this.vz = 0;
     }
     if (this.specialShotType === "ufoSpin") {
       const directionLength = Math.hypot(this.vx, this.vy) || 1;
       this.ufoSpinFlightZ = this.z;
-      this.vx = this.vx / directionLength * speed * 1.06;
-      this.vy = this.vy / directionLength * speed * 1.06;
-      this.vz = 0;
+      this.ufoSpinBaseDirX = this.vx / directionLength;
+      this.ufoSpinBaseDirY = this.vy / directionLength;
+      this.vx = this.ufoSpinBaseDirX * speed * 1.06;
+      this.vy = this.ufoSpinBaseDirY * speed * 1.06;
+      if (!this.aerialShot) this.vz = 0;
     }
     return true;
   }
@@ -697,8 +715,10 @@ class Ball {
       const targetSpeed = this.kiaiCruiseSpeed * (1 + launchRatio * 0.16);
       this.vx = directionX * targetSpeed;
       this.vy = directionY * targetSpeed;
-      this.z = this.kiaiFlightZ;
-      this.vz = 0;
+      if (!this.aerialShot) {
+        this.z = this.kiaiFlightZ;
+        this.vz = 0;
+      }
     }
     if (this.specialShotType === "slap") {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
@@ -708,8 +728,10 @@ class Ball {
       const targetSpeed = Math.max(504, initialSpeed * Math.exp(-this.travelDistance / 930));
       this.vx = directionX * targetSpeed;
       this.vy = directionY * targetSpeed;
-      this.z = this.slapFlightZ;
-      this.vz = 0;
+      if (!this.aerialShot) {
+        this.z = this.slapFlightZ;
+        this.vz = 0;
+      }
     }
     if (this.specialShotType === "boomerang" && this.target && !this.target.defeated) {
       if (!this.returning) {
@@ -772,17 +794,20 @@ class Ball {
     }
     if (this.specialShotType === "ufoSpin") {
       this.ufoSpinElapsed += delta;
+      const storedLength = Math.hypot(this.ufoSpinBaseDirX, this.ufoSpinBaseDirY);
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
-      const dirX = this.vx / currentSpeed;
-      const dirY = this.vy / currentSpeed;
+      const dirX = storedLength > 0.001 ? this.ufoSpinBaseDirX / storedLength : this.vx / currentSpeed;
+      const dirY = storedLength > 0.001 ? this.ufoSpinBaseDirY / storedLength : this.vy / currentSpeed;
       const sideX = -dirY;
       const sideY = dirX;
       const wobble = Math.sin(this.ufoSpinElapsed * 10.5) * UFO_SPIN_WOBBLE_FORCE;
       const baseSpeed = (this.config.specialShootSpeed || this.config.shootSpeed) * 1.18;
       this.vx = dirX * baseSpeed + sideX * wobble;
       this.vy = dirY * baseSpeed + sideY * wobble;
-      this.z = this.ufoSpinFlightZ + Math.sin(this.ufoSpinElapsed * 12) * 9;
-      this.vz = 0;
+      if (!this.aerialShot) {
+        this.z = this.ufoSpinFlightZ + Math.sin(this.ufoSpinElapsed * 12) * 9;
+        this.vz = 0;
+      }
       this.ufoSpinTrail.push({ x: this.x, y: this.y - this.z, spin: this.spin });
       if (this.ufoSpinTrail.length > 18) this.ufoSpinTrail.shift();
     }
@@ -1077,6 +1102,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.counterChainCount = 0;
+    this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
     this.radius = this.baseRadius;
@@ -1093,6 +1120,8 @@ class Ball {
     this.kiaiFlightZ = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
+    this.ufoSpinBaseDirX = 0;
+    this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();
@@ -1119,6 +1148,8 @@ class Ball {
     this.counterShot = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
+    this.counterChainCount = 0;
+    this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
     this.radius = this.baseRadius;
@@ -1135,6 +1166,8 @@ class Ball {
     this.kiaiFlightZ = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
+    this.ufoSpinBaseDirX = 0;
+    this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
     this.clearClockStop();
     this.clearLockRocket();

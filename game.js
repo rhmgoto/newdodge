@@ -33,8 +33,11 @@ const CATCH_DIFFICULTY = {
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
   windowDuration: 0.55,
+  catchDuration: 0.12,
+  catchDurationPenaltyPerChain: 0.01,
+  minCatchDuration: 0.04,
   damageScale: 1.5,
-  speedScale: 1.7875,
+  speedScale: 2.145,
   knockbackScale: 1.4,
   staminaCost: 22,
   releaseDelay: 0.16
@@ -672,19 +675,19 @@ class DodgeballGame {
         faceColor: "#48d7b8",
         eyeColor: "#7cffcb",
         uniformEmblem: "galactako",
-        maxHp: 105,
+        maxHp: 250,
         maxStamina: 115,
-        stats: { power: 6, speed: 7, jump: 10, technique: 10 },
+        stats: { power: 9, speed: 7, jump: 16, technique: 12 },
         cpuProfile: "galactakos",
         players: [
-          player("\u30aa\u30af\u30c8", "inner", "alien", 150, 130, 7, 8, 12, 12, "ufoSpin", { captain: true, uniformEmblem: "galactakoCaptain" }),
-          player("\u30d4\u30b3", "inner", "alien", 105, 115, 5, 8, 10, 10, "ufoSpin"),
-          player("\u30b0\u30cb\u30e3", "inner", "alien", 110, 115, 6, 6, 11, 10, "ufoSpin"),
-          player("\u30d5\u30ef\u30f3", "inner", "alien", 100, 120, 5, 7, 12, 11, "ufoSpin"),
-          player("\u30ad\u30e5\u30eb", "inner", "alien", 105, 115, 6, 8, 10, 9, "ufoSpin"),
-          player("\u30dd\u30eb", "out", "alien", 105, 115, 6, 7, 10, 9, "ufoSpin"),
-          player("\u30cb\u30e5\u30eb", "out", "alien", 100, 120, 5, 8, 11, 10, "ufoSpin"),
-          player("\u30e2\u30cb\u30e7", "out", "alien", 105, 115, 6, 6, 10, 11, "ufoSpin")
+          player("\u30aa\u30af\u30c8", "inner", "alien", 350, 130, 12, 8, 20, 15, "ufoSpin", { captain: true, uniformEmblem: "galactakoCaptain" }),
+          player("\u30d4\u30b3", "inner", "alien", 250, 115, 9, 8, 16, 12, "ufoSpin"),
+          player("\u30b0\u30cb\u30e3", "inner", "alien", 250, 115, 9, 6, 16, 12, "ufoSpin"),
+          player("\u30d5\u30ef\u30f3", "inner", "alien", 250, 120, 9, 7, 16, 12, "ufoSpin"),
+          player("\u30ad\u30e5\u30eb", "inner", "alien", 250, 115, 9, 8, 16, 12, "ufoSpin"),
+          player("\u30dd\u30eb", "out", "alien", 250, 115, 10, 7, 16, 12, "ufoSpin"),
+          player("\u30cb\u30e5\u30eb", "out", "alien", 250, 120, 8, 8, 16, 12, "ufoSpin"),
+          player("\u30e2\u30cb\u30e7", "out", "alien", 250, 115, 9, 6, 16, 12, "ufoSpin")
         ]
       },
       {
@@ -1233,7 +1236,7 @@ class DodgeballGame {
     }
     this.handleForcedCounterThrows();
     this.handlePlayerButtons();
-    this.handleCpuButtons();
+    this.handleCpuButtons(delta);
     this.updateChargingThrow(delta);
     this.updatePendingThrow(delta);
     this.updatePlayers(delta);
@@ -1340,17 +1343,23 @@ class DodgeballGame {
     if (selfTeamHasBall) {
       this.controlledPlayerId = holder.id;
       if (this.input.wasPressed("button2")) {
-        const counterStarted = !this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 1);
+        const counterStarted = this.startCounterThrow(holder, 1);
         if (!counterStarted) {
-          if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 1);
+          if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 1);
           else this.startChargedThrow(holder, "shoot");
         }
+      }
+      if (this.input.wasPressed("button0") && this.hasFullSpirit(holder.team)) {
+        this.startChargedThrow(holder, "shoot", 1, true);
       }
       if (this.input.wasPressed("button1")) {
         this.startChargedThrow(holder, "pass");
       }
       if (this.input.wasReleased("button2")) {
-        this.releaseChargedThrow(holder, "shoot");
+        if (!this.chargingThrow?.specialRequested) this.releaseChargedThrow(holder, "shoot");
+      }
+      if (this.input.wasReleased("button0")) {
+        if (this.chargingThrow?.specialRequested) this.releaseChargedThrow(holder, "shoot");
       }
       if (this.input.wasReleased("button1")) {
         this.releaseChargedThrow(holder, "pass");
@@ -1368,17 +1377,23 @@ class DodgeballGame {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
-          const counterStarted = !this.hasFullSpirit(holder.team) && this.startCounterThrow(holder, 2);
+          const counterStarted = this.startCounterThrow(holder, 2);
           if (!counterStarted) {
-            if (holder.quickShotReadyTimer > 0 && !this.hasFullSpirit(holder.team)) this.startQuickShot(holder, 2);
+            if (holder.quickShotReadyTimer > 0) this.startQuickShot(holder, 2);
             else this.startChargedThrow(holder, "shoot", 2);
           }
+        }
+        if (this.input.wasPressed("button0", 2) && this.hasFullSpirit(holder.team)) {
+          this.startChargedThrow(holder, "shoot", 2, true);
         }
         if (this.input.wasPressed("button1", 2)) {
           this.startChargedThrow(holder, "pass", 2);
         }
         if (this.input.wasReleased("button2", 2)) {
-          this.releaseChargedThrow(holder, "shoot", 2);
+          if (!this.chargingThrow?.specialRequested) this.releaseChargedThrow(holder, "shoot", 2);
+        }
+        if (this.input.wasReleased("button0", 2)) {
+          if (this.chargingThrow?.specialRequested) this.releaseChargedThrow(holder, "shoot", 2);
         }
         if (this.input.wasReleased("button1", 2)) {
           this.releaseChargedThrow(holder, "pass", 2);
@@ -1394,12 +1409,12 @@ class DodgeballGame {
     }
   }
 
-  handleCpuButtons() {
+  handleCpuButtons(delta = 0) {
     if (this.gameMode === "versus") return;
     if (this.gameMode === "watch") {
-      this.handleCpuTeamButtons(this.leftTeam, this.cpuControllerLeft, this.rightTeam);
+      this.handleCpuTeamButtons(this.leftTeam, this.cpuControllerLeft, this.rightTeam, delta);
     }
-    this.handleCpuTeamButtons(this.rightTeam, this.cpuController, this.leftTeam);
+    this.handleCpuTeamButtons(this.rightTeam, this.cpuController, this.leftTeam, delta);
   }
 
   handleForcedCounterThrows() {
@@ -1409,10 +1424,15 @@ class DodgeballGame {
     this.startCounterThrow(holder, playerIndex, true);
   }
 
-  handleCpuTeamButtons(team, controller, opponents) {
+  handleCpuTeamButtons(team, controller, opponents, delta = 0) {
     if (!controller) return;
     for (const member of team) {
       const command = controller.getCommand(member);
+      if (this.ball.owner === member) {
+        if (this.updateCpuHolderStall(member, controller, opponents, delta)) continue;
+      } else {
+        member.cpuHoldStallTimer = 0;
+      }
       if (
         this.ball.owner === member &&
         member.canCounterThrow() &&
@@ -1429,13 +1449,35 @@ class DodgeballGame {
         if (!started) controller.resetHolderPlanSoon?.();
       }
       if (command.shoot && this.ball.owner === member) {
-        if (member.quickShotReadyTimer > 0 && !this.hasFullSpirit(member.team)) this.startQuickShot(member);
-        else this.launchFromAi(member, "shoot", opponents);
+        const started = member.quickShotReadyTimer > 0 && !this.hasFullSpirit(member.team)
+          ? this.startQuickShot(member)
+          : this.launchFromAi(member, "shoot", opponents);
+        if (!started) controller.resetHolderPlanSoon?.();
       }
       if (command.pass && this.ball.owner === member) {
-        this.launchFromAi(member, "pass", team.filter((p) => p !== member));
+        const started = this.launchFromAi(member, "pass", team.filter((p) => p !== member));
+        if (!started) controller.resetHolderPlanSoon?.();
       }
     }
+  }
+
+  updateCpuHolderStall(member, controller, opponents, delta) {
+    if (this.pendingThrow || this.chargingThrow || member.throwLockTimer > 0 || member.counterThrowTimer > 0) {
+      member.cpuHoldStallTimer = 0;
+      return;
+    }
+    member.cpuHoldStallTimer = (member.cpuHoldStallTimer || 0) + delta;
+    if (member.cpuHoldStallTimer < 3.2) return false;
+
+    member.cpuHoldStallTimer = 0;
+    member.cpuPreferredPassTargetId = null;
+    controller.specialAttackState = null;
+    if (controller.attackTactic) controller.attackTactic.finished = true;
+    controller.resetHolderPlanSoon?.();
+    if (!this.startCpuChargedShoot(member, 0.55, "time", false)) {
+      this.launchFromAi(member, "shoot", opponents, false);
+    }
+    return true;
   }
 
   updatePlayers(delta) {
@@ -2012,7 +2054,7 @@ class DodgeballGame {
     }
   }
 
-  startChargedThrow(actor, kind, playerIndex = 1) {
+  startChargedThrow(actor, kind, playerIndex = 1, specialRequested = false) {
     if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0 || actor.throwLockTimer > 0) return false;
     if (kind === "shoot" && !actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
@@ -2027,6 +2069,7 @@ class DodgeballGame {
       aim: selection.aim,
       playerIndex,
       chargeTime: 0,
+      specialRequested: kind === "shoot" && specialRequested,
       aerialCombo: kind === "shoot" && actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
     };
     actor.markThrowing(0.5 * this.getThrowWindupScale(actor), kind);
@@ -2066,6 +2109,7 @@ class DodgeballGame {
       counter: true,
       counterDamage,
       counterIntensity,
+      counterChainCount: actor.counterChainCount || 0,
       timer: COUNTER_CONFIG.releaseDelay * windupScale
     };
     actor.markThrowing(0.34 * windupScale, "shoot");
@@ -2146,7 +2190,7 @@ class DodgeballGame {
       || this.getNearestFrom(actor, innerTargets);
   }
 
-  startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time") {
+  startCpuChargedShoot(actor, chargeTime = 1, releaseMode = "time", specialRequested = true) {
     if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0 || actor.throwLockTimer > 0) return false;
 
     const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
@@ -2160,6 +2204,7 @@ class DodgeballGame {
       playerIndex: 0,
       chargeTime: 0,
       cpuControlled: true,
+      specialRequested,
       cpuReleaseTime: Math.max(0.35, Math.min(MAX_SHOT_CHARGE_TIME, chargeTime)),
       cpuReleaseMode: releaseMode,
       aerialCombo: actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
@@ -2187,7 +2232,7 @@ class DodgeballGame {
       : 1 + chargeRatio * 0.85;
     actor.throwLockTimer = Math.max(actor.throwLockTimer, (kind === "shoot" ? 0.3 : 0.18) * windupScale);
     actor.markThrowing((kind === "shoot" ? 0.32 : 0.22) * windupScale, kind);
-    const specialType = kind === "shoot" ? this.getSpecialShotType(actor) : null;
+    const specialType = kind === "shoot" && charged.specialRequested ? this.getSpecialShotType(actor) : null;
     const remainingWindup = kind === "shoot"
       ? Math.max(0, SHOT_WINDUP_TIME * windupScale - charged.chargeTime)
       : 0;
@@ -2200,6 +2245,7 @@ class DodgeballGame {
         aim: charged.aim,
         shotMultiplier: multiplier,
         specialType,
+        specialRequested: Boolean(specialType),
         timer: releaseDelay,
         anticipation: Boolean(specialType),
         aerialCombo: charged.aerialCombo
@@ -2233,21 +2279,20 @@ class DodgeballGame {
     return { target, aim };
   }
 
-  launchFromAi(actor, kind, candidates) {
+  launchFromAi(actor, kind, candidates, specialRequested = true) {
     if (kind === "shoot") {
       const selection = this.getCpuShootSelection(actor);
-      this.queueThrow(actor, selection.target, kind, selection.aim, true);
-      return;
+      return this.queueThrow(actor, selection.target, kind, selection.aim, true, specialRequested);
     }
 
     const target = this.getCpuPassTarget(actor);
     const aim = target
       ? this.normalizedVector(target.x - actor.x, target.y - actor.y)
       : this.getDefaultShootAim(actor, actor.team === "left" ? this.rightTeam : this.leftTeam);
-    this.queueThrow(actor, target, kind, aim, true);
+    return this.queueThrow(actor, target, kind, aim, true);
   }
 
-  queueThrow(actor, target, kind, aim, ignoreStamina = false) {
+  queueThrow(actor, target, kind, aim, ignoreStamina = false, specialRequested = false) {
     if (this.pendingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0) return false;
     if (!target && kind !== "shoot") return false;
     if (kind === "shoot" && !ignoreStamina && !actor.consumeStamina(
@@ -2264,11 +2309,12 @@ class DodgeballGame {
       aim: shotAim || { x: aim.x, y: aim.y },
       shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
       specialType: null,
+      specialRequested: kind === "shoot" && specialRequested,
       anticipation: false,
       timer: kind === "shoot" ? SHOT_WINDUP_TIME * windupScale : 0.2 * windupScale
     };
     if (kind === "shoot") {
-      this.pendingThrow.specialType = this.getSpecialShotType(actor);
+      this.pendingThrow.specialType = specialRequested ? this.getSpecialShotType(actor) : null;
       if (this.pendingThrow.specialType) {
         this.pendingThrow.timer += SPECIAL_SHOT_ANTICIPATION_TIME;
         this.pendingThrow.anticipation = true;
@@ -2309,7 +2355,7 @@ class DodgeballGame {
     const specialType = pending.counter || pending.quickShot
       ? null
       : pending.kind === "shoot"
-      ? pending.specialType || this.getSpecialShotType(pending.actor)
+      ? pending.specialType
       : null;
     const launchTarget = pending.quickShot ? null : pending.target;
     const launchMultiplier = pending.quickShot ? 1 : pending.shotMultiplier;
@@ -2321,13 +2367,27 @@ class DodgeballGame {
         const dy = targetY - this.ball.y;
         const length = Math.hypot(dx, dy) || 1;
         const speed = GAME_CONFIG.ball.shootSpeed * COUNTER_CONFIG.speedScale;
+        const aerialCounter = pending.actor.jumpZ > 20;
         this.ball.vx = dx / length * speed;
         this.ball.vy = dy / length * speed;
-        this.ball.z = Math.min(62, this.ball.z);
-        this.ball.vz = 0;
+        if (aerialCounter) {
+          const flightTime = Math.max(0.16, length / Math.max(1, speed));
+          const targetZ = pending.target ? (pending.target.jumpZ || 0) + 40 : this.ball.z;
+          this.ball.vz = Math.max(
+            -260,
+            Math.min(
+              420,
+              (targetZ - this.ball.z + 0.5 * GAME_CONFIG.ball.gravity * flightTime * flightTime) / flightTime
+            )
+          );
+        } else {
+          this.ball.z = Math.min(62, this.ball.z);
+          this.ball.vz = 0;
+        }
         this.ball.power = pending.counterDamage;
         this.ball.shotMultiplier = COUNTER_CONFIG.speedScale;
         this.ball.counterShot = true;
+        this.ball.counterChainCount = pending.counterChainCount || 0;
         this.ball.radius = this.ball.baseRadius * 1.5;
         this.ball.counterFlightZ = this.ball.z;
         this.ball.counterIntensity = pending.counterIntensity || 1;
@@ -2898,6 +2958,7 @@ class DodgeballGame {
       const caughtIronShot = caughtEnemyShot && this.ball.specialShotType === "iron";
       const ironDirection = caughtIronShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
       const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
+      const counterChainCount = caughtEnemyShot && this.ball.counterShot ? (this.ball.counterChainCount || 0) + 1 : 0;
       this.ball.pickUp(catcher);
       if (caughtFriendlyPass) {
         this.addSpirit(throwingTeam, GAME_CONFIG.battle.spiritPassGain);
@@ -2913,7 +2974,7 @@ class DodgeballGame {
       if (caughtEnemyShot) {
         this.addSpirit(catcher.team, GAME_CONFIG.battle.spiritCatchGain);
         catcher.startCatchSuccess();
-        catcher.startCounterOpportunity(caughtShotDamage, counterTarget, COUNTER_CONFIG);
+        catcher.startCounterOpportunity(caughtShotDamage, counterTarget, COUNTER_CONFIG, counterChainCount);
         if (caughtIronShot) {
           catcher.knockbackX += ironDirection * GAME_CONFIG.battle.knockbackSpeed * 2.2;
           catcher.knockbackY += ironVerticalDirection * GAME_CONFIG.battle.knockbackSpeed * 0.55;
@@ -2961,9 +3022,14 @@ class DodgeballGame {
     if (!enemyShot) return 0.3;
 
     const difficulty = this.getCatchDifficulty(catcher);
-    const baseDuration = this.ball.counterShot
-      ? 0.19
-      : this.ball.quickShot
+    if (this.ball.counterShot) {
+      return Math.max(
+        COUNTER_CONFIG.minCatchDuration,
+        COUNTER_CONFIG.catchDuration - (this.ball.counterChainCount || 0) * COUNTER_CONFIG.catchDurationPenaltyPerChain
+      );
+    }
+
+    const baseDuration = this.ball.quickShot
         ? 0.14
         : difficulty.duration;
     const techniqueScale = this.getCatchTechniqueWindowScale(catcher.stats?.technique || 5);

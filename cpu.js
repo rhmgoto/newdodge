@@ -13,6 +13,14 @@ const CPU_CLOSE_SHOT_DEFENSE = {
   maxSuccessChance: 0.94
 };
 
+const CPU_CATCH_TUNING = {
+  globalScale: 0.75,
+  specialScale: 0.5,
+  counterScale: 2.3333333333,
+  delayMin: 0.02,
+  delayMax: 0.07
+};
+
 const CPU_ATTACK_TACTIC_WEIGHTS = {
   buildUp: 1,
   quickAttack: 1,
@@ -48,6 +56,7 @@ class CPUController {
     this.lastTacticType = null;
     this.tacticSerial = 0;
     this.specialAttackState = null;
+    this.catchDelayPlans = new Map();
   }
 
   update(delta) {
@@ -679,6 +688,15 @@ class CPUController {
         this.createHolderPlan(holder, type, 0.58 + Math.random() * 0.18),
         true
       );
+    }
+
+    if (
+      holder.cpuProfile === "galactakos" &&
+      holder.jumpZ <= 0 &&
+      Date.now() > (holder.cpuJumpAttackCooldownUntil || 0) &&
+      Math.random() < (holder.role === "out" ? 0.78 : 0.68)
+    ) {
+      return this.createHolderPlan(holder, "jump-shot", 0.82 + Math.random() * 0.28);
     }
 
     const tacticalPlan = this.getTacticalHolderPlan(holder);
@@ -1389,7 +1407,10 @@ class CPUController {
 
   reactToIncomingBall(delta) {
     const ballComing = this.ball.isFlying && this.ball.kind === "shoot" && this.ball.thrower && this.ball.thrower.team === this.opponentName;
-    if (!ballComing) return;
+    if (!ballComing) {
+      this.catchDelayPlans.clear();
+      return;
+    }
 
     this.reactionTimer -= delta;
     if (this.reactionTimer > 0 && !this.hasUrgentDefender()) return;
@@ -1397,6 +1418,7 @@ class CPUController {
     const activeInner = this.team.filter((p) => p.role === "inner" && !p.defeated);
     for (const member of activeInner) {
       const command = this.commands.get(member.id);
+      if (this.applyDelayedCatch(command, member, delta)) continue;
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       const technique = member.stats?.technique || 5;
       const speed = member.stats?.speed || 5;
@@ -1431,9 +1453,9 @@ class CPUController {
         ? readyToReact ? 0.9 : frontShot ? 0.72 : 0.3
         : readyToReact ? 0.42 : frontShot ? 0.28 : 0.14;
       const catchChance = weakShot
-        ? readyToReact ? this.config.cpuCatchChance * 2.7 : frontShot ? this.config.cpuCatchChance * 2.2 : this.config.cpuCatchChance * 0.35
-        : strongShot ? frontShot ? this.config.cpuCatchChance * 0.22 : this.config.cpuCatchChance * 0.06
-          : readyToReact ? this.config.cpuCatchChance * 0.9 : frontShot ? this.config.cpuCatchChance * 1.05 : this.config.cpuCatchChance * 0.16;
+        ? readyToReact ? this.config.cpuCatchChance * 3.5556 : frontShot ? this.config.cpuCatchChance * 3.3333 : this.config.cpuCatchChance * 0.35
+        : strongShot ? frontShot ? this.config.cpuCatchChance * 1.3333 : this.config.cpuCatchChance * 0.06
+          : readyToReact ? this.config.cpuCatchChance * 2.6667 : frontShot ? this.config.cpuCatchChance * 2.4444 : this.config.cpuCatchChance * 0.16;
       const catchScale = member.cpuProfile === "townDodgies" ? 0.42 : 1;
       const dodgeScale = member.cpuProfile === "townDodgies" ? 1.22 : 1;
       let profileCatchScale = member.cpuProfile === "hinomaruBombers" ? (frontShot ? 2.15 : 1.25) : catchScale;
@@ -1455,7 +1477,7 @@ class CPUController {
 
       const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30;
       const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
-      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1);
+      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1) * this.getCatchRollScale();
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive);
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {
@@ -1467,7 +1489,7 @@ class CPUController {
           robotOverdrive
         });
       } else if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
-        command.catch = true;
+        this.scheduleDelayedCatch(member);
       } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
         this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, {
           speed,
@@ -1479,6 +1501,35 @@ class CPUController {
     }
 
     this.reactionTimer = this.randomReaction();
+  }
+
+  getCatchRollScale() {
+    let scale = CPU_CATCH_TUNING.globalScale;
+    if (this.ball.specialShotType) scale *= CPU_CATCH_TUNING.specialScale;
+    if (this.ball.counterShot) scale *= CPU_CATCH_TUNING.counterScale;
+    return scale;
+  }
+
+  scheduleDelayedCatch(member) {
+    if (this.catchDelayPlans.has(member.id)) return;
+    this.catchDelayPlans.set(member.id, {
+      flightSerial: this.ball.flightSerial || 0,
+      timer: CPU_CATCH_TUNING.delayMin + Math.random() * (CPU_CATCH_TUNING.delayMax - CPU_CATCH_TUNING.delayMin)
+    });
+  }
+
+  applyDelayedCatch(command, member, delta) {
+    const plan = this.catchDelayPlans.get(member.id);
+    if (!plan) return false;
+    if (plan.flightSerial !== (this.ball.flightSerial || 0)) {
+      this.catchDelayPlans.delete(member.id);
+      return false;
+    }
+    plan.timer -= delta;
+    if (plan.timer > 0) return true;
+    this.catchDelayPlans.delete(member.id);
+    command.catch = true;
+    return true;
   }
 
   hasUrgentDefender() {
