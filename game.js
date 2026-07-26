@@ -3165,6 +3165,23 @@ class DodgeballGame {
     return this.circleRectOverlap(ballX, ballY, ballRadius, standingBox);
   }
 
+  isPiercingShot(specialType) {
+    return specialType === "iron" || specialType === "slap";
+  }
+
+  endShotAfterDodge(target) {
+    const direction = this.ball.vx >= 0 ? 1 : -1;
+    this.ball.hitPlayerIds?.add(target.id);
+    this.ball.drop();
+    this.ball.x = target.x + direction * Math.min(58, Math.max(24, this.ball.radius * 1.35));
+    this.ball.y = target.y + (Math.random() - 0.5) * 52;
+    this.ball.z = Math.max(10, Math.min(46, target.jumpZ * 0.18));
+    this.ball.vx = direction * (120 + Math.random() * 80);
+    this.ball.vy = (Math.random() - 0.5) * 170;
+    this.ball.vz = 70 + Math.random() * 55;
+    this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "catch");
+  }
+
   handleHits() {
     if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower || this.ball.hasBounced) return;
     if (this.ball.specialShotType === "clockStop" && this.ball.clockStopPhase === "hold") return;
@@ -3178,7 +3195,12 @@ class DodgeballGame {
       if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
           this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
-          this.ball.hitPlayerIds?.add(target.id);
+          if (this.isPiercingShot(this.ball.specialShotType)) {
+            this.ball.hitPlayerIds?.add(target.id);
+          } else {
+            this.endShotAfterDodge(target);
+            return;
+          }
         }
         continue;
       }
@@ -3259,13 +3281,18 @@ class DodgeballGame {
           this.ball.vz = Math.min(-120, this.ball.vz);
           return;
         }
-        const piercingSpecial = specialType === "iron" || specialType === "slap";
+        const piercingSpecial = this.isPiercingShot(specialType);
         if (specialType !== "boomerang" && !piercingSpecial) {
           this.spillHitBallInDefenderCourt(target, direction, damage);
         }
       } else if (wasDodging) {
         this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
-        this.ball.hitPlayerIds?.add(target.id);
+        if (this.isPiercingShot(this.ball.specialShotType)) {
+          this.ball.hitPlayerIds?.add(target.id);
+        } else {
+          this.endShotAfterDodge(target);
+          return;
+        }
       }
       break;
     }

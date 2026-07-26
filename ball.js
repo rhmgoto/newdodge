@@ -11,6 +11,7 @@ const LOCK_ROCKET_GUIDE_TIME = 2.5;
 const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
+const PASS_SPEED_SCALE = 1.2;
 
 class Ball {
   constructor(config) {
@@ -1052,7 +1053,7 @@ class Ball {
     const speedBoost = outfieldPass ? 1.18 : 1;
     this.passStartZ = this.z;
     this.passArcHeight = (outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150;
-    this.passDuration = Math.max(0.92, Math.min(2.2, distance / Math.max(1, this.config.passSpeed * speedBoost * (0.88 + passMultiplier * 0.2))));
+    this.passDuration = Math.max(0.77, Math.min(1.84, distance / Math.max(1, this.config.passSpeed * PASS_SPEED_SCALE * speedBoost * (0.88 + passMultiplier * 0.2))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z) / this.passDuration + (4 * this.passArcHeight) / this.passDuration;
