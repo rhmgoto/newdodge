@@ -114,6 +114,35 @@ const CHARACTER_TYPES = {
     legWidth: 1,
     legLength: 1,
     alien: true
+  },
+  demon: {
+    maxHp: 400,
+    maxStamina: 200,
+    stats: { power: 13, speed: 13, jump: 13, technique: 13 },
+    label: "Arkma",
+    scaleX: 1.13,
+    scaleY: 1.12,
+    torsoX: 1.22,
+    torsoY: 1.1,
+    armWidth: 1.6,
+    legWidth: 1.25,
+    legLength: 1.06,
+    demon: true
+  },
+  vampire: {
+    maxHp: 180,
+    maxStamina: 150,
+    stats: { power: 8, speed: 11, jump: 9, technique: 12 },
+    label: "Vampire",
+    scaleX: 0.92,
+    scaleY: 1.22,
+    headScale: 0.86,
+    torsoX: 0.82,
+    torsoY: 1.02,
+    armWidth: 0.9,
+    legWidth: 0.9,
+    legLength: 1.34,
+    vampire: true
   }
 };
 
@@ -149,6 +178,8 @@ class Player {
     this.cpuProfile = options.cpuProfile || null;
     this.cpuControlled = Boolean(options.cpuControlled);
     this.specialShotType = options.specialShotType || null;
+    this.slowTimer = 0;
+    this.slowScale = 1;
     this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -228,6 +259,8 @@ class Player {
     this.hitRecoveryTimer = Math.max(0, this.hitRecoveryTimer - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
+    this.slowTimer = Math.max(0, this.slowTimer - delta);
+    if (this.slowTimer <= 0) this.slowScale = 1;
     this.throwTimer = Math.max(0, this.throwTimer - delta);
     if (this.throwTimer > 0) {
       const windupScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.windupTimeScale : 1;
@@ -316,9 +349,10 @@ class Player {
 
     const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
     const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
-    const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) : 1;
+    const vampireDashScale = this.isVampireStyle() && this.isDashing ? 1.35 : 1;
+    const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) * vampireDashScale : 1;
     const overdriveScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.moveSpeedScale : 1;
-    const speed = this.speed * overdriveScale * dashMultiplier * duckSlow * turnSlow;
+    const speed = this.speed * overdriveScale * dashMultiplier * duckSlow * turnSlow * this.slowScale;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
     this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
@@ -395,6 +429,11 @@ class Player {
     if (this.defeated || this.downTimer > 0) return;
     this.catchSuccessTimer = 0.28;
     this.state = "catching";
+  }
+
+  applySlow(scale, duration) {
+    this.slowScale = Math.min(this.slowScale || 1, scale);
+    this.slowTimer = Math.max(this.slowTimer || 0, duration);
   }
 
   startCounterOpportunity(sourceDamage, target, config, chainCount = 0) {
@@ -575,6 +614,18 @@ class Player {
     return true;
   }
 
+  takeBurnDamage(amount, config) {
+    if (this.defeated || this.hp <= 0) return false;
+    this.hp = Math.max(0, this.hp - amount);
+    this.isDamaged = true;
+    if (this.hp <= 0) {
+      this.hasBall = false;
+      this.downTimer = config.downTime;
+      this.state = "down";
+    }
+    return true;
+  }
+
   getHitCircle() {
     const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
     return {
@@ -701,7 +752,7 @@ class Player {
       : this.invincibleTime > 0 && Math.floor(this.invincibleTime * 18) % 2 === 0;
     if (blinkOff) return;
 
-    const scale = this.getScale(config) * renderScaleCompensation;
+    const scale = this.getScale(config) * renderScaleCompensation * this.getCharacterVisualScale();
     this.lastDrawScale = scale;
     const drawY = this.y - this.jumpZ;
     const motionTime = performance.now();
@@ -752,6 +803,11 @@ class Player {
   }
 
   drawModelCharacter(context, scale, drawY, motionTime, config) {
+    if (this.isDemonStyle()) {
+      this.drawDemonCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
     if (this.isAlienStyle()) {
       this.drawAlienCharacter(context, scale, drawY, motionTime);
       return;
@@ -925,6 +981,9 @@ class Player {
     if (body.mage) {
       this.drawMageSkirt(context, torsoY, colors);
     }
+    if (this.isVampireStyle()) {
+      this.drawVampireCape(context, torsoY, body);
+    }
 
     if (crouch) {
       context.save();
@@ -948,6 +1007,9 @@ class Player {
       }
       if (body.mage) {
         this.drawMageHat(context, 0, headY, colors);
+      }
+      if (this.isVampireStyle()) {
+        this.drawVampireDetails(context, 0, headY, damaged, body);
       }
     }
     context.restore();
@@ -1079,6 +1141,18 @@ class Player {
 
   isAlienStyle() {
     return this.characterType === "alien" || this.uniformEmblem === "galactako";
+  }
+
+  isDemonStyle() {
+    return this.characterType === "demon" || this.uniformEmblem === "arkmaLord";
+  }
+
+  isVampireStyle() {
+    return this.characterType === "vampire" || this.uniformEmblem === "vampire";
+  }
+
+  getCharacterVisualScale() {
+    return this.isDemonStyle() ? 1.6 : 1;
   }
 
   isRobotOverdrive() {
@@ -1231,6 +1305,220 @@ class Player {
       context.moveTo(24, -58);
       context.quadraticCurveTo(18, -104, 6, -122);
       context.stroke();
+    }
+
+    context.restore();
+  }
+
+  drawDemonCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const bodyColor = this.faceColor || "#43205f";
+    const hairColor = this.hairColor || "#09070d";
+    const eyeColor = this.eyeColor || "#ff304a";
+    const armor = this.uniformColor || "#161018";
+    const crimson = "#6f1326";
+    const gold = this.trimColor || "#d7a331";
+    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 58 : 92))) * 3 : 0;
+    const rootY = (crouch ? 18 : 0) + bob;
+    const hipY = -28 + rootY;
+    const shoulderY = -82 + rootY;
+    const torsoY = -56 + rootY;
+    const headY = -126 + rootY + (crouch ? 13 : 0);
+    const stride = moving ? Math.sin(motionTime / 92 + this.x * 0.02) * (this.isDashing ? 13 : 8) : 0;
+    let backHand = { x: -48 - stride * 0.3, y: -42 + rootY };
+    let frontHand = { x: 48 + stride * 0.3, y: -42 + rootY };
+
+    if (throwWindup) {
+      frontHand = { x: -70, y: -122 + rootY };
+      backHand = { x: 48, y: -36 + rootY };
+    } else if (throwRelease) {
+      frontHand = { x: 84, y: -62 + rootY };
+      backHand = { x: -44, y: -42 + rootY };
+    } else if (catching) {
+      frontHand = { x: 18, y: -120 + rootY };
+      backHand = { x: -18, y: -120 + rootY };
+    } else if (crouch) {
+      frontHand = { x: 34, y: -18 + rootY };
+      backHand = { x: -34, y: -18 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-0.9);
+      context.scale(1.14, 0.8);
+    } else if (damaged) {
+      context.rotate(-0.12);
+    }
+
+    context.fillStyle = "rgba(35, 20, 45, 0.28)";
+    context.beginPath();
+    context.ellipse(0, 24, 45, 10, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#100c15";
+    context.strokeStyle = "#050407";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-28, shoulderY + 6);
+    context.lineTo(-52, -12 + rootY);
+    context.lineTo(-14, -24 + rootY);
+    context.closePath();
+    context.moveTo(28, shoulderY + 6);
+    context.lineTo(52, -12 + rootY);
+    context.lineTo(14, -24 + rootY);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#0b0710";
+    context.beginPath();
+    context.moveTo(-16, hipY + 2);
+    context.quadraticCurveTo(-58, hipY + 15, -70, hipY + 40);
+    context.lineTo(-58, hipY + 35);
+    context.lineTo(-60, hipY + 50);
+    context.lineTo(-73, hipY + 43);
+    context.closePath();
+    context.fill();
+
+    context.fillStyle = "#120c18";
+    context.beginPath();
+    context.moveTo(-31, shoulderY - 2);
+    context.lineTo(31, shoulderY - 2);
+    context.lineTo(42, hipY + 28);
+    context.lineTo(0, hipY + 47);
+    context.lineTo(-42, hipY + 28);
+    context.closePath();
+    context.fill();
+
+    this.drawModelLimb(context, [{ x: -17, y: hipY }, { x: -23 - stride, y: -6 + rootY }, { x: -22 - stride * 1.4, y: 18 + rootY }], "#24101c", 14);
+    this.drawModelLimb(context, [{ x: 17, y: hipY }, { x: 23 + stride, y: -6 + rootY }, { x: 22 + stride * 1.4, y: 18 + rootY }], "#24101c", 14);
+    this.drawModelFoot(context, { x: -22 - stride * 1.4, y: 18 + rootY }, "#0b0710");
+    this.drawModelFoot(context, { x: 22 + stride * 1.4, y: 18 + rootY }, "#0b0710");
+
+    this.drawModelLimb(context, [{ x: -31, y: shoulderY }, { x: -45, y: -62 + rootY }, backHand], bodyColor, 14);
+    this.drawModelLimb(context, [{ x: 31, y: shoulderY }, { x: 45, y: -62 + rootY }, frontHand], bodyColor, 14);
+
+    context.fillStyle = armor;
+    context.strokeStyle = "#050407";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, torsoY, 40, 46, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = crimson;
+    context.beginPath();
+    context.moveTo(-24, torsoY - 35);
+    context.lineTo(24, torsoY - 35);
+    context.lineTo(10, torsoY + 34);
+    context.lineTo(-10, torsoY + 34);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = gold;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.arc(0, torsoY - 5, 13, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-8, torsoY - 4);
+    context.lineTo(0, torsoY - 14);
+    context.lineTo(8, torsoY - 4);
+    context.lineTo(0, torsoY + 8);
+    context.closePath();
+    context.fillStyle = gold;
+    context.fill();
+
+    context.fillStyle = gold;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 34, shoulderY + 5, 17, 12, side * 0.25, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.fillRect(-34, hipY + 18, 68, 8);
+
+    context.fillStyle = bodyColor;
+    context.strokeStyle = "#251133";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, headY, 36, 40, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#050407";
+    context.beginPath();
+    context.moveTo(-23, headY - 29);
+    context.lineTo(-62, headY - 62);
+    context.quadraticCurveTo(-42, headY - 48, -27, headY - 22);
+    context.moveTo(23, headY - 29);
+    context.lineTo(62, headY - 62);
+    context.quadraticCurveTo(42, headY - 48, 27, headY - 22);
+    context.fill();
+    context.fillStyle = hairColor;
+    context.beginPath();
+    context.moveTo(-22, headY - 30);
+    context.lineTo(-13, headY - 58);
+    context.lineTo(-4, headY - 34);
+    context.lineTo(8, headY - 60);
+    context.lineTo(17, headY - 31);
+    context.lineTo(27, headY - 47);
+    context.lineTo(25, headY - 18);
+    context.lineTo(-25, headY - 18);
+    context.closePath();
+    context.fill();
+
+    context.strokeStyle = "#050407";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.moveTo(-23, headY - 7);
+    context.lineTo(-7, headY - 12);
+    context.moveTo(23, headY - 7);
+    context.lineTo(7, headY - 12);
+    context.stroke();
+    context.fillStyle = eyeColor;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 15, headY - 4, 7, 4, -side * 0.18, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.fillStyle = "#ff2748";
+    context.beginPath();
+    context.arc(0, headY - 23, 6, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "#16070d";
+    context.lineWidth = 2;
+    context.stroke();
+
+    context.strokeStyle = "#130819";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, headY + 11, 11, 0.1, Math.PI - 0.1);
+    context.stroke();
+    context.fillStyle = "#f7f7f2";
+    context.beginPath();
+    context.moveTo(-7, headY + 14);
+    context.lineTo(-2, headY + 25);
+    context.lineTo(2, headY + 14);
+    context.moveTo(7, headY + 14);
+    context.lineTo(2, headY + 25);
+    context.lineTo(-2, headY + 14);
+    context.fill();
+
+    if (this.hasBall) {
+      context.save();
+      context.globalAlpha = 0.24 + Math.sin(motionTime / 150) * 0.08;
+      context.strokeStyle = "#3a0b54";
+      context.lineWidth = 6;
+      context.beginPath();
+      context.arc(frontHand.x, frontHand.y, 30, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
     }
 
     context.restore();
@@ -1745,6 +2033,65 @@ class Player {
     context.fill();
   }
 
+  drawVampireCape(context, torsoY, body) {
+    context.save();
+    context.fillStyle = "#12071a";
+    context.strokeStyle = "#4f0a1d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-28 * body.torsoX, torsoY - 28 * body.torsoY);
+    context.quadraticCurveTo(-48 * body.torsoX, torsoY + 18, -36 * body.torsoX, torsoY + 54);
+    context.lineTo(-10 * body.torsoX, torsoY + 38);
+    context.lineTo(0, torsoY + 60);
+    context.lineTo(10 * body.torsoX, torsoY + 38);
+    context.lineTo(36 * body.torsoX, torsoY + 54);
+    context.quadraticCurveTo(48 * body.torsoX, torsoY + 18, 28 * body.torsoX, torsoY - 28 * body.torsoY);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#8b0f28";
+    context.beginPath();
+    context.moveTo(-13 * body.torsoX, torsoY - 32);
+    context.lineTo(0, torsoY - 12);
+    context.lineTo(13 * body.torsoX, torsoY - 32);
+    context.lineTo(7 * body.torsoX, torsoY - 38);
+    context.lineTo(0, torsoY - 24);
+    context.lineTo(-7 * body.torsoX, torsoY - 38);
+    context.closePath();
+    context.fill();
+    context.restore();
+  }
+
+  drawVampireDetails(context, x, y, damaged, body) {
+    context.save();
+    const headScale = body.headScale || 1;
+    context.scale(headScale, headScale);
+    const sx = x / headScale;
+    const sy = y / headScale;
+    context.fillStyle = this.hairColor || "#e9eef8";
+    context.beginPath();
+    context.moveTo(sx - 24, sy - 22);
+    context.quadraticCurveTo(sx - 10, sy - 45, sx + 22, sy - 23);
+    context.lineTo(sx + 18, sy - 4);
+    context.quadraticCurveTo(sx + 4, sy - 15, sx - 24, sy - 2);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = "#21102d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(sx - 14, sy + 9);
+    context.lineTo(sx - 7, sy + 21);
+    context.moveTo(sx + 14, sy + 9);
+    context.lineTo(sx + 7, sy + 21);
+    context.stroke();
+    context.fillStyle = damaged ? "#ffffff" : (this.eyeColor || "#d81942");
+    context.beginPath();
+    context.ellipse(sx - 12, sy - 2, 5, 3.5, 0.08, 0, Math.PI * 2);
+    context.ellipse(sx + 12, sy - 2, 5, 3.5, -0.08, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
   drawMageHat(context, x, y, colors) {
     context.save();
     context.translate(x, y + 7);
@@ -1903,6 +2250,7 @@ class Player {
   }
 
   drawHeldBall(context, scale) {
+    const ballScale = scale / this.getCharacterVisualScale();
     const floatOffset = this.isAlienStyle() ? this.getAlienFloatOffset() * scale : 0;
     let bx = this.x + this.facing * 34 * scale;
     let by = this.y - this.jumpZ - 48 * scale - floatOffset;
@@ -1913,13 +2261,28 @@ class Player {
       bx = this.x;
       by = this.y - this.jumpZ - (this.catchSuccessTimer > 0 ? 108 : 130) * scale - floatOffset;
     }
+    if (this.isDemonStyle()) {
+      context.save();
+      context.globalAlpha = 0.18 + Math.sin(performance.now() / 140) * 0.05;
+      context.strokeStyle = "#3a0b54";
+      context.lineWidth = 9 * ballScale;
+      context.beginPath();
+      context.arc(bx, by, 34 * ballScale, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9b2cff";
+      context.lineWidth = 3 * ballScale;
+      context.beginPath();
+      context.arc(bx, by, 43 * ballScale, -0.4, Math.PI * 1.25);
+      context.stroke();
+      context.restore();
+    }
     context.fillStyle = "#f06a32";
     context.beginPath();
-    const radius = 24 * scale;
+    const radius = 24 * ballScale;
     context.arc(bx, by, radius, 0, Math.PI * 2);
     context.fill();
     context.strokeStyle = "#8e2f22";
-    context.lineWidth = 3 * scale;
+    context.lineWidth = 3 * ballScale;
     context.beginPath();
     context.arc(bx, by, radius, -0.8, 0.8);
     context.moveTo(bx - radius, by);

@@ -12,6 +12,7 @@ const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
+const HELLFIRE_SPEED_SCALE = 1.38;
 
 class Ball {
   constructor(config) {
@@ -402,6 +403,10 @@ class Ball {
       this.radius = this.baseRadius * 1.2;
     } else if (this.specialShotType === "lockRocket") {
       this.radius = this.baseRadius * 1.15;
+    } else if (this.specialShotType === "hellfire") {
+      this.radius = this.baseRadius * 1.18;
+    } else if (this.specialShotType === "bloodDrain") {
+      this.radius = this.baseRadius * 1.12;
     }
     this.travelDistance = 0;
     this.returning = false;
@@ -456,7 +461,7 @@ class Ball {
     const shootBaseSpeed = kind === "shoot" && this.specialShotType && this.specialShotType !== "kiai"
       ? this.config.specialShootSpeed || this.config.shootSpeed
       : this.config.shootSpeed;
-    const specialSpeedScale = this.specialShotType === "slap" ? 1.8 : this.specialShotType === "iron" ? 1.05 : 1;
+    const specialSpeedScale = this.specialShotType === "slap" ? 1.8 : this.specialShotType === "hellfire" ? HELLFIRE_SPEED_SCALE : this.specialShotType === "iron" ? 1.05 : 1;
     const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
@@ -552,7 +557,7 @@ class Ball {
         ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
-      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "ufoSpin" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
+      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "ufoSpin" || this.specialShotType === "hellfire" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
       const targetZ = lowAimSpecial
         ? (this.aerialShot ? (target.jumpZ || 0) + 40 : 26)
         : (target.jumpZ || 0) + 22;
@@ -1190,6 +1195,8 @@ class Ball {
     if (this.specialShotType === "clockStop") return "#50f5e0";
     if (this.specialShotType === "lockRocket") return "#55dfff";
     if (this.specialShotType === "ufoSpin") return "#7cffcb";
+    if (this.specialShotType === "hellfire") return "#2b0a30";
+    if (this.specialShotType === "bloodDrain") return "#8d061e";
     return "#ffe46a";
   }
 
@@ -1341,6 +1348,87 @@ class Ball {
           );
           context.stroke();
         }
+      }
+      if (this.specialShotType === "hellfire") {
+        const flameLength = (120 + intensity * 95 + Math.sin(performance.now() / 38) * 16) * 1.5;
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = 0.32;
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = 34 + intensity * 18;
+        context.lineCap = "round";
+        context.beginPath();
+        context.moveTo(this.x, drawY);
+        context.lineTo(this.x + tailX * flameLength * 0.82, drawY + tailY * flameLength * 0.82);
+        context.stroke();
+        context.globalAlpha = 0.18;
+        context.strokeStyle = "#050108";
+        context.lineWidth = 58 + intensity * 24;
+        context.beginPath();
+        context.moveTo(this.x, drawY);
+        context.lineTo(this.x + tailX * flameLength * 0.66, drawY + tailY * flameLength * 0.66);
+        context.stroke();
+        context.globalAlpha = 0.78;
+        context.fillStyle = "rgba(24, 6, 30, 0.86)";
+        context.beginPath();
+        context.moveTo(this.x + tailX * 16 + tailY * 38, drawY + tailY * 16 - tailX * 38);
+        context.quadraticCurveTo(
+          this.x + tailX * flameLength * 0.54 + tailY * 57,
+          drawY + tailY * flameLength * 0.54 - tailX * 57,
+          this.x + tailX * flameLength,
+          drawY + tailY * flameLength
+        );
+        context.quadraticCurveTo(
+          this.x + tailX * flameLength * 0.48 - tailY * 54,
+          drawY + tailY * flameLength * 0.48 + tailX * 54,
+          this.x + tailX * 16 - tailY * 38,
+          drawY + tailY * 16 + tailX * 38
+        );
+        context.closePath();
+        context.fill();
+        context.globalAlpha = 0.52;
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = 7 + intensity * 5;
+        for (let i = 0; i < 5; i += 1) {
+          const wave = Math.sin(this.spin * 0.8 + i * 1.3) * 18;
+          context.beginPath();
+          context.moveTo(this.x + tailX * 18, drawY + tailY * 18);
+          context.quadraticCurveTo(
+            this.x + tailX * (58 + i * 18) + tailY * wave,
+            drawY + tailY * (58 + i * 18) - tailX * wave,
+            this.x + tailX * (118 + i * 22),
+            drawY + tailY * (118 + i * 22)
+          );
+          context.stroke();
+        }
+        context.globalCompositeOperation = "source-over";
+      }
+      if (this.specialShotType === "bloodDrain") {
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = 0.58;
+        context.strokeStyle = "#8d061e";
+        context.lineWidth = 12 + intensity * 8;
+        for (let i = 0; i < 4; i += 1) {
+          const offset = (i - 1.5) * 13;
+          context.beginPath();
+          context.moveTo(this.x + tailX * 12 + tailY * offset, drawY + tailY * 12 - tailX * offset);
+          context.bezierCurveTo(
+            this.x + tailX * 52 + tailY * (offset + 22),
+            drawY + tailY * 52 - tailX * (offset + 22),
+            this.x + tailX * 94 + tailY * (offset - 18),
+            drawY + tailY * 94 - tailX * (offset - 18),
+            this.x + tailX * 152 + tailY * offset,
+            drawY + tailY * 152 - tailX * offset
+          );
+          context.stroke();
+        }
+        context.globalAlpha = 0.28;
+        context.strokeStyle = "#24000a";
+        context.lineWidth = 28;
+        context.beginPath();
+        context.moveTo(this.x, drawY);
+        context.lineTo(this.x + tailX * 145, drawY + tailY * 145);
+        context.stroke();
+        context.globalCompositeOperation = "source-over";
       }
       if (this.specialShotType === "tsutenkaku" && this.tsutenkakuPhase === "dive") {
         context.globalAlpha = 0.92;
@@ -1628,11 +1716,26 @@ class Ball {
       }
       return;
     }
-    context.fillStyle = this.specialShotType === "iron" ? "#555a62" : "#f06a32";
+    if (this.specialShotType === "hellfire") {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.34 + Math.sin(performance.now() / 90) * 0.08;
+      context.fillStyle = "#9b2cff";
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.65, 0, Math.PI * 2);
+      context.fill();
+      context.globalAlpha = 0.24;
+      context.fillStyle = "#050108";
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.1, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
+    context.fillStyle = this.specialShotType === "iron" ? "#555a62" : this.specialShotType === "hellfire" ? "#17081f" : this.specialShotType === "bloodDrain" ? "#5d0618" : "#f06a32";
     context.beginPath();
     context.arc(0, 0, this.radius, 0, Math.PI * 2);
     context.fill();
-    context.strokeStyle = this.specialShotType === "iron" ? "#2f3339" : "#8e2f22";
+    context.strokeStyle = this.specialShotType === "iron" ? "#2f3339" : this.specialShotType === "hellfire" ? "#9b2cff" : this.specialShotType === "bloodDrain" ? "#ff5a75" : "#8e2f22";
     context.lineWidth = 4;
     context.beginPath();
     context.arc(0, 0, this.radius * 0.9, -1.1, 1.1);

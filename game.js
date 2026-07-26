@@ -28,7 +28,31 @@ const CATCH_DIFFICULTY = {
   tsutenkaku: { duration: 0.07, areaScale: 0.75 },
   clockStop: { duration: 0.07, areaScale: 0.73 },
   lockRocket: { duration: 0.07, areaScale: 0.72 },
-  ufoSpin: { duration: 0.08, areaScale: 0.76 }
+  ufoSpin: { duration: 0.08, areaScale: 0.76 },
+  hellfire: { duration: 0.065, areaScale: 0.72 },
+  bloodDrain: { duration: 0.08, areaScale: 0.8 }
+};
+const HELLFIRE_CONFIG = {
+  speedScale: 1.38,
+  damageScale: 2.05,
+  burnDamage: 5,
+  burnTicks: 3,
+  burnInterval: 0.45,
+  catchDamage: 7,
+  flameDuration: 3.2,
+  flameRadius: 118,
+  flameSlowScale: 0.58,
+  flameSlowDuration: 0.34,
+  flameTouchDamage: 2.5,
+  flameTickInterval: 0.5
+};
+const BLOOD_DRAIN_CONFIG = {
+  damageScale: 1.45,
+  selfHealRatio: 0.35,
+  arkmaHealRatio: 0.24,
+  normalDrainRatio: 0.22,
+  catchHeal: 8,
+  lightWeaknessScale: 1.35
 };
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
@@ -166,6 +190,7 @@ class DodgeballGame {
     this.lastRuntimeError = null;
     this.runtimeErrorCount = 0;
     this.effects = [];
+    this.hellfireZones = [];
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
@@ -196,6 +221,7 @@ class DodgeballGame {
     this.controlledPlayerId = "left-inner-1";
     this.controlledRightPlayerId = "right-inner-1";
     this.ball = new Ball(GAME_CONFIG.ball);
+    this.hellfireZones = [];
     this.boostEffectStage = 0;
     this.boomerangTurnPresented = false;
     this.looseOutfieldRecoveryTimer = 0;
@@ -375,6 +401,9 @@ class DodgeballGame {
         maxHp: cpuPlayer?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: cpuPlayer?.maxStamina ?? teamDefinition?.maxStamina,
         stats: cpuPlayer?.stats || teamDefinition?.stats,
+        uniformColor: cpuPlayer?.uniformColor || teamDefinition?.uniformColor,
+        pantsColor: cpuPlayer?.pantsColor || teamDefinition?.pantsColor,
+        trimColor: cpuPlayer?.trimColor || teamDefinition?.trimColor,
         hairColor: cpuPlayer?.hairColor || teamDefinition?.hairColor || (index === 1 ? "#6d3a1d" : index === 2 ? "#1f1f22" : undefined),
         faceColor: cpuPlayer?.faceColor || teamDefinition?.faceColor,
         eyeColor: cpuPlayer?.eyeColor || teamDefinition?.eyeColor,
@@ -397,6 +426,9 @@ class DodgeballGame {
         maxHp: getCpuPlayer(5)?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: getCpuPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(5)?.stats || teamDefinition?.stats,
+        uniformColor: getCpuPlayer(5)?.uniformColor || teamDefinition?.uniformColor,
+        pantsColor: getCpuPlayer(5)?.pantsColor || teamDefinition?.pantsColor,
+        trimColor: getCpuPlayer(5)?.trimColor || teamDefinition?.trimColor,
         hairColor: getCpuPlayer(5)?.hairColor || teamDefinition?.hairColor,
         faceColor: getCpuPlayer(5)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(5)?.eyeColor || teamDefinition?.eyeColor,
@@ -416,6 +448,9 @@ class DodgeballGame {
         maxHp: getCpuPlayer(6)?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: getCpuPlayer(6)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(6)?.stats || teamDefinition?.stats,
+        uniformColor: getCpuPlayer(6)?.uniformColor || teamDefinition?.uniformColor,
+        pantsColor: getCpuPlayer(6)?.pantsColor || teamDefinition?.pantsColor,
+        trimColor: getCpuPlayer(6)?.trimColor || teamDefinition?.trimColor,
         hairColor: getCpuPlayer(6)?.hairColor || teamDefinition?.hairColor,
         faceColor: getCpuPlayer(6)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(6)?.eyeColor || teamDefinition?.eyeColor,
@@ -435,6 +470,9 @@ class DodgeballGame {
         maxHp: getCpuPlayer(7)?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: getCpuPlayer(7)?.maxStamina ?? teamDefinition?.maxStamina,
         stats: getCpuPlayer(7)?.stats || teamDefinition?.stats,
+        uniformColor: getCpuPlayer(7)?.uniformColor || teamDefinition?.uniformColor,
+        pantsColor: getCpuPlayer(7)?.pantsColor || teamDefinition?.pantsColor,
+        trimColor: getCpuPlayer(7)?.trimColor || teamDefinition?.trimColor,
         hairColor: getCpuPlayer(7)?.hairColor || teamDefinition?.hairColor,
         faceColor: getCpuPlayer(7)?.faceColor || teamDefinition?.faceColor,
         eyeColor: getCpuPlayer(7)?.eyeColor || teamDefinition?.eyeColor,
@@ -715,6 +753,49 @@ class DodgeballGame {
           player("レーダー", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
           player("コイル", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
           player("ビット", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" })
+        ]
+      },
+      {
+        id: "arkmaz",
+        name: "\u30a2\u30fc\u30af\u30de\u30fc\u30ba",
+        description: "\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de\u304c\u7387\u3044\u308b\u30e9\u30b9\u30dc\u30b9\u30c1\u30fc\u30e0",
+        characterType: "normal",
+        innerNames: ["\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "\u30b0\u30ea\u30e0", "\u30e2\u30eb\u30c9", "\u30ce\u30af\u30b9"],
+        outNames: ["\u30ec\u30a4\u30f4\u30f3", "\u30f4\u30a9\u30eb", "\u30df\u30b9\u30c8"],
+        uniformColor: "#0057ff",
+        pantsColor: "#0057ff",
+        trimColor: "#f6fbff",
+        hairColor: "#f2c14e",
+        maxHp: 120,
+        maxStamina: 100,
+        stats: { power: 7, speed: 7, jump: 7, technique: 7 },
+        cpuProfile: "arkmaz",
+        players: [
+          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 400, 200, 13, 13, 13, 13, "hellfire", {
+            captain: true,
+            uniformEmblem: "arkmaLord",
+            uniformColor: "#161018",
+            pantsColor: "#24101c",
+            trimColor: "#d7a331",
+            hairColor: "#09070d",
+            faceColor: "#43205f",
+            eyeColor: "#ff304a"
+          }),
+          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 180, 150, 8, 11, 9, 12, "bloodDrain", {
+            uniformEmblem: "vampire",
+            uniformColor: "#1a1026",
+            pantsColor: "#24142f",
+            trimColor: "#b31534",
+            hairColor: "#e9eef8",
+            faceColor: "#d8edf6",
+            eyeColor: "#d81942"
+          }),
+          player("\u30b0\u30ea\u30e0", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u30e2\u30eb\u30c9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u30ce\u30af\u30b9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u30ec\u30a4\u30f4\u30f3", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u30f4\u30a9\u30eb", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u30df\u30b9\u30c8", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai")
         ]
       }
     ];
@@ -1223,6 +1304,7 @@ class DodgeballGame {
       return;
     }
     this.updateEffects(delta);
+    this.updateHellfireZones(delta);
     this.updateSpirit(delta);
     if (this.gameMode === "watch") {
       this.cpuControllerLeft?.update(delta);
@@ -1257,6 +1339,7 @@ class DodgeballGame {
     this.handleHits();
     this.handleTsutenkakuImpact();
     this.handleLightningZigzagImpact();
+    this.handleHellfireGroundImpact();
     this.handleBoostShotExit();
     this.handleLockRocketExit();
     this.handleTripleBallHits();
@@ -2974,10 +3057,24 @@ class DodgeballGame {
       if (caughtEnemyShot) {
         this.addSpirit(catcher.team, GAME_CONFIG.battle.spiritCatchGain);
         catcher.startCatchSuccess();
+        if (this.isVampirePlayer(catcher)) {
+          this.healPlayer(catcher, BLOOD_DRAIN_CONFIG.catchHeal, "#ff5a75");
+        }
         catcher.startCounterOpportunity(caughtShotDamage, counterTarget, COUNTER_CONFIG, counterChainCount);
         if (caughtIronShot) {
           catcher.knockbackX += ironDirection * GAME_CONFIG.battle.knockbackSpeed * 2.2;
           catcher.knockbackY += ironVerticalDirection * GAME_CONFIG.battle.knockbackSpeed * 0.55;
+        }
+        if (this.ball.specialShotType === "hellfire") {
+          const hpBefore = catcher.hp;
+          if (catcher.takeBurnDamage?.(HELLFIRE_CONFIG.catchDamage, GAME_CONFIG.battle)) {
+            this.addSpiritForDamage(catcher.team, hpBefore, catcher.hp);
+            this.spawnDamageNumber(catcher, HELLFIRE_CONFIG.catchDamage);
+          }
+          if (catcher.hp <= 0) {
+            this.ball.drop();
+          }
+          this.spawnEffect(catcher.x, catcher.y - catcher.jumpZ - 66, "#2b0a30", "hellfireImpact", 0.65);
         }
       }
       catcher.throwLockTimer = 0.2;
@@ -3207,7 +3304,10 @@ class DodgeballGame {
 
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const specialType = this.ball.specialShotType;
-      const damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
+      let damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
+      if (this.isVampireLightWeakness(target, specialType)) {
+        damage *= BLOOD_DRAIN_CONFIG.lightWeaknessScale;
+      }
       const knockbackScale = this.ball.counterShot
         ? COUNTER_CONFIG.knockbackScale
         : specialType === "lockRocket"
@@ -3235,6 +3335,9 @@ class DodgeballGame {
         if (specialType === "soul") {
           this.healTeamByMaxHpRatio(this.ball.thrower.team, 0.1);
         }
+        if (this.isVampirePlayer(this.ball.thrower)) {
+          this.applyVampireDrain(this.ball.thrower, damage, specialType);
+        }
         if (specialType === "tsutenkaku") {
           this.applyTsutenkakuSplash(target, damage, this.ball.tsutenkakuTargetX, this.ball.tsutenkakuTargetY);
         }
@@ -3256,6 +3359,10 @@ class DodgeballGame {
         if (specialType === "ufoSpin") {
           this.startScreenShake(10, 0.12);
         }
+        if (specialType === "hellfire") {
+          this.startScreenShake(14, 0.16);
+          this.applyHellfireBurn(target, direction);
+        }
         this.spawnEffect(
           this.ball.x,
           ballY,
@@ -3266,6 +3373,7 @@ class DodgeballGame {
             : specialType === "boomerang" ? "bananaImpact"
             : specialType === "clockStop" ? "clockImpact"
             : specialType === "lockRocket" ? "lockRocketImpact"
+            : specialType === "hellfire" ? "hellfireImpact"
             : specialType === "ufoSpin" ? "ufoSpinImpact"
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
@@ -3373,6 +3481,18 @@ class DodgeballGame {
     this.spawnEffect(this.ball.lightningTargetX, this.ball.lightningTargetY - 48, "#ffd400", "special");
   }
 
+  handleHellfireGroundImpact() {
+    if (
+      !this.ball.thrower ||
+      this.ball.kind !== "shoot" ||
+      this.ball.specialShotType !== "hellfire" ||
+      !this.ball.hasBounced
+    ) return;
+    this.spawnHellfireZone(this.ball.x, this.ball.y, this.ball.thrower.team);
+    this.ball.specialShotType = null;
+    this.ball.specialShot = false;
+  }
+
   handleTsutenkakuImpact() {
     if (
       !this.ball.tsutenkakuImpactPending ||
@@ -3413,6 +3533,10 @@ class DodgeballGame {
       damage = baseDamage * 2.415;
     } else if (specialType === "ufoSpin") {
       damage = baseDamage * 1.8;
+    } else if (specialType === "hellfire") {
+      damage = baseDamage * HELLFIRE_CONFIG.damageScale;
+    } else if (specialType === "bloodDrain") {
+      damage = baseDamage * BLOOD_DRAIN_CONFIG.damageScale;
     }
     return damage * SHOT_DAMAGE_SCALE;
   }
@@ -3536,6 +3660,40 @@ class DodgeballGame {
     }
   }
 
+  healPlayer(player, amount, color = "#bdf8ff") {
+    if (!player || player.defeated || player.hp <= 0 || amount <= 0) return 0;
+    const before = player.hp;
+    player.hp = Math.min(player.maxHp, player.hp + amount);
+    const healed = player.hp - before;
+    if (healed > 0) {
+      this.spawnEffect(player.x, player.y - player.jumpZ - 88, color, "heal");
+    }
+    return healed;
+  }
+
+  isVampirePlayer(player) {
+    return player?.characterType === "vampire" || player?.uniformEmblem === "vampire";
+  }
+
+  isVampireLightWeakness(target, specialType) {
+    if (!this.isVampirePlayer(target)) return false;
+    return specialType === "lightning" || specialType === "kiai";
+  }
+
+  applyVampireDrain(attacker, damage, specialType) {
+    if (!this.isVampirePlayer(attacker) || damage <= 0) return;
+    const selfRatio = specialType === "bloodDrain"
+      ? BLOOD_DRAIN_CONFIG.selfHealRatio
+      : BLOOD_DRAIN_CONFIG.normalDrainRatio;
+    this.healPlayer(attacker, damage * selfRatio, "#ff5a75");
+    if (specialType !== "bloodDrain") return;
+    const team = attacker.team === "left" ? this.leftTeam : this.rightTeam;
+    const arkma = team.find((member) => member.uniformEmblem === "arkmaLord" && !member.defeated && member.hp > 0);
+    if (arkma) {
+      this.healPlayer(arkma, damage * BLOOD_DRAIN_CONFIG.arkmaHealRatio, "#b31534");
+    }
+  }
+
   applyLightningSplash(primaryTarget, baseDamage, centerX = primaryTarget?.x, centerY = primaryTarget?.y) {
     const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     const splashRadius = 285;
@@ -3545,13 +3703,16 @@ class DodgeballGame {
       const distance = Math.hypot(enemy.x - centerX, enemy.y - centerY);
       if (distance > splashRadius) continue;
       const direction = enemy.x >= centerX ? 1 : -1;
+      const finalSplashDamage = this.isVampireLightWeakness(enemy, "lightning")
+        ? splashDamage * BLOOD_DRAIN_CONFIG.lightWeaknessScale
+        : splashDamage;
       const hpBefore = enemy.hp;
       const wasDodging = enemy.dodgeTimer > 0;
-      if (enemy.takeDamage(splashDamage, direction, GAME_CONFIG.battle, 1.5)) {
+      if (enemy.takeDamage(finalSplashDamage, direction, GAME_CONFIG.battle, 1.5)) {
         this.addSpiritForDamage(enemy.team, hpBefore, enemy.hp);
         enemy.stun(0.36);
         this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 70, "#8ffcff", "special");
-        this.spawnDamageNumber(enemy, splashDamage);
+        this.spawnDamageNumber(enemy, finalSplashDamage);
       } else if (enemy.hp > 0) {
         if (wasDodging) {
           this.addSpirit(enemy.team, GAME_CONFIG.battle.spiritDodgeGain);
@@ -3601,6 +3762,60 @@ class DodgeballGame {
     }
   }
 
+  applyHellfireBurn(target, direction = 1) {
+    for (let tick = 1; tick <= HELLFIRE_CONFIG.burnTicks; tick += 1) {
+      this.effects.push({
+        type: "hellfireBurn",
+        target,
+        direction,
+        damage: HELLFIRE_CONFIG.burnDamage,
+        life: tick * HELLFIRE_CONFIG.burnInterval,
+        maxLife: tick * HELLFIRE_CONFIG.burnInterval
+      });
+    }
+  }
+
+  spawnHellfireZone(x, y, ownerTeam) {
+    this.hellfireZones.push({
+      x,
+      y,
+      ownerTeam,
+      radius: HELLFIRE_CONFIG.flameRadius,
+      life: HELLFIRE_CONFIG.flameDuration,
+      maxLife: HELLFIRE_CONFIG.flameDuration,
+      tickTimer: 0
+    });
+    this.spawnEffect(x, y - 32, "#2b0a30", "hellfireImpact", 0.8);
+  }
+
+  updateHellfireZones(delta) {
+    if (!this.hellfireZones || this.hellfireZones.length === 0) return;
+    this.hellfireZones = this.hellfireZones.filter((zone) => {
+      zone.life -= delta;
+      zone.tickTimer -= delta;
+      const activePlayers = this.players.filter((player) => (
+        !player.defeated &&
+        player.hp > 0 &&
+        player.team !== zone.ownerTeam &&
+        Math.hypot(player.x - zone.x, player.y - zone.y) <= zone.radius
+      ));
+      for (const player of activePlayers) {
+        player.applySlow?.(HELLFIRE_CONFIG.flameSlowScale, HELLFIRE_CONFIG.flameSlowDuration);
+      }
+      if (zone.tickTimer <= 0) {
+        zone.tickTimer = HELLFIRE_CONFIG.flameTickInterval;
+        for (const player of activePlayers) {
+          const hpBefore = player.hp;
+          if (player.takeBurnDamage?.(HELLFIRE_CONFIG.flameTouchDamage, GAME_CONFIG.battle)) {
+            this.addSpiritForDamage(player.team, hpBefore, player.hp);
+            this.spawnDamageNumber(player, HELLFIRE_CONFIG.flameTouchDamage);
+          }
+        }
+      }
+      return zone.life > 0;
+    });
+  }
+
   getSpecialHitColor(specialType) {
     if (specialType === "kiai") return "#fff06a";
     if (specialType === "triple") return "#ffcc8a";
@@ -3614,6 +3829,8 @@ class DodgeballGame {
     if (specialType === "clockStop") return "#50f5e0";
     if (specialType === "lockRocket") return "#55dfff";
     if (specialType === "ufoSpin") return "#7cffcb";
+    if (specialType === "hellfire") return "#2b0a30";
+    if (specialType === "bloodDrain") return "#8d061e";
     return "#ffe46a";
   }
 
@@ -3943,7 +4160,7 @@ class DodgeballGame {
     const duration = type === "counterImpact"
       ? 0.5
       : type === "tripleSplit" ? 0.42
-      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" ? 0.52
+      : type === "tripleImpact" || type === "bananaImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" || type === "hellfireImpact" ? 0.52
       : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
@@ -4022,6 +4239,8 @@ class DodgeballGame {
     if (specialType === "clockStop") return "クロックストップ";
     if (specialType === "lockRocket") return "ロックオン・ロケット";
     if (specialType === "ufoSpin") return "UFO SPIN";
+    if (specialType === "hellfire") return "\u30d8\u30eb\u30d5\u30a1\u30a4\u30a2";
+    if (specialType === "bloodDrain") return "\u30d6\u30e9\u30c3\u30c9\u30c9\u30ec\u30a4\u30f3";
     return "";
   }
 
@@ -4035,10 +4254,26 @@ class DodgeballGame {
       this.shotMultiplierDisplay.life -= delta;
       if (this.shotMultiplierDisplay.life <= 0) this.shotMultiplierDisplay = null;
     }
+    const triggeredHellfire = [];
     this.effects = this.effects.filter((effect) => {
       effect.life -= delta;
+      if (effect.type === "hellfireBurn" && effect.life <= 0) {
+        triggeredHellfire.push(effect);
+        return false;
+      }
       return effect.life > 0;
     });
+    for (const effect of triggeredHellfire) {
+      const target = effect.target;
+      if (target && !target.defeated && target.hp > 0) {
+        const hpBefore = target.hp;
+        if (target.takeBurnDamage?.(effect.damage, GAME_CONFIG.battle)) {
+          this.addSpiritForDamage(target.team, hpBefore, target.hp);
+          this.spawnDamageNumber(target, effect.damage);
+          this.spawnEffect(target.x, target.y - target.jumpZ - 62, "#2b0a30", "hellfireImpact", 0.45);
+        }
+      }
+    }
   }
 
   draw() {
@@ -4070,6 +4305,7 @@ class DodgeballGame {
     this.drawBackground();
     this.drawCourt();
     this.drawCounterReadyEffects(context);
+    this.drawHellfireZones(context);
 
     const active = this.getPlayerControlledMember();
     const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
@@ -4410,6 +4646,8 @@ class DodgeballGame {
     if (specialType === "clockStop") return "時";
     if (specialType === "lockRocket") return "ロ";
     if (specialType === "ufoSpin") return "G";
+    if (specialType === "hellfire") return "\u706b";
+    if (specialType === "bloodDrain") return "\u5438";
     return "-";
   }
 
@@ -4720,10 +4958,15 @@ class DodgeballGame {
       this.drawRobotPreview(x, y, style, scale);
       return;
     }
+    if (type === "demon" || style?.uniformEmblem === "arkmaLord") {
+      this.drawDemonPreview(x, y, style, scale);
+      return;
+    }
     const body = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
     const suit = style?.uniformColor || (side === "left" ? "#0057ff" : "#f01818");
     const pants = style?.pantsColor || suit;
     const hair = style?.hairColor || "#f2c14e";
+    const skin = style?.faceColor || "#ffd1a3";
     const sumoStyle = style?.uniformEmblem === "sumo" || style?.uniformEmblem === "sumoGold";
     const legColor = sumoStyle ? "#ffd1a3" : pants;
     context.save();
@@ -4741,7 +4984,7 @@ class DodgeballGame {
     context.lineTo(20, -8 + 36 * body.legLength);
     context.lineTo(18, -8 + 64 * body.legLength);
     context.stroke();
-    context.strokeStyle = "#ffd1a3";
+    context.strokeStyle = skin;
     context.lineWidth = 9 * body.armWidth;
     context.beginPath();
     context.moveTo(-20, -54);
@@ -4876,7 +5119,7 @@ class DodgeballGame {
       context.ellipse(18, -90, 9, 34, 0.12, 0, Math.PI * 2);
       context.fill();
     }
-    context.fillStyle = "#ffd1a3";
+    context.fillStyle = skin;
     context.beginPath();
     context.arc(0, -100, 29, 0, Math.PI * 2);
     if (body.headScale && body.headScale !== 1) {
@@ -4884,7 +5127,7 @@ class DodgeballGame {
       context.save();
       context.translate(x, y);
       context.scale(body.scaleX * scale, body.scaleY * scale);
-      context.fillStyle = "#ffd1a3";
+      context.fillStyle = skin;
       context.beginPath();
       context.arc(0, -100, 29 * body.headScale, 0, Math.PI * 2);
     }
@@ -4970,6 +5213,107 @@ class DodgeballGame {
       context.fill();
       context.restore();
     }
+    context.restore();
+  }
+
+  drawDemonPreview(x, y, style = null, scale = 0.48) {
+    const context = this.context;
+    const bodyColor = style?.faceColor || "#43205f";
+    const armor = style?.uniformColor || "#161018";
+    const gold = style?.trimColor || "#d7a331";
+    context.save();
+    context.translate(x, y);
+    context.scale(scale * 1.06, scale * 1.06);
+
+    context.fillStyle = "#0b0710";
+    context.beginPath();
+    context.moveTo(-28, -82);
+    context.lineTo(-58, -118);
+    context.quadraticCurveTo(-42, -105, -28, -75);
+    context.moveTo(28, -82);
+    context.lineTo(58, -118);
+    context.quadraticCurveTo(42, -105, 28, -75);
+    context.fill();
+
+    context.fillStyle = "#100c15";
+    context.beginPath();
+    context.moveTo(-26, -50);
+    context.lineTo(-52, -8);
+    context.lineTo(-16, -20);
+    context.moveTo(26, -50);
+    context.lineTo(52, -8);
+    context.lineTo(16, -20);
+    context.fill();
+
+    context.strokeStyle = "#24101c";
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 12;
+    context.beginPath();
+    context.moveTo(-16, -15);
+    context.lineTo(-22, 24);
+    context.moveTo(16, -15);
+    context.lineTo(22, 24);
+    context.stroke();
+    context.strokeStyle = bodyColor;
+    context.lineWidth = 12;
+    context.beginPath();
+    context.moveTo(-28, -48);
+    context.lineTo(-46, -18);
+    context.moveTo(28, -48);
+    context.lineTo(46, -18);
+    context.stroke();
+
+    context.fillStyle = armor;
+    context.strokeStyle = "#050407";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(0, -42, 36, 42, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#6f1326";
+    context.beginPath();
+    context.moveTo(-19, -74);
+    context.lineTo(19, -74);
+    context.lineTo(8, -8);
+    context.lineTo(-8, -8);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = gold;
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(0, -44, 11, 0, Math.PI * 2);
+    context.stroke();
+
+    context.fillStyle = bodyColor;
+    context.strokeStyle = "#251133";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(0, -104, 32, 37, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = style?.hairColor || "#09070d";
+    context.beginPath();
+    context.moveTo(-22, -132);
+    context.lineTo(-12, -158);
+    context.lineTo(-3, -133);
+    context.lineTo(8, -160);
+    context.lineTo(18, -130);
+    context.lineTo(27, -145);
+    context.lineTo(24, -119);
+    context.lineTo(-24, -119);
+    context.closePath();
+    context.fill();
+
+    context.fillStyle = style?.eyeColor || "#ff304a";
+    context.beginPath();
+    context.ellipse(-13, -104, 6, 4, 0.18, 0, Math.PI * 2);
+    context.ellipse(13, -104, 6, 4, -0.18, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#ff2748";
+    context.beginPath();
+    context.arc(0, -123, 5, 0, Math.PI * 2);
+    context.fill();
     context.restore();
   }
 
@@ -5413,6 +5757,7 @@ class DodgeballGame {
   drawEffects() {
     const context = this.context;
     for (const effect of this.effects) {
+      if (effect.type === "hellfireBurn") continue;
       const progress = 1 - effect.life / effect.maxLife;
       if (effect.type === "damageNumber") {
         context.save();
@@ -5988,6 +6333,43 @@ class DodgeballGame {
       context.stroke();
       context.restore();
     }
+  }
+
+  drawHellfireZones(context) {
+    if (!this.hellfireZones || this.hellfireZones.length === 0) return;
+    context.save();
+    for (const zone of this.hellfireZones) {
+      const progress = 1 - zone.life / Math.max(0.01, zone.maxLife);
+      const pulse = 0.86 + Math.sin(performance.now() / 95 + zone.x * 0.01) * 0.12;
+      const radius = zone.radius * 1.25 * (0.82 + progress * 0.18) * pulse;
+      context.globalAlpha = Math.max(0, 0.72 - progress * 0.38);
+      context.fillStyle = "rgba(24, 6, 30, 0.68)";
+      context.beginPath();
+      context.ellipse(zone.x, zone.y + 8, radius, radius * 0.42, 0, 0, Math.PI * 2);
+      context.fill();
+      context.globalAlpha = Math.max(0, 0.34 - progress * 0.15);
+      context.strokeStyle = "#9b2cff";
+      context.lineWidth = 14;
+      context.beginPath();
+      context.ellipse(zone.x, zone.y + 8, radius * 1.08, radius * 0.48, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.globalCompositeOperation = "lighter";
+      for (let flame = 0; flame < 9; flame += 1) {
+        const angle = flame * Math.PI * 2 / 9 + progress * 1.2;
+        const fx = zone.x + Math.cos(angle) * radius * 0.52;
+        const fy = zone.y + Math.sin(angle) * radius * 0.22;
+        const height = 45 + Math.sin(performance.now() / 120 + flame) * 14;
+        context.fillStyle = flame % 3 === 0 ? "rgba(160, 45, 220, 0.46)" : "rgba(25, 10, 35, 0.72)";
+        context.beginPath();
+        context.moveTo(fx - 14, fy + 8);
+        context.quadraticCurveTo(fx - 8, fy - height * 0.55, fx, fy - height);
+        context.quadraticCurveTo(fx + 10, fy - height * 0.45, fx + 14, fy + 8);
+        context.closePath();
+        context.fill();
+      }
+      context.globalCompositeOperation = "source-over";
+    }
+    context.restore();
   }
 
   drawChargeEffect() {
