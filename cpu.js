@@ -142,6 +142,10 @@ class CPUController {
         continue;
       }
 
+      if (this.controlArkmaGuard(command, member)) {
+        continue;
+      }
+
       if (this.ball.owner && this.ball.owner.team === this.opponentName && member.role === "inner") {
         this.controlWithoutBall(command, member, this.ball.owner);
         continue;
@@ -1046,6 +1050,53 @@ class CPUController {
     }
     this.moveToward(command, member, point.x, point.y);
     command.dash = dash;
+  }
+
+  controlArkmaGuard(command, member) {
+    if (member.cpuProfile !== "arkmaGuard" && !member.isShieldDevilStyle?.()) return false;
+    if (member.role !== "inner" || member.hasBall) return false;
+    const arkma = this.team.find((p) => p.uniformEmblem === "arkmaLord" && !p.defeated && p.hp > 0);
+    if (!arkma || arkma === member) return false;
+    const area = this.config.areas?.[member.zone];
+
+    if (
+      this.ball.isFlying &&
+      this.ball.kind === "shoot" &&
+      this.ball.thrower?.team === this.opponentName &&
+      this.ball.target === arkma
+    ) {
+      member.shieldAlertTimer = Math.max(member.shieldAlertTimer || 0, 0.55);
+      const ballSpeed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+      const leadTime = Math.min(0.22, Math.max(0.06, Math.hypot(this.ball.x - arkma.x, this.ball.y - arkma.y) / ballSpeed * 0.45));
+      const intercept = {
+        x: this.ball.x + this.ball.vx * leadTime,
+        y: this.ball.y + this.ball.vy * leadTime
+      };
+      const towardArkma = this.normalizedVector(arkma.x - intercept.x, arkma.y - intercept.y);
+      let point = {
+        x: intercept.x + towardArkma.x * 58,
+        y: intercept.y + towardArkma.y * 42
+      };
+      point = this.clampPointToArea(point, area, member.radius);
+      this.moveToward(command, member, point.x, point.y);
+      command.dash = true;
+      if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 310) {
+        command.catch = true;
+      }
+      return true;
+    }
+
+    const time = Date.now() / 1000;
+    const side = member.team === "left" ? -1 : 1;
+    const orbit = time * 2.25 + (member.id?.length || 0) * 0.7;
+    let point = {
+      x: arkma.x + Math.cos(orbit) * 118 + side * 28,
+      y: arkma.y + Math.sin(orbit) * 86
+    };
+    point = this.clampPointToArea(point, area, member.radius);
+    this.moveToward(command, member, point.x, point.y);
+    command.dash = false;
+    return true;
   }
 
   getAttackLineX(holder) {
