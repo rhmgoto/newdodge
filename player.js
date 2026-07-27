@@ -1223,7 +1223,14 @@ class Player {
   }
 
   getIncomingDamageAmount(amount) {
-    return amount * (this.isDemonStyle() || this.isLavaGolemStyle() ? 0.7 : 1);
+    let damage = amount * (this.isDemonStyle() || this.isLavaGolemStyle() ? 0.7 : 1);
+    if (this.isVampireStyle()) {
+      damage = Math.max(0, damage - 15);
+    }
+    if (this.isShieldDevilStyle()) {
+      damage *= 0.65;
+    }
+    return damage;
   }
 
   getIncomingKnockbackScale() {
@@ -2237,11 +2244,12 @@ class Player {
     const guarding = this.shieldGuardTimer > 0 || this.catchTimer > 0;
     const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
-    const bodyColor = this.faceColor || "#b991e6";
+    const bodyColor = this.faceColor || "#c8d0dc";
     const armor = this.uniformColor || bodyColor;
-    const armorShadow = this.pantsColor || "#9d6ed1";
-    const trim = this.trimColor || "#9b2cff";
-    const eyeColor = this.eyeColor || "#ff304a";
+    const armorShadow = this.pantsColor || "#a8b0bc";
+    const trim = this.trimColor || "#f8fbff";
+    const eyeColor = this.eyeColor || "#56eaff";
+    const silverStroke = "#5d6673";
     const hoverOffset = down ? 0 : 18 + Math.sin(motionTime / 520 + this.x * 0.01) * 5;
     const bob = Math.sin(motionTime / (moving ? (this.isDashing ? 92 : 128) : 210)) * (moving ? 4 : 3);
     const rootY = (crouch ? 17 : 0) + bob;
@@ -2274,13 +2282,13 @@ class Player {
       context.rotate(-0.12);
     }
 
-    context.fillStyle = "rgba(22, 8, 32, 0.22)";
+    context.fillStyle = "rgba(68, 76, 86, 0.22)";
     context.beginPath();
     context.ellipse(0, 21 + hoverOffset, 34, 7, 0, 0, Math.PI * 2);
     context.fill();
 
     context.fillStyle = armorShadow;
-    context.strokeStyle = "#5b3486";
+    context.strokeStyle = silverStroke;
     context.lineWidth = 3;
     for (const side of [-1, 1]) {
       context.beginPath();
@@ -2292,21 +2300,48 @@ class Player {
       context.stroke();
     }
 
-    this.drawModelLimb(context, [{ x: -13, y: hipY }, { x: -18 - stride, y: -7 + rootY }, { x: -18 - stride * 1.3, y: 17 + rootY }], armorShadow, 11);
-    this.drawModelLimb(context, [{ x: 13, y: hipY }, { x: 18 + stride, y: -7 + rootY }, { x: 18 + stride * 1.3, y: 17 + rootY }], armorShadow, 11);
+    const backLeg = [{ x: -13, y: hipY }, { x: -18 - stride, y: -7 + rootY }, { x: -18 - stride * 1.3, y: 17 + rootY }];
+    const frontLeg = [{ x: 13, y: hipY }, { x: 18 + stride, y: -7 + rootY }, { x: 18 + stride * 1.3, y: 17 + rootY }];
+    this.drawModelLimb(context, backLeg, silverStroke, 16);
+    this.drawModelLimb(context, frontLeg, silverStroke, 16);
+    this.drawModelLimb(context, backLeg, armorShadow, 11);
+    this.drawModelLimb(context, frontLeg, armorShadow, 11);
+    this.drawShieldDevilFootOutline(context, { x: -18 - stride * 1.3, y: 17 + rootY }, silverStroke);
+    this.drawShieldDevilFootOutline(context, { x: 18 + stride * 1.3, y: 17 + rootY }, silverStroke);
     this.drawModelFoot(context, { x: -18 - stride * 1.3, y: 17 + rootY }, armorShadow);
     this.drawModelFoot(context, { x: 18 + stride * 1.3, y: 17 + rootY }, armorShadow);
 
     this.drawModelLimb(context, [{ x: -27, y: shoulderY }, { x: -40, y: -58 + rootY }, shieldHand], bodyColor, 11);
     this.drawModelLimb(context, [{ x: 27, y: shoulderY }, { x: 34, y: -55 + rootY }, spearHand], bodyColor, 9);
 
-    context.fillStyle = armor;
-    context.strokeStyle = "#08030d";
+    const armorGradient = context.createLinearGradient(-34, torsoY - 40, 34, torsoY + 38);
+    armorGradient.addColorStop(0, "#ffffff");
+    armorGradient.addColorStop(0.28, armor);
+    armorGradient.addColorStop(0.62, "#9ca6b3");
+    armorGradient.addColorStop(1, "#eef3f8");
+    context.fillStyle = armorGradient;
+    context.strokeStyle = silverStroke;
     context.lineWidth = 4;
     context.beginPath();
     context.ellipse(0, torsoY, 32, 38, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+    context.save();
+    context.clip();
+    context.globalAlpha = 0.55;
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 6;
+    context.beginPath();
+    context.moveTo(-20, torsoY - 28);
+    context.lineTo(12, torsoY + 20);
+    context.stroke();
+    context.globalAlpha = 0.28;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(10, torsoY - 30);
+    context.lineTo(29, torsoY + 5);
+    context.stroke();
+    context.restore();
     context.strokeStyle = trim;
     context.lineWidth = 4;
     context.beginPath();
@@ -2319,7 +2354,7 @@ class Player {
     if (this.shieldGuardTimer > 0) {
       context.globalCompositeOperation = "lighter";
       context.globalAlpha = 0.34 + this.shieldGuardTimer * 0.4;
-      context.fillStyle = "#9b2cff";
+      context.fillStyle = "#dff7ff";
       context.beginPath();
       context.ellipse(0, 0, 54, 70, 0, 0, Math.PI * 2);
       context.fill();
@@ -2327,11 +2362,12 @@ class Player {
       context.globalAlpha = 1;
     }
     const shieldGradient = context.createLinearGradient(-35, -54, 35, 54);
-    shieldGradient.addColorStop(0, "#3d185b");
-    shieldGradient.addColorStop(0.48, "#171020");
-    shieldGradient.addColorStop(1, "#7b1cff");
+    shieldGradient.addColorStop(0, "#ffffff");
+    shieldGradient.addColorStop(0.35, "#cbd3df");
+    shieldGradient.addColorStop(0.68, "#7f8998");
+    shieldGradient.addColorStop(1, "#f6fbff");
     context.fillStyle = shieldGradient;
-    context.strokeStyle = "#050108";
+    context.strokeStyle = "#56606d";
     context.lineWidth = 5;
     context.beginPath();
     context.moveTo(0, -58);
@@ -2342,7 +2378,23 @@ class Player {
     context.closePath();
     context.fill();
     context.stroke();
-    context.strokeStyle = "#c07cff";
+    context.save();
+    context.clip();
+    context.globalAlpha = 0.62;
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.moveTo(-24, -40);
+    context.lineTo(18, 34);
+    context.stroke();
+    context.globalAlpha = 0.28;
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(8, -48);
+    context.lineTo(31, 14);
+    context.stroke();
+    context.restore();
+    context.strokeStyle = "#f8fbff";
     context.lineWidth = 4;
     context.beginPath();
     context.moveTo(0, -42);
@@ -2352,13 +2404,13 @@ class Player {
     context.stroke();
     context.restore();
 
-    context.strokeStyle = "#211329";
+    context.strokeStyle = "#687280";
     context.lineWidth = 4;
     context.beginPath();
     context.moveTo(spearHand.x - 4, spearHand.y + 8);
     context.lineTo(spearHand.x + 28, spearHand.y - 42);
     context.stroke();
-    context.fillStyle = "#c7ccd8";
+    context.fillStyle = "#f8fbff";
     context.beginPath();
     context.moveTo(spearHand.x + 28, spearHand.y - 42);
     context.lineTo(spearHand.x + 39, spearHand.y - 30);
@@ -2367,13 +2419,13 @@ class Player {
     context.fill();
 
     context.fillStyle = bodyColor;
-    context.strokeStyle = "#251133";
+    context.strokeStyle = silverStroke;
     context.lineWidth = 4;
     context.beginPath();
     context.ellipse(0, headY, 29, 30, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = "#09050d";
+    context.fillStyle = "#6e7784";
     for (const side of [-1, 1]) {
       context.beginPath();
       context.moveTo(side * 11, headY - 24);
@@ -2388,7 +2440,7 @@ class Player {
       context.ellipse(side * 10, headY - 4, 6, 4, -side * 0.18, 0, Math.PI * 2);
       context.fill();
     }
-    context.strokeStyle = "#16070d";
+    context.strokeStyle = "#56606d";
     context.lineWidth = 3;
     context.beginPath();
     context.arc(0, headY + 9, 8, 0.15, Math.PI - 0.15);
@@ -2410,6 +2462,13 @@ class Player {
     }
 
     context.restore();
+  }
+
+  drawShieldDevilFootOutline(context, foot, color) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.ellipse(foot.x + 5, foot.y + 3, 18, 8, 0.08, 0, Math.PI * 2);
+    context.fill();
   }
 
   drawMiniDevilCharacter(context, scale, drawY, motionTime) {

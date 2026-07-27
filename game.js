@@ -826,12 +826,12 @@ class DodgeballGame {
           }),
           player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 280, 150, 8, 12, 8, 14, "devilShield", {
             uniformEmblem: "shieldDevil",
-            uniformColor: "#b991e6",
-            pantsColor: "#9d6ed1",
-            trimColor: "#d7b8ff",
+            uniformColor: "#d8dde6",
+            pantsColor: "#a8b0bc",
+            trimColor: "#f8fbff",
             hairColor: "#0b0612",
-            faceColor: "#b991e6",
-            eyeColor: "#ff304a",
+            faceColor: "#c8d0dc",
+            eyeColor: "#56eaff",
             cpuProfile: "arkmaGuard"
           }),
           player("\u30ce\u30af\u30b9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
@@ -5175,18 +5175,21 @@ class DodgeballGame {
       context.font = "bold 13px Meiryo, sans-serif";
       context.fillText(title, cardX + 61, cardY + 17);
       context.font = "12px Meiryo, sans-serif";
-      context.fillText(roleLabel, cardX + 61, cardY + 32);
+      context.textAlign = "left";
+      context.fillText(roleLabel, cardX + 13, cardY + 32);
+      context.textAlign = "right";
+      context.font = "bold 12px Meiryo, sans-serif";
+      context.fillText(`HP ${maxHp}`, cardX + 111, cardY + 32);
 
       context.save();
       context.beginPath();
-      context.rect(cardX + 5, cardY + 35, 112, 91);
+      context.rect(cardX + 5, cardY + 38, 112, 90);
       context.clip();
-      this.drawCharacterPreview(cardX + 61, cardY + 111, side, type, previewStyle, 0.36);
+      this.drawCharacterPreview(cardX + 61, cardY + 116, side, type, previewStyle, 0.36);
       context.restore();
 
       context.fillStyle = "#263241";
-      context.font = "bold 12px Meiryo, sans-serif";
-      context.fillText(`HP ${maxHp}`, cardX + 61, cardY + 130);
+      context.textAlign = "center";
       context.font = "11px Meiryo, sans-serif";
       context.fillText(
         `P${stats.power ?? "-"} S${stats.speed ?? "-"} J${stats.jump ?? "-"} T${stats.technique ?? "-"}`,
@@ -5565,9 +5568,13 @@ class DodgeballGame {
     previewPlayer.lastDrawScale = 1;
 
     const modelScale = (type === "demon" || style?.uniformEmblem === "arkmaLord")
-      ? scale * 0.82
+      ? scale * 0.56
       : (type === "lavaGolem" || style?.uniformEmblem === "lavaGolem")
-        ? scale * 0.62
+        ? scale * 0.46
+        : (type === "shieldDevil" || style?.uniformEmblem === "shieldDevil")
+          ? scale * 0.82
+        : (type === "miniDevil" || style?.uniformEmblem === "miniDevil")
+          ? scale * 0.82
         : (type === "vampire" || style?.uniformEmblem === "vampire")
           ? scale * 0.95
           : scale;

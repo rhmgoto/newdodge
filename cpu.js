@@ -447,6 +447,42 @@ class CPUController {
       }
       return;
     }
+    if (plan.type === "devil-triangle-mini-final") {
+      const now = Date.now();
+      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      holder.passChainBlockTimer = 0;
+      holder.quickShotReadyTimer = 0;
+      holder.throwLockTimer = 0;
+      if (!plan.startedAt) plan.startedAt = now;
+      if (grounded) {
+        const target = this.nearestActiveOpponent(holder);
+        if (target) this.facePoint(command, holder, target.x, target.y);
+        command.dash = true;
+        if (!plan.jumpAttempted && now - plan.startedAt > 90) {
+          command.jump = true;
+          plan.jumpAttempted = true;
+          plan.jumpStartedAt = now;
+          holder.cpuJumpAttackCooldownUntil = now + 2200;
+        } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 450) {
+          this.specialAttackState = null;
+          this.resetHolderPlanSoon();
+        }
+      } else {
+        this.stop(command);
+      }
+      if ((this.isNearJumpApex(holder) || (holder.jumpZ > 110 && now - (plan.jumpStartedAt || now) > 260)) && this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = 0.28;
+        command.chargeReleaseMode = "time";
+        this.specialAttackState = null;
+        this.throwTimer = 0.48;
+        this.holderPlan = null;
+      } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 1700) {
+        this.specialAttackState = null;
+        this.resetHolderPlanSoon();
+      }
+      return;
+    }
     if (
       plan.type.includes("jump") &&
       !plan.jumpAttempted &&
@@ -906,7 +942,9 @@ class CPUController {
         miniIds: ordered.map((member) => member.id),
         nextMiniIndex: 0,
         passesRemaining: 3 + Math.floor(Math.random() * 3),
-        readyForArkmaShot: false
+        readyForArkmaShot: false,
+        readyForMiniShotId: null,
+        finalChoice: null
       };
       if (this.attackTactic) this.attackTactic.finished = true;
     }
@@ -921,7 +959,16 @@ class CPUController {
       return plan;
     }
 
-    if (state.readyForArkmaShot) return null;
+    if (state.readyForMiniShotId && holder.id === state.readyForMiniShotId) {
+      const plan = this.createHolderPlan(holder, "devil-triangle-mini-final", 0);
+      plan.specialAttackPlan = true;
+      plan.devilTriangleFinal = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.03);
+      state.finished = true;
+      return plan;
+    }
+
+    if (state.readyForArkmaShot || state.readyForMiniShotId) return null;
 
     let target = null;
     const holderIsMini = state.miniIds.includes(holder.id);
@@ -932,8 +979,16 @@ class CPUController {
       const nextIndex = (currentIndex + 1 + Math.floor(Math.random() * 2)) % state.miniIds.length;
       target = this.team.find((member) => member.id === state.miniIds[nextIndex] && !member.defeated && member.id !== holder.id)
         || this.team.find((member) => state.miniIds.includes(member.id) && member.id !== holder.id && !member.defeated);
-    } else {
+    } else if (this.chooseDevilTriangleFinal(state) === "arkma") {
       target = arkma;
+    } else {
+      const plan = this.createHolderPlan(holder, "devil-triangle-mini-final", 0);
+      plan.specialAttackPlan = true;
+      plan.devilTriangleFinal = true;
+      state.readyForMiniShotId = holder.id;
+      state.finished = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.03);
+      return plan;
     }
 
     if (!target) return null;
@@ -944,6 +999,13 @@ class CPUController {
     plan.devilTriangleTargetId = target.id;
     this.throwTimer = Math.min(this.throwTimer, holderIsMini ? 0.05 : 0.16);
     return plan;
+  }
+
+  chooseDevilTriangleFinal(state) {
+    if (!state.finalChoice) {
+      state.finalChoice = Math.random() < 0.6 ? "arkma" : "mini";
+    }
+    return state.finalChoice;
   }
 
   advanceDevilTriangle(plan) {
