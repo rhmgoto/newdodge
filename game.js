@@ -30,7 +30,8 @@ const CATCH_DIFFICULTY = {
   clockStop: { duration: 0.07, areaScale: 0.73 },
   lockRocket: { duration: 0.07, areaScale: 0.72 },
   ufoSpin: { duration: 0.08, areaScale: 0.76 },
-  hellfire: { duration: 0.065, areaScale: 0.72 },
+  hellfire: { duration: 0.0455, areaScale: 0.504 },
+  meteorCrash: { duration: 0.035, areaScale: 0.48 },
   bloodDrain: { duration: 0.08, areaScale: 0.8 }
 };
 const HELLFIRE_CONFIG = {
@@ -46,6 +47,20 @@ const HELLFIRE_CONFIG = {
   flameSlowDuration: 0.34,
   flameTouchDamage: 2.5,
   flameTickInterval: 0.5
+};
+const METEOR_CRASH_CONFIG = {
+  radius: 265,
+  markerRadiusYScale: 0.45,
+  innerRadius: 107,
+  damageScale: 2.9,
+  outerDamageScale: 0.45,
+  knockbackScale: 2.35,
+  lavaDuration: 2.8,
+  lavaRadius: 245,
+  lavaTickInterval: 0.42,
+  lavaTouchDamage: 5,
+  lavaSlowScale: 0.68,
+  lavaSlowDuration: 0.55
 };
 const BLOOD_DRAIN_CONFIG = {
   damageScale: 1.015,
@@ -192,6 +207,7 @@ class DodgeballGame {
     this.runtimeErrorCount = 0;
     this.effects = [];
     this.hellfireZones = [];
+    this.meteorLavaZones = [];
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
@@ -225,6 +241,7 @@ class DodgeballGame {
     this.controlledRightPlayerId = "right-inner-1";
     this.ball = new Ball(GAME_CONFIG.ball);
     this.hellfireZones = [];
+    this.meteorLavaZones = [];
     this.hellfireFlashTimer = 0;
     this.hellfireFlashDuration = 0;
     this.boostEffectStage = 0;
@@ -402,6 +419,7 @@ class DodgeballGame {
         zone: innerZone,
         x: position.x,
         y: position.y,
+        radius: cpuPlayer?.radius,
         characterType: cpuPlayer?.characterType || (teamDefinition?.isCustom ? selectedTypes[index] : teamDefinition?.characterType) || selectedTypes[index],
         maxHp: cpuPlayer?.maxHp ?? teamDefinition?.maxHp,
         maxStamina: cpuPlayer?.maxStamina ?? teamDefinition?.maxStamina,
@@ -765,8 +783,8 @@ class DodgeballGame {
         name: "\u30a2\u30fc\u30af\u30de\u30fc\u30ba",
         description: "\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de\u304c\u7387\u3044\u308b\u30e9\u30b9\u30dc\u30b9\u30c1\u30fc\u30e0",
         characterType: "normal",
-        innerNames: ["\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "\u30e2\u30eb\u30c9", "\u30ce\u30af\u30b9"],
-        outNames: ["\u30ec\u30a4\u30f4\u30f3", "\u30f4\u30a9\u30eb", "\u30df\u30b9\u30c8"],
+        innerNames: ["\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "\u30ce\u30af\u30b9"],
+        outNames: ["\u30d4\u30b3", "\u30da\u30b3", "\u30dd\u30b3"],
         uniformColor: "#0057ff",
         pantsColor: "#0057ff",
         trimColor: "#f6fbff",
@@ -776,7 +794,7 @@ class DodgeballGame {
         stats: { power: 7, speed: 7, jump: 7, technique: 7 },
         cpuProfile: "arkmaz",
         players: [
-          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 400, 200, 13, 13, 13, 13, "hellfire", {
+          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 500, 200, 18, 13, 13, 13, "hellfire", {
             captain: true,
             uniformEmblem: "arkmaLord",
             uniformColor: "#161018",
@@ -786,16 +804,27 @@ class DodgeballGame {
             faceColor: "#43205f",
             eyeColor: "#ff304a"
           }),
-          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 180, 150, 8, 11, 9, 12, "bloodDrain", {
+          player("\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "inner", "lavaGolem", 350, 150, 16, 5, 4, 9, "meteorCrash", {
+            uniformEmblem: "lavaGolem",
+            radius: 66,
+            uniformColor: "#4a3024",
+            pantsColor: "#2a1a14",
+            trimColor: "#ff7a1f",
+            hairColor: "#231512",
+            faceColor: "#4a3024",
+            eyeColor: "#ffd43b",
+            cpuProfile: "arkmaz"
+          }),
+          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 270, 150, 11, 11, 9, 12, "bloodDrain", {
             uniformEmblem: "vampire",
-            uniformColor: "#1a1026",
-            pantsColor: "#24142f",
-            trimColor: "#b31534",
+            uniformColor: "#7a1630",
+            pantsColor: "#361227",
+            trimColor: "#d6284a",
             hairColor: "#e9eef8",
             faceColor: "#d8edf6",
             eyeColor: "#d81942"
           }),
-          player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 230, 150, 8, 12, 8, 11, "devilShield", {
+          player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 280, 150, 8, 12, 8, 14, "devilShield", {
             uniformEmblem: "shieldDevil",
             uniformColor: "#1a1028",
             pantsColor: "#210d31",
@@ -805,11 +834,34 @@ class DodgeballGame {
             eyeColor: "#ff304a",
             cpuProfile: "arkmaGuard"
           }),
-          player("\u30e2\u30eb\u30c9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
           player("\u30ce\u30af\u30b9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
-          player("\u30ec\u30a4\u30f4\u30f3", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
-          player("\u30f4\u30a9\u30eb", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
-          player("\u30df\u30b9\u30c8", "out", "normal", 120, 100, 7, 7, 7, 7, "kiai")
+          player("\u30d4\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "kiai", {
+            uniformEmblem: "miniDevil",
+            uniformColor: "#17101f",
+            pantsColor: "#050407",
+            trimColor: "#c91f35",
+            faceColor: "#7b3eb0",
+            eyeColor: "#ff304a",
+            cpuProfile: "arkmaz"
+          }),
+          player("\u30da\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "kiai", {
+            uniformEmblem: "miniDevil",
+            uniformColor: "#17101f",
+            pantsColor: "#050407",
+            trimColor: "#c91f35",
+            faceColor: "#7b3eb0",
+            eyeColor: "#ff304a",
+            cpuProfile: "arkmaz"
+          }),
+          player("\u30dd\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "kiai", {
+            uniformEmblem: "miniDevil",
+            uniformColor: "#17101f",
+            pantsColor: "#050407",
+            trimColor: "#c91f35",
+            faceColor: "#7b3eb0",
+            eyeColor: "#ff304a",
+            cpuProfile: "arkmaz"
+          })
         ]
       }
     ];
@@ -1319,6 +1371,7 @@ class DodgeballGame {
     }
     this.updateEffects(delta);
     this.updateHellfireZones(delta);
+    this.updateMeteorLavaZones(delta);
     this.updateSpirit(delta);
     if (this.gameMode === "watch") {
       this.cpuControllerLeft?.update(delta);
@@ -1352,6 +1405,7 @@ class DodgeballGame {
     this.handleFriendlyMissedReceives(this.rightTeam);
     this.handleHits();
     this.handleTsutenkakuImpact();
+    this.handleMeteorCrashImpact();
     this.handleLightningZigzagImpact();
     this.handleHellfireGroundImpact();
     this.handleBoostShotExit();
@@ -2395,7 +2449,7 @@ class DodgeballGame {
   }
 
   queueThrow(actor, target, kind, aim, ignoreStamina = false, specialRequested = false) {
-    if (this.pendingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0) return false;
+    if (this.pendingThrow || this.chargingThrow || this.ball.owner !== actor || actor.defeated || actor.hitRecoveryTimer > 0) return false;
     if (!target && kind !== "shoot") return false;
     if (kind === "shoot" && !ignoreStamina && !actor.consumeStamina(
       GAME_CONFIG.battle.stamina.shootCost,
@@ -2412,9 +2466,11 @@ class DodgeballGame {
       shotMultiplier: kind === "shoot" ? this.getShotMultiplier(actor, shotAim) : 1,
       specialType: null,
       specialRequested: kind === "shoot" && specialRequested,
+      devilTrianglePass: kind === "pass" && Boolean(actor.cpuDevilTrianglePass),
       anticipation: false,
       timer: kind === "shoot" ? SHOT_WINDUP_TIME * windupScale : 0.2 * windupScale
     };
+    if (kind === "pass") actor.cpuDevilTrianglePass = false;
     if (kind === "shoot") {
       this.pendingThrow.specialType = specialRequested ? this.getSpecialShotType(actor) : null;
       if (this.pendingThrow.specialType) {
@@ -2461,7 +2517,13 @@ class DodgeballGame {
       : null;
     const launchTarget = pending.quickShot ? null : pending.target;
     const launchMultiplier = pending.quickShot ? 1 : pending.shotMultiplier;
+    if (pending.devilTrianglePass) {
+      pending.actor.cpuDevilTrianglePass = true;
+    }
     if (this.ball.launch(pending.actor, launchTarget, pending.kind, pending.aim, launchMultiplier, specialType)) {
+      if (pending.devilTrianglePass) {
+        this.ball.devilTrianglePass = true;
+      }
       if (pending.counter) {
         const targetX = pending.target?.x ?? this.ball.x + pending.aim.x * 900;
         const targetY = pending.target ? pending.target.y - 38 : this.ball.y + pending.aim.y * 900;
@@ -3045,6 +3107,11 @@ class DodgeballGame {
       if (!this.canPlayerAcquireBallAt(catcher, this.ball.x, this.ball.y)) continue;
       const box = this.getCatchArea(catcher, friendly);
       if (!this.circleRectOverlap(this.ball.x, this.ball.y - this.ball.z, this.ball.radius, box)) continue;
+      if (!friendly && this.ball.kind === "pass" && this.ball.devilTrianglePass && Math.random() >= 0.05) {
+        catcher.catchTimer = 0;
+        this.spawnCatchResultLabel(catcher, "MISS", "#ff4d8d");
+        continue;
+      }
       const catchResult = this.getManualCatchResult(catcher, friendly);
       if (catchResult === "wait") continue;
       if (catchResult === "miss") {
@@ -3286,7 +3353,7 @@ class DodgeballGame {
   }
 
   isPiercingShot(specialType) {
-    return specialType === "iron" || specialType === "slap" || specialType === "devilShield";
+    return false;
   }
 
   endShotAfterDodge(target) {
@@ -3340,6 +3407,7 @@ class DodgeballGame {
   handleHits() {
     if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower || this.ball.hasBounced) return;
     if (this.ball.specialShotType === "clockStop" && this.ball.clockStopPhase === "hold") return;
+    if (this.ball.specialShotType === "meteorCrash") return;
     const targets = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
 
     for (let target of targets) {
@@ -3458,17 +3526,8 @@ class DodgeballGame {
           this.startScreenShake(10 + (this.ball.counterIntensity || 1) * 3, 0.14);
         }
         this.spawnDamageNumber(target, damage);
-        if (specialType === "boomerang") {
-          this.ball.drop();
-          this.ball.vx = 0;
-          this.ball.vy = 0;
-          this.ball.vz = Math.min(-120, this.ball.vz);
-          return;
-        }
-        const piercingSpecial = this.isPiercingShot(specialType);
-        if (specialType !== "boomerang" && !piercingSpecial) {
-          this.spillHitBallInDefenderCourt(target, direction, damage);
-        }
+        this.spillHitBallInDefenderCourt(target, direction, damage);
+        return;
       } else if (wasDodging) {
         this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
         if (this.isPiercingShot(this.ball.specialShotType)) {
@@ -3584,6 +3643,22 @@ class DodgeballGame {
     this.ball.drop();
   }
 
+  handleMeteorCrashImpact() {
+    if (
+      !this.ball.meteorCrashImpactPending ||
+      this.ball.specialShotType !== "meteorCrash" ||
+      !this.ball.thrower
+    ) return;
+
+    const centerX = this.ball.meteorCrashTargetX;
+    const centerY = this.ball.meteorCrashTargetY;
+    const baseDamage = this.getSpecialShotDamage(this.ball.power, "meteorCrash", this.ball.travelDistance);
+    this.ball.meteorCrashImpactPending = false;
+    this.applyMeteorCrashSplash(baseDamage, centerX, centerY);
+    this.spawnMeteorLavaZone(centerX, centerY, this.ball.thrower.team);
+    this.ball.drop();
+  }
+
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
     let damage = baseDamage;
     if (specialType === "kiai") {
@@ -3613,6 +3688,8 @@ class DodgeballGame {
       damage = baseDamage * 1.8;
     } else if (specialType === "hellfire") {
       damage = baseDamage * HELLFIRE_CONFIG.damageScale;
+    } else if (specialType === "meteorCrash") {
+      damage = baseDamage * METEOR_CRASH_CONFIG.damageScale;
     } else if (specialType === "bloodDrain") {
       damage = baseDamage * BLOOD_DRAIN_CONFIG.damageScale;
     }
@@ -3846,6 +3923,56 @@ class DodgeballGame {
     this.spawnTsutenkakuImpactEffects(centerX, centerY);
   }
 
+  applyMeteorCrashSplash(baseDamage, centerX, centerY) {
+    const enemies = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
+    const radius = METEOR_CRASH_CONFIG.radius;
+    const radiusY = radius * METEOR_CRASH_CONFIG.markerRadiusYScale;
+    const innerRadius = METEOR_CRASH_CONFIG.innerRadius;
+    for (const enemy of enemies) {
+      if (enemy.defeated || enemy.role !== "inner") continue;
+      const dx = enemy.x - centerX;
+      const dy = enemy.y - centerY;
+      const markerDistance = Math.hypot(dx / radius, dy / radiusY);
+      if (markerDistance > 1) continue;
+
+      const distance = Math.hypot(dx, dy);
+      const markerRadiusAtAngle = distance / Math.max(0.001, markerDistance);
+      const innerRatio = Math.min(0.85, innerRadius / Math.max(1, markerRadiusAtAngle));
+      const t = Math.max(0, Math.min(1, (markerDistance - innerRatio) / Math.max(0.001, 1 - innerRatio)));
+      const damageScale = 1 - t * (1 - METEOR_CRASH_CONFIG.outerDamageScale);
+      const finalDamage = Math.max(1, baseDamage * damageScale);
+      const direction = dx >= 0 ? 1 : -1;
+      const length = distance || 1;
+      const hpBefore = enemy.hp;
+      if (enemy.takeDamage(finalDamage, direction, GAME_CONFIG.battle, METEOR_CRASH_CONFIG.knockbackScale, true)) {
+        this.addSpiritForDamage(enemy.team, hpBefore, enemy.hp);
+        enemy.knockbackX += dx / length * GAME_CONFIG.battle.knockbackSpeed * (1.05 + (1 - t) * 0.45);
+        enemy.knockbackY += dy / length * GAME_CONFIG.battle.knockbackSpeed * (0.78 + (1 - t) * 0.34);
+        enemy.stun?.(0.18 + (1 - t) * 0.2);
+        this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 62, "#ff7a1f", "special");
+        this.spawnDamageNumber(enemy, finalDamage);
+      }
+    }
+    this.startScreenShake(22, 0.24);
+    this.spawnMeteorCrashImpactEffects(centerX, centerY);
+  }
+
+  spawnMeteorCrashImpactEffects(centerX, centerY) {
+    this.spawnEffect(centerX, centerY - 70, "#ff5a1f", "special", 1.35);
+    this.spawnEffect(centerX, centerY - 38, "#2b0905", "hellfireImpact", 0.55);
+    for (let index = 0; index < 14; index += 1) {
+      const angle = index * Math.PI * 2 / 14;
+      const distance = 90 + (index % 5) * 38;
+      this.spawnEffect(
+        centerX + Math.cos(angle) * distance,
+        centerY + Math.sin(angle) * distance * 0.48 - 44,
+        index % 2 === 0 ? "#ff5a1f" : "#ffd36a",
+        "special",
+        0.72
+      );
+    }
+  }
+
   spawnTsutenkakuImpactEffects(centerX, centerY) {
     this.spawnEffect(centerX, centerY - 42, "#ffd83d", "special");
     for (let index = 0; index < 8; index += 1) {
@@ -3883,6 +4010,18 @@ class DodgeballGame {
       tickTimer: 0
     });
     this.spawnEffect(x, y - 32, "#2b0a30", "hellfireImpact", 0.8);
+  }
+
+  spawnMeteorLavaZone(x, y, ownerTeam) {
+    this.meteorLavaZones.push({
+      x,
+      y,
+      ownerTeam,
+      radius: METEOR_CRASH_CONFIG.lavaRadius,
+      life: METEOR_CRASH_CONFIG.lavaDuration,
+      maxLife: METEOR_CRASH_CONFIG.lavaDuration,
+      tickTimer: 0
+    });
   }
 
   updateHellfireZones(delta) {
@@ -3928,6 +4067,7 @@ class DodgeballGame {
     if (specialType === "lockRocket") return "#55dfff";
     if (specialType === "ufoSpin") return "#7cffcb";
     if (specialType === "hellfire") return "#2b0a30";
+    if (specialType === "meteorCrash") return "#ff5a1f";
     if (specialType === "bloodDrain") return "#8d061e";
     return "#ffe46a";
   }
@@ -4322,6 +4462,34 @@ class DodgeballGame {
     });
   }
 
+  updateMeteorLavaZones(delta) {
+    if (!this.meteorLavaZones || this.meteorLavaZones.length === 0) return;
+    this.meteorLavaZones = this.meteorLavaZones.filter((zone) => {
+      zone.life -= delta;
+      zone.tickTimer -= delta;
+      const activePlayers = this.players.filter((player) => (
+        !player.defeated &&
+        player.hp > 0 &&
+        player.team !== zone.ownerTeam &&
+        Math.hypot(player.x - zone.x, player.y - zone.y) <= zone.radius
+      ));
+      for (const player of activePlayers) {
+        player.applySlow?.(METEOR_CRASH_CONFIG.lavaSlowScale, METEOR_CRASH_CONFIG.lavaSlowDuration);
+      }
+      if (zone.tickTimer <= 0) {
+        zone.tickTimer = METEOR_CRASH_CONFIG.lavaTickInterval;
+        for (const player of activePlayers) {
+          const hpBefore = player.hp;
+          if (player.takeBurnDamage?.(METEOR_CRASH_CONFIG.lavaTouchDamage, GAME_CONFIG.battle)) {
+            this.addSpiritForDamage(player.team, hpBefore, player.hp);
+            this.spawnDamageNumber(player, METEOR_CRASH_CONFIG.lavaTouchDamage);
+          }
+        }
+      }
+      return zone.life > 0;
+    });
+  }
+
   showShotMultiplier(multiplier, actor, specialType = null) {
     this.shotMultiplierDisplay = {
       multiplier,
@@ -4343,6 +4511,7 @@ class DodgeballGame {
     if (specialType === "soul") return "SOUL RECOVERY";
     if (specialType === "slap") return "張り手シュート";
     if (specialType === "tsutenkaku") return "\u901a\u5929\u95a3\u843d\u3068\u3057";
+    if (specialType === "meteorCrash") return "\u30e1\u30c6\u30aa\u30af\u30e9\u30c3\u30b7\u30e5";
     if (specialType === "clockStop") return "クロックストップ";
     if (specialType === "lockRocket") return "ロックオン・ロケット";
     if (specialType === "ufoSpin") return "UFO SPIN";
@@ -4417,6 +4586,7 @@ class DodgeballGame {
     this.drawCourt();
     this.drawCounterReadyEffects(context);
     this.drawHellfireZones(context);
+    this.drawMeteorLavaZones(context);
 
     const active = this.getPlayerControlledMember();
     const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
@@ -4756,6 +4926,7 @@ class DodgeballGame {
     if (specialType === "soul") return "魂";
     if (specialType === "slap") return "張";
     if (specialType === "tsutenkaku") return "\u901a";
+    if (specialType === "meteorCrash") return "\u30e1";
     if (specialType === "clockStop") return "時";
     if (specialType === "lockRocket") return "ロ";
     if (specialType === "ufoSpin") return "G";
@@ -5075,6 +5246,10 @@ class DodgeballGame {
       this.drawDemonPreview(x, y, style, scale);
       return;
     }
+    if (type === "lavaGolem" || style?.uniformEmblem === "lavaGolem") {
+      this.drawLavaGolemPreview(x, y, style, scale);
+      return;
+    }
     const body = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
     const suit = style?.uniformColor || (side === "left" ? "#0057ff" : "#f01818");
     const pants = style?.pantsColor || suit;
@@ -5332,101 +5507,443 @@ class DodgeballGame {
   drawDemonPreview(x, y, style = null, scale = 0.48) {
     const context = this.context;
     const bodyColor = style?.faceColor || "#43205f";
-    const armor = style?.uniformColor || "#161018";
+    const armor = style?.uniformColor || "#0c0a10";
     const gold = style?.trimColor || "#d7a331";
+    const eyeColor = style?.eyeColor || "#ff304a";
     context.save();
     context.translate(x, y);
-    context.scale(scale * 1.06, scale * 1.06);
+    context.scale(scale * 1.08, scale * 1.08);
 
-    context.fillStyle = "#0b0710";
+    const cape = context.createLinearGradient(0, -80, 0, 86);
+    cape.addColorStop(0, "#050407");
+    cape.addColorStop(0.56, "#0c060a");
+    cape.addColorStop(1, "#3a050b");
+    context.fillStyle = cape;
+    context.strokeStyle = "#050407";
+    context.lineWidth = 4;
     context.beginPath();
-    context.moveTo(-28, -82);
-    context.lineTo(-58, -118);
-    context.quadraticCurveTo(-42, -105, -28, -75);
-    context.moveTo(28, -82);
-    context.lineTo(58, -118);
-    context.quadraticCurveTo(42, -105, 28, -75);
+    context.moveTo(-45, -77);
+    context.quadraticCurveTo(-78, -63, -84, 84);
+    context.lineTo(-31, 60);
+    context.quadraticCurveTo(-18, 17, -20, -65);
+    context.lineTo(20, -65);
+    context.quadraticCurveTo(18, 17, 31, 60);
+    context.lineTo(84, 84);
+    context.quadraticCurveTo(78, -63, 45, -77);
+    context.closePath();
     context.fill();
+    context.stroke();
 
-    context.fillStyle = "#100c15";
+    context.save();
+    context.globalAlpha = 0.38;
+    context.strokeStyle = "#5d0a17";
+    context.lineWidth = 3;
     context.beginPath();
-    context.moveTo(-26, -50);
-    context.lineTo(-52, -8);
-    context.lineTo(-16, -20);
-    context.moveTo(26, -50);
-    context.lineTo(52, -8);
-    context.lineTo(16, -20);
-    context.fill();
+    context.moveTo(-35, -66);
+    context.quadraticCurveTo(-47, -25, -49, 52);
+    context.moveTo(35, -66);
+    context.quadraticCurveTo(47, -25, 49, 52);
+    context.stroke();
+    context.restore();
 
-    context.strokeStyle = "#24101c";
+    context.strokeStyle = "#171019";
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.lineWidth = 12;
+    context.lineWidth = 20;
     context.beginPath();
-    context.moveTo(-16, -15);
-    context.lineTo(-22, 24);
-    context.moveTo(16, -15);
-    context.lineTo(22, 24);
+    context.moveTo(-13, 8);
+    context.lineTo(-18, 45);
+    context.lineTo(-20, 100);
+    context.moveTo(13, 8);
+    context.lineTo(18, 45);
+    context.lineTo(20, 100);
     context.stroke();
+
     context.strokeStyle = bodyColor;
-    context.lineWidth = 12;
+    context.lineWidth = 13;
     context.beginPath();
-    context.moveTo(-28, -48);
-    context.lineTo(-46, -18);
-    context.moveTo(28, -48);
-    context.lineTo(46, -18);
+    context.moveTo(-39, -70);
+    context.lineTo(-49, -24);
+    context.lineTo(-43, -1);
+    context.moveTo(39, -70);
+    context.lineTo(49, -24);
+    context.lineTo(43, -1);
     context.stroke();
+
+    context.fillStyle = gold;
+    context.strokeStyle = "#4d3209";
+    context.lineWidth = 3;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 33, -71, 16, 11, side * -0.2, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
 
     context.fillStyle = armor;
     context.strokeStyle = "#050407";
-    context.lineWidth = 3;
+    context.lineWidth = 4;
     context.beginPath();
-    context.ellipse(0, -42, 36, 42, 0, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-    context.fillStyle = "#6f1326";
-    context.beginPath();
-    context.moveTo(-19, -74);
-    context.lineTo(19, -74);
-    context.lineTo(8, -8);
-    context.lineTo(-8, -8);
+    context.moveTo(-30, -68);
+    context.lineTo(30, -68);
+    context.lineTo(17, 1);
+    context.lineTo(0, 10);
+    context.lineTo(-17, 1);
     context.closePath();
     context.fill();
+    context.stroke();
+
+    context.fillStyle = "#4f0e18";
+    context.strokeStyle = "#20040a";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(-11, -62);
+    context.lineTo(11, -62);
+    context.lineTo(7, -1);
+    context.lineTo(-7, -1);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
     context.strokeStyle = gold;
     context.lineWidth = 4;
     context.beginPath();
-    context.arc(0, -44, 11, 0, Math.PI * 2);
+    context.moveTo(-9, -31);
+    context.lineTo(0, -45);
+    context.lineTo(9, -31);
+    context.lineTo(0, -17);
+    context.closePath();
     context.stroke();
+    context.fillStyle = gold;
+    context.fill();
+
+    context.fillStyle = gold;
+    context.fillRect(-22, 8, 44, 8);
+    context.strokeStyle = "#4d3209";
+    context.lineWidth = 2;
+    context.strokeRect(-22, 8, 44, 8);
+
+    const mantleFront = context.createLinearGradient(0, -76, 0, 106);
+    mantleFront.addColorStop(0, "#050407");
+    mantleFront.addColorStop(0.52, "#060407");
+    mantleFront.addColorStop(1, "#26050c");
+    context.fillStyle = mantleFront;
+    context.strokeStyle = "#020103";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(-49, -76);
+    context.quadraticCurveTo(-63, -64, -68, -36);
+    context.quadraticCurveTo(-76, 21, -62, 100);
+    context.quadraticCurveTo(-34, 110, 0, 106);
+    context.quadraticCurveTo(34, 110, 62, 100);
+    context.quadraticCurveTo(76, 21, 68, -36);
+    context.quadraticCurveTo(63, -64, 49, -76);
+    context.quadraticCurveTo(28, -66, 14, -53);
+    context.quadraticCurveTo(7, 8, 0, 8);
+    context.quadraticCurveTo(-7, 8, -14, -53);
+    context.quadraticCurveTo(-28, -66, -49, -76);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.save();
+    context.globalAlpha = 0.4;
+    context.strokeStyle = "#5d0a17";
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.moveTo(-33, -60);
+    context.quadraticCurveTo(-39, 18, -32, 92);
+    context.moveTo(33, -60);
+    context.quadraticCurveTo(39, 18, 32, 92);
+    context.stroke();
+    context.restore();
 
     context.fillStyle = bodyColor;
     context.strokeStyle = "#251133";
     context.lineWidth = 3;
     context.beginPath();
-    context.ellipse(0, -104, 32, 37, 0, 0, Math.PI * 2);
+    context.ellipse(0, -93, 21, 25, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = style?.hairColor || "#09070d";
+
+    context.fillStyle = bodyColor;
     context.beginPath();
-    context.moveTo(-22, -132);
-    context.lineTo(-12, -158);
-    context.lineTo(-3, -133);
-    context.lineTo(8, -160);
-    context.lineTo(18, -130);
-    context.lineTo(27, -145);
-    context.lineTo(24, -119);
-    context.lineTo(-24, -119);
-    context.closePath();
+    context.moveTo(-19, -94);
+    context.lineTo(-40, -98);
+    context.lineTo(-24, -84);
+    context.moveTo(19, -94);
+    context.lineTo(40, -98);
+    context.lineTo(24, -84);
     context.fill();
 
-    context.fillStyle = style?.eyeColor || "#ff304a";
+    context.fillStyle = "#050407";
     context.beginPath();
-    context.ellipse(-13, -104, 6, 4, 0.18, 0, Math.PI * 2);
-    context.ellipse(13, -104, 6, 4, -0.18, 0, Math.PI * 2);
+    context.moveTo(-17, -115);
+    context.quadraticCurveTo(-54, -151, -80, -147);
+    context.quadraticCurveTo(-55, -136, -26, -103);
+    context.quadraticCurveTo(-21, -111, -17, -115);
+    context.moveTo(17, -115);
+    context.quadraticCurveTo(54, -151, 80, -147);
+    context.quadraticCurveTo(55, -136, 26, -103);
+    context.quadraticCurveTo(21, -111, 17, -115);
     context.fill();
-    context.fillStyle = "#ff2748";
+    context.strokeStyle = "#171019";
+    context.lineWidth = 3;
+    context.stroke();
+
+    context.fillStyle = "#050407";
+    context.strokeStyle = "#1b1720";
+    context.lineWidth = 2;
     context.beginPath();
-    context.arc(0, -123, 5, 0, Math.PI * 2);
+    context.moveTo(-23, -116);
+    context.lineTo(-14, -129);
+    context.lineTo(-6, -122);
+    context.lineTo(0, -134);
+    context.lineTo(6, -122);
+    context.lineTo(14, -129);
+    context.lineTo(23, -116);
+    context.lineTo(15, -110);
+    context.lineTo(-15, -110);
+    context.closePath();
     context.fill();
+    context.stroke();
+    context.fillStyle = "#b31534";
+    context.strokeStyle = "#ffb85a";
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.arc(0, -119, 4.2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = eyeColor;
+    context.shadowColor = eyeColor;
+    context.shadowBlur = 12;
+    context.beginPath();
+    context.arc(-10, -98, 5, 0, Math.PI * 2);
+    context.arc(10, -98, 5, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+    context.restore();
+  }
+
+  drawFireDragonPreview(x, y, style = null, scale = 0.48) {
+    const context = this.context;
+    const skin = style?.faceColor || "#7c1914";
+    const horn = style?.trimColor || "#d9a831";
+    context.save();
+    context.translate(x, y);
+    context.scale(scale * 1.22, scale * 1.28);
+    context.fillStyle = "#0a0506";
+    context.strokeStyle = "#050303";
+    context.lineWidth = 3;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 18, -62);
+      context.quadraticCurveTo(side * 70, -92, side * 88, -52);
+      context.quadraticCurveTo(side * 58, -30, side * 22, -35);
+      context.closePath();
+      context.fillStyle = "#a51c1c";
+      context.fill();
+      context.stroke();
+      context.strokeStyle = "#070404";
+      context.beginPath();
+      context.moveTo(side * 22, -61);
+      context.lineTo(side * 78, -53);
+      context.stroke();
+    }
+    context.strokeStyle = skin;
+    context.lineCap = "round";
+    context.lineWidth = 17;
+    context.beginPath();
+    context.moveTo(-24, -48);
+    context.lineTo(-44, -12);
+    context.lineTo(-51, 25);
+    context.moveTo(24, -48);
+    context.lineTo(44, -12);
+    context.lineTo(51, 25);
+    context.stroke();
+    context.lineWidth = 16;
+    context.beginPath();
+    context.moveTo(-15, 1);
+    context.lineTo(-23, 36);
+    context.lineTo(-21, 66);
+    context.moveTo(15, 1);
+    context.lineTo(23, 36);
+    context.lineTo(21, 66);
+    context.stroke();
+    context.fillStyle = skin;
+    context.strokeStyle = "#190504";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, -27, 42, 53, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#eed7a1";
+    context.beginPath();
+    context.ellipse(0, -14, 19, 39, 0, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "#ff5a1f";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-30, -59);
+    context.lineTo(-16, -37);
+    context.moveTo(30, -57);
+    context.lineTo(16, -35);
+    context.stroke();
+    context.fillStyle = skin;
+    context.strokeStyle = "#190504";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(6, -92, 35, 30, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.ellipse(30, -84, 34, 17, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = horn;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 15, -116);
+      context.quadraticCurveTo(side * 52, -142, side * 76, -132);
+      context.quadraticCurveTo(side * 46, -125, side * 26, -99);
+      context.closePath();
+      context.fill();
+    }
+    context.fillStyle = "#ffd43b";
+    context.beginPath();
+    context.ellipse(-2, -92, 7, 4, 0, 0, Math.PI * 2);
+    context.ellipse(20, -91, 7, 4, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#050505";
+    context.fillRect(-2, -96, 2, 8);
+    context.fillRect(20, -95, 2, 8);
+    context.fillStyle = "#ff7a18";
+    context.beginPath();
+    context.ellipse(63, -84, 11, 5, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#080505";
+    context.beginPath();
+    context.moveTo(-9, 11);
+    context.quadraticCurveTo(-58, 31, -76, 62);
+    context.lineTo(-63, 57);
+    context.quadraticCurveTo(-42, 38, -16, 28);
+    context.closePath();
+    context.fill();
+    context.restore();
+  }
+
+  drawLavaGolemPreview(x, y, style = null, scale = 0.48) {
+    const context = this.context;
+    const rock = style?.faceColor || "#4a3024";
+    const rockShadow = "#2a1a14";
+    const lava = style?.trimColor || "#ff7a1f";
+    context.save();
+    context.translate(x, y);
+    context.scale(scale * 1.83, scale * 1.62);
+
+    context.fillStyle = rockShadow;
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(-75, 35, 31, 15, -0.45, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = rock;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 22;
+    context.beginPath();
+    context.moveTo(-34, -45);
+    context.lineTo(-62, -15);
+    context.lineTo(-72, 20);
+    context.moveTo(34, -45);
+    context.lineTo(62, -15);
+    context.lineTo(72, 20);
+    context.moveTo(-20, 12);
+    context.lineTo(-27, 38);
+    context.lineTo(-31, 51);
+    context.moveTo(20, 12);
+    context.lineTo(27, 38);
+    context.lineTo(31, 51);
+    context.stroke();
+
+    context.fillStyle = rock;
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, -21, 80, 87, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#6a4030";
+    context.beginPath();
+    context.ellipse(-24, -30, 42, 54, -0.2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = rockShadow;
+    context.beginPath();
+    context.ellipse(27, -1, 47, 51, 0.2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    const crack = (points, width = 5) => {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.strokeStyle = lava;
+      context.lineWidth = width;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(points[0], points[1]);
+      for (let i = 2; i < points.length; i += 2) context.lineTo(points[i], points[i + 1]);
+      context.stroke();
+      context.strokeStyle = "#ffd36a";
+      context.lineWidth = 2;
+      context.stroke();
+      context.restore();
+    };
+    crack([-42, -68, -14, -38, -29, -6, -3, 38]);
+    crack([18, -84, 45, -52, 27, -19, 60, 15], 4);
+    crack([-8, -99, 6, -62, -11, -23, 14, 16], 4);
+
+    context.fillStyle = rock;
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, -83, 39, 30, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#ffd43b";
+    context.beginPath();
+    context.ellipse(-14, -83, 8, 5, 0, 0, Math.PI * 2);
+    context.ellipse(14, -83, 8, 5, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#fff0a6";
+    context.beginPath();
+    context.ellipse(-14, -83, 3, 2, 0, 0, Math.PI * 2);
+    context.ellipse(14, -83, 3, 2, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.fillStyle = lava;
+    context.beginPath();
+    context.ellipse(0, -116, 13, 7, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#ffd36a";
+    context.beginPath();
+    context.ellipse(0, -119, 6, 4, 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    context.fillStyle = rock;
+    for (const hand of [{ x: -72, y: 20 }, { x: 72, y: 20 }]) {
+      context.beginPath();
+      context.ellipse(hand.x, hand.y, 20, 16, 0, 0, Math.PI * 2);
+      context.fill();
+      crack([hand.x - 8, hand.y - 4, hand.x + 1, hand.y + 1, hand.x + 9, hand.y - 5], 3);
+    }
+
     context.restore();
   }
 
@@ -6759,6 +7276,63 @@ class DodgeballGame {
         context.quadraticCurveTo(fx - 12, fy - height * 0.58, fx + Math.sin(time / 60 + flame) * 8, fy - height);
         context.quadraticCurveTo(fx + 13, fy - height * 0.48, fx + 18, fy + 10);
         context.closePath();
+        context.fill();
+      }
+      context.globalCompositeOperation = "source-over";
+    }
+    context.restore();
+  }
+
+  drawMeteorLavaZones(context) {
+    if (!this.meteorLavaZones || this.meteorLavaZones.length === 0) return;
+    context.save();
+    const time = performance.now();
+    for (const zone of this.meteorLavaZones) {
+      const progress = 1 - zone.life / Math.max(0.01, zone.maxLife);
+      const pulse = 0.9 + Math.sin(time / 96 + zone.x * 0.01) * 0.12;
+      const radius = zone.radius * (0.94 + progress * 0.08) * pulse;
+      context.globalAlpha = Math.max(0, 0.78 - progress * 0.38);
+      context.fillStyle = "rgba(35, 7, 3, 0.72)";
+      context.beginPath();
+      context.ellipse(zone.x, zone.y + 8, radius, radius * 0.42, 0, 0, Math.PI * 2);
+      context.fill();
+
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = Math.max(0, 0.6 - progress * 0.26);
+      context.fillStyle = "rgba(255, 88, 24, 0.52)";
+      context.beginPath();
+      context.ellipse(zone.x, zone.y + 8, radius * 0.78, radius * 0.29, 0, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#ffd36a";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.ellipse(zone.x, zone.y + 8, radius * 0.62, radius * 0.23, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.globalCompositeOperation = "source-over";
+
+      context.strokeStyle = "rgba(30, 8, 4, 0.82)";
+      context.lineWidth = 7;
+      context.lineCap = "round";
+      for (let crack = 0; crack < 12; crack += 1) {
+        const angle = crack * Math.PI * 2 / 12 + progress * 0.2;
+        const inner = radius * 0.18;
+        const outer = radius * (0.64 + (crack % 4) * 0.09);
+        context.beginPath();
+        context.moveTo(zone.x + Math.cos(angle) * inner, zone.y + 8 + Math.sin(angle) * inner * 0.28);
+        context.lineTo(zone.x + Math.cos(angle) * outer, zone.y + 8 + Math.sin(angle) * outer * 0.28);
+        context.stroke();
+      }
+
+      context.globalCompositeOperation = "lighter";
+      for (let spark = 0; spark < 10; spark += 1) {
+        const angle = spark * Math.PI * 2 / 10 + time / 460;
+        const dist = radius * (0.24 + (spark % 5) * 0.1);
+        const sx = zone.x + Math.cos(angle) * dist;
+        const sy = zone.y + 8 + Math.sin(angle) * dist * 0.24;
+        context.globalAlpha = 0.28 + (spark % 3) * 0.08;
+        context.fillStyle = spark % 2 === 0 ? "#ff5a1f" : "#ffd36a";
+        context.beginPath();
+        context.arc(sx, sy - Math.sin(time / 120 + spark) * 10, 3 + (spark % 3), 0, Math.PI * 2);
         context.fill();
       }
       context.globalCompositeOperation = "source-over";

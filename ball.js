@@ -1,6 +1,9 @@
 const TSUTENKAKU_SKY_TRAVEL_TIME = 0.8;
 const TSUTENKAKU_WARNING_MIN_TIME = 1.5;
 const TSUTENKAKU_WARNING_MAX_TIME = 2.5;
+const METEOR_CRASH_TRAVEL_TIME = 1.32;
+const METEOR_CRASH_WARNING_START = 0.42;
+const METEOR_CRASH_PEAK_Z = 920;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
@@ -13,7 +16,6 @@ const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
 const HELLFIRE_SPEED_SCALE = 1.38;
-const HELLFIRE_WOBBLE_FORCE = 420;
 
 class Ball {
   constructor(config) {
@@ -44,6 +46,7 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -80,6 +83,7 @@ class Ball {
     this.hellfireElapsed = 0;
     this.hellfireBaseDirX = 0;
     this.hellfireBaseDirY = 0;
+    this.hellfireFlightZ = 0;
     this.clockStopPhase = "none";
     this.clockStopElapsed = 0;
     this.clockStopX = 0;
@@ -104,6 +108,16 @@ class Ball {
     this.tsutenkakuPeakZ = 0;
     this.tsutenkakuWarningDuration = TSUTENKAKU_WARNING_MAX_TIME;
     this.tsutenkakuImpactPending = false;
+    this.meteorCrashPhase = "none";
+    this.meteorCrashElapsed = 0;
+    this.meteorCrashStartX = 0;
+    this.meteorCrashStartY = 0;
+    this.meteorCrashStartZ = 0;
+    this.meteorCrashTargetX = 0;
+    this.meteorCrashTargetY = 0;
+    this.meteorCrashTargetZ = 0;
+    this.meteorCrashPeakZ = METEOR_CRASH_PEAK_Z;
+    this.meteorCrashImpactPending = false;
     this.lightningZigzagActive = false;
     this.lightningElapsed = 0;
     this.lightningDuration = 0;
@@ -160,6 +174,16 @@ class Ball {
     if (
       this.isFlying &&
       this.kind === "shoot" &&
+      this.specialShotType === "meteorCrash" &&
+      this.meteorCrashPhase === "arc"
+    ) {
+      this.spin += delta * 2.6;
+      return;
+    }
+
+    if (
+      this.isFlying &&
+      this.kind === "shoot" &&
       this.specialShotType === "tsutenkaku" &&
       (
         this.tsutenkakuPhase === "skyTravel" ||
@@ -182,7 +206,10 @@ class Ball {
     this.travelDistance += Math.hypot(this.x - lastX, this.y - lastY);
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
-    if (this.isFlying && this.isBoomerangStyleShot()) {
+    if (this.isFlying && this.specialShotType === "devilShield") {
+      this.spin += delta * 14;
+    }
+    if (this.isFlying && (this.isBoomerangStyleShot() || this.specialShotType === "devilShield")) {
       this.boomerangTurnFlashTimer = Math.max(0, this.boomerangTurnFlashTimer - delta);
       this.boomerangTargetMarkTimer = Math.max(0, this.boomerangTargetMarkTimer - delta);
       this.boomerangTrail.push({ x: this.x, y: this.y, z: this.z });
@@ -210,6 +237,8 @@ class Ball {
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap" && !this.aerialShot;
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "kiai" && !this.aerialShot;
     const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin" && !this.aerialShot;
+    const straightHellfireFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "hellfire" && !this.aerialShot;
+    const straightDevilShieldFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "devilShield" && !this.aerialShot;
     const straightClockFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "clockStop";
     const straightLockRocketFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "lockRocket";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot && !this.aerialShot;
@@ -226,6 +255,12 @@ class Ball {
         this.vz = 0;
       } else if (straightUfoSpinFlight) {
         this.z = this.ufoSpinFlightZ + Math.sin(this.ufoSpinElapsed * 12) * 9;
+        this.vz = 0;
+      } else if (straightHellfireFlight) {
+        this.z = Math.max(34, this.hellfireFlightZ || this.z);
+        this.vz = 0;
+      } else if (straightDevilShieldFlight) {
+        this.z = Math.max(34, this.z);
         this.vz = 0;
       } else if (straightClockFlight) {
         this.z = this.clockStopZ;
@@ -253,7 +288,7 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightUfoSpinFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.z <= 0) {
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightUfoSpinFlight && !straightHellfireFlight && !straightDevilShieldFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.specialShotType !== "meteorCrash" && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -345,9 +380,11 @@ class Ball {
     this.hellfireElapsed = 0;
     this.hellfireBaseDirX = 0;
     this.hellfireBaseDirY = 0;
+    this.hellfireFlightZ = 0;
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
+    this.clearMeteorCrash();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
     player.hasBall = true;
@@ -372,6 +409,11 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.devilTrianglePass = false;
+    if (kind === "pass" && actor.cpuDevilTrianglePass) {
+      this.devilTrianglePass = true;
+      actor.cpuDevilTrianglePass = false;
+    }
     this.aerialShot = kind === "shoot" && actor.jumpZ > 20;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -419,6 +461,8 @@ class Ball {
       this.radius = this.baseRadius * 1.15;
     } else if (this.specialShotType === "hellfire") {
       this.radius = this.baseRadius * 2.36;
+    } else if (this.specialShotType === "meteorCrash") {
+      this.radius = this.baseRadius * 2.85;
     } else if (this.specialShotType === "bloodDrain") {
       this.radius = this.baseRadius * 1.62;
     }
@@ -454,9 +498,11 @@ class Ball {
     this.hellfireElapsed = 0;
     this.hellfireBaseDirX = 0;
     this.hellfireBaseDirY = 0;
+    this.hellfireFlightZ = 0;
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
+    this.clearMeteorCrash();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
 
@@ -479,7 +525,8 @@ class Ball {
       ? this.config.specialShootSpeed || this.config.shootSpeed
       : this.config.shootSpeed;
     const specialSpeedScale = this.specialShotType === "slap" ? 1.8 : this.specialShotType === "hellfire" ? HELLFIRE_SPEED_SCALE : this.specialShotType === "bloodDrain" ? 1.16 : this.specialShotType === "devilShield" ? 1.08 : this.specialShotType === "iron" ? 1.05 : 1;
-    const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale : this.config.passSpeed;
+    const demonSpeedScale = this.demonShot ? 1.3 : 1;
+    const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale * demonSpeedScale : this.config.passSpeed;
     const moveBonus = kind === "shoot" && target ? this.config.moveBonus * 0.05 : kind === "shoot" ? this.config.moveBonus : this.config.moveBonus * 0.15;
 
     if (this.specialShotType === "lightning") {
@@ -521,6 +568,25 @@ class Ball {
       this.vy = 0;
       this.vz = 2600;
       this.catchable = true;
+      return true;
+    }
+
+    if (this.specialShotType === "meteorCrash") {
+      const targetGroundY = target ? target.y : targetY + 38;
+      this.meteorCrashPhase = "arc";
+      this.meteorCrashElapsed = 0;
+      this.meteorCrashStartX = this.x;
+      this.meteorCrashStartY = this.y;
+      this.meteorCrashStartZ = this.z;
+      this.meteorCrashTargetX = targetX;
+      this.meteorCrashTargetY = targetGroundY;
+      this.meteorCrashTargetZ = 34;
+      this.meteorCrashPeakZ = Math.max(METEOR_CRASH_PEAK_Z, this.z + 650);
+      const flightTime = METEOR_CRASH_TRAVEL_TIME;
+      this.vx = (this.meteorCrashTargetX - this.x) / flightTime;
+      this.vy = (this.meteorCrashTargetY - this.y) / flightTime;
+      this.vz = (this.meteorCrashPeakZ - this.z) / (flightTime * 0.48);
+      this.catchable = false;
       return true;
     }
 
@@ -579,13 +645,15 @@ class Ball {
         ? (this.aerialShot ? (target.jumpZ || 0) + 40 : 26)
         : (target.jumpZ || 0) + 22;
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
-      const arcLift = lowAimSpecial
+      const baseArcLift = lowAimSpecial
         ? 0
         : this.specialShotType
           ? 70 + Math.max(0, throwMultiplier - 0.7) * 45
           : 110 + Math.max(0, throwMultiplier - 0.7) * 34;
-      const minVz = this.aerialShot && lowAimSpecial ? -1400 : -80;
-      this.vz = Math.max(minVz, Math.min(610, solvedVz + arcLift));
+      const arcLift = this.aerialShot ? Math.min(24, baseArcLift * 0.18) : baseArcLift;
+      const minVz = this.aerialShot ? -1400 : -80;
+      const maxVz = this.aerialShot ? 360 : 610;
+      this.vz = Math.max(minVz, Math.min(maxVz, solvedVz + arcLift));
       if (this.isBoomerangStyleShot()) {
         this.vz = Math.max(this.vz, 760 + actor.jumpZ * 0.12);
       }
@@ -625,6 +693,12 @@ class Ball {
       const directionLength = Math.hypot(this.vx, this.vy) || 1;
       this.hellfireBaseDirX = this.vx / directionLength;
       this.hellfireBaseDirY = this.vy / directionLength;
+      this.hellfireFlightZ = this.aerialShot && target
+        ? Math.max(34, (target.jumpZ || 0) + 40)
+        : Math.max(34, this.z);
+      this.vx = this.hellfireBaseDirX * speed;
+      this.vy = this.hellfireBaseDirY * speed;
+      if (!this.aerialShot) this.vz = 0;
     }
     return true;
   }
@@ -647,6 +721,19 @@ class Ball {
     this.tsutenkakuPeakZ = 0;
     this.tsutenkakuWarningDuration = TSUTENKAKU_WARNING_MAX_TIME;
     this.tsutenkakuImpactPending = false;
+  }
+
+  clearMeteorCrash() {
+    this.meteorCrashPhase = "none";
+    this.meteorCrashElapsed = 0;
+    this.meteorCrashStartX = 0;
+    this.meteorCrashStartY = 0;
+    this.meteorCrashStartZ = 0;
+    this.meteorCrashTargetX = 0;
+    this.meteorCrashTargetY = 0;
+    this.meteorCrashTargetZ = 0;
+    this.meteorCrashPeakZ = METEOR_CRASH_PEAK_Z;
+    this.meteorCrashImpactPending = false;
   }
 
   updateLightningZigzag(delta, bounds) {
@@ -703,6 +790,10 @@ class Ball {
     if (!this.isFlying || this.kind !== "shoot" || !this.specialShotType) return;
     if (this.specialShotType === "tsutenkaku") {
       this.updateTsutenkakuDrop(delta);
+      return;
+    }
+    if (this.specialShotType === "meteorCrash") {
+      this.updateMeteorCrash(delta);
       return;
     }
     if (this.specialShotType === "clockStop") {
@@ -846,12 +937,16 @@ class Ball {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
       const dirX = storedLength > 0.001 ? this.hellfireBaseDirX / storedLength : this.vx / currentSpeed;
       const dirY = storedLength > 0.001 ? this.hellfireBaseDirY / storedLength : this.vy / currentSpeed;
-      const sideX = -dirY;
-      const sideY = dirX;
-      const wobble = Math.sin(this.hellfireElapsed * 11.5) * HELLFIRE_WOBBLE_FORCE;
-      const baseSpeed = Math.max(currentSpeed * 0.92, (this.config.specialShootSpeed || this.config.shootSpeed) * HELLFIRE_SPEED_SCALE);
-      this.vx = dirX * baseSpeed + sideX * wobble;
-      this.vy = dirY * baseSpeed + sideY * wobble;
+      const baseSpeed = Math.max(currentSpeed, (this.config.specialShootSpeed || this.config.shootSpeed) * HELLFIRE_SPEED_SCALE);
+      this.vx = dirX * baseSpeed;
+      this.vy = dirY * baseSpeed;
+      const targetZ = Math.max(34, this.hellfireFlightZ || this.z);
+      if (this.aerialShot) {
+        this.z += (targetZ - this.z) * Math.min(1, delta * 8);
+      } else {
+        this.z = targetZ;
+      }
+      this.vz = 0;
     }
     if (this.specialShotType === "bloodDrain" && this.target && !this.target.defeated) {
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
@@ -1013,6 +1108,39 @@ class Ball {
     this.lockRocketTrail = [];
   }
 
+  updateMeteorCrash(delta) {
+    if (this.meteorCrashPhase === "arc") {
+      const previousX = this.x;
+      const previousY = this.y;
+      const previousZ = this.z;
+      this.meteorCrashElapsed += delta;
+      const progress = Math.min(1, this.meteorCrashElapsed / METEOR_CRASH_TRAVEL_TIME);
+      const ease = 1 - Math.pow(1 - progress, 1.08);
+      this.x = this.meteorCrashStartX + (this.meteorCrashTargetX - this.meteorCrashStartX) * ease;
+      this.y = this.meteorCrashStartY + (this.meteorCrashTargetY - this.meteorCrashStartY) * ease;
+      const startZ = Math.max(this.meteorCrashTargetZ + 70, this.meteorCrashStartZ || previousZ);
+      const landingZ = this.meteorCrashTargetZ;
+      const baseZ = startZ + (landingZ - startZ) * progress;
+      this.z = Math.max(landingZ, baseZ + Math.sin(progress * Math.PI) * this.meteorCrashPeakZ);
+      this.vx = (this.x - previousX) / Math.max(0.001, delta);
+      this.vy = (this.y - previousY) / Math.max(0.001, delta);
+      this.vz = (this.z - previousZ) / Math.max(0.001, delta);
+      this.travelDistance += Math.hypot(this.x - previousX, this.y - previousY);
+      this.spin += delta * 8.5;
+      if (progress < 1) return;
+
+      this.x = this.meteorCrashTargetX;
+      this.y = this.meteorCrashTargetY;
+      this.z = this.meteorCrashTargetZ;
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+      this.meteorCrashPhase = "impact";
+      this.meteorCrashImpactPending = true;
+      return;
+    }
+  }
+
   updateTsutenkakuDrop(delta) {
     if (this.tsutenkakuPhase === "rise") {
       this.tsutenkakuElapsed += delta;
@@ -1108,10 +1236,16 @@ class Ball {
     const catchPoint = this.getPassCatchPoint(target);
     const distance = Math.hypot(catchPoint.x - this.x, catchPoint.y - this.y);
     const outfieldPass = actor.role === "out" || target.role === "out";
-    const speedBoost = outfieldPass ? 1.18 : 1;
+    const miniDevilPass = actor.isMiniDevilStyle?.() || actor.uniformEmblem === "miniDevil";
+    const shieldDevilPass = actor.isShieldDevilStyle?.() || actor.uniformEmblem === "shieldDevil";
+    const miniDevilOutfieldPass = miniDevilPass && actor.role === "out";
+    const arkmazFastPass = miniDevilOutfieldPass || shieldDevilPass;
+    const speedBoost = (outfieldPass ? 1.18 : 1) * ((miniDevilPass || shieldDevilPass) ? 1.34 : 1) * (arkmazFastPass ? 1.5 : 1) * (this.devilTrianglePass ? 1.3 : 1);
     this.passStartZ = this.z;
-    this.passArcHeight = (outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150;
-    this.passDuration = Math.max(0.77, Math.min(1.84, distance / Math.max(1, this.config.passSpeed * PASS_SPEED_SCALE * speedBoost * (0.88 + passMultiplier * 0.2))));
+    this.passArcHeight = ((outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150) * ((miniDevilPass || shieldDevilPass) ? 0.72 : 1);
+    const minDuration = arkmazFastPass ? 0.28 : miniDevilPass ? 0.42 : 0.77;
+    const maxDuration = arkmazFastPass ? 0.78 : miniDevilPass ? 1.16 : 1.84;
+    this.passDuration = Math.max(minDuration, Math.min(maxDuration, distance / Math.max(1, this.config.passSpeed * PASS_SPEED_SCALE * speedBoost * (0.88 + passMultiplier * 0.2))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
     this.vz = (catchPoint.z - this.z) / this.passDuration + (4 * this.passArcHeight) / this.passDuration;
@@ -1126,7 +1260,11 @@ class Ball {
     const baseZ = this.passStartZ + (catchPoint.z - this.passStartZ) * progress;
     const desiredZ = baseZ + 4 * this.passArcHeight * progress * (1 - progress);
     const desiredVz = (desiredZ - this.z) / Math.max(0.001, delta);
-    const follow = Math.min(1, delta * 5.5);
+    const miniDevilPass = this.thrower?.isMiniDevilStyle?.() || this.thrower?.uniformEmblem === "miniDevil";
+    const shieldDevilPass = this.thrower?.isShieldDevilStyle?.() || this.thrower?.uniformEmblem === "shieldDevil";
+    const miniDevilOutfieldPass = miniDevilPass && this.thrower?.role === "out";
+    const arkmazFastPass = miniDevilOutfieldPass || shieldDevilPass;
+    const follow = Math.min(1, delta * (arkmazFastPass ? 14.25 : miniDevilPass ? 9.5 : 5.5));
     this.vx += (desiredVx - this.vx) * follow;
     this.vy += (desiredVy - this.vy) * follow;
     this.vz = desiredVz;
@@ -1165,6 +1303,7 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -1188,6 +1327,7 @@ class Ball {
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
+    this.clearMeteorCrash();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
@@ -1212,6 +1352,7 @@ class Ball {
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
+    this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -1235,12 +1376,17 @@ class Ball {
     this.clearClockStop();
     this.clearLockRocket();
     this.clearTsutenkakuDrop();
+    this.clearMeteorCrash();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
   }
 
   isBoomerangStyleShot() {
-    return this.specialShotType === "boomerang" || this.specialShotType === "devilShield";
+    return this.specialShotType === "boomerang";
+  }
+
+  isMiniDevilPass() {
+    return this.kind === "pass" && (this.thrower?.isMiniDevilStyle?.() || this.thrower?.uniformEmblem === "miniDevil");
   }
 
   getSpecialColor() {
@@ -1258,6 +1404,7 @@ class Ball {
     if (this.specialShotType === "lockRocket") return "#55dfff";
     if (this.specialShotType === "ufoSpin") return "#7cffcb";
     if (this.specialShotType === "hellfire") return "#2b0a30";
+    if (this.specialShotType === "meteorCrash") return "#ff5a1f";
     if (this.specialShotType === "bloodDrain") return "#8d061e";
     return "#ffe46a";
   }
@@ -1278,6 +1425,20 @@ class Ball {
       this.tsutenkakuPhase === "warning"
     ) {
       this.drawTsutenkakuLandingMarker(context);
+    }
+
+    if (
+      this.isFlying &&
+      this.specialShotType === "meteorCrash" &&
+      this.meteorCrashPhase === "arc" &&
+      this.meteorCrashElapsed / METEOR_CRASH_TRAVEL_TIME >= METEOR_CRASH_WARNING_START
+    ) {
+      this.drawMeteorCrashLandingMarker(context);
+    }
+
+    if (this.isFlying && this.specialShotType === "meteorCrash") {
+      this.drawMeteorCrashBall(context, debugMode);
+      return;
     }
 
     if (this.isFlying && this.specialShotType === "lightning" && this.lightningZigzagActive) {
@@ -1309,7 +1470,7 @@ class Ball {
     if (this.isFlying && this.specialShotType === "ufoSpin") {
       this.drawUfoSpinFlightEffects(context, drawY);
     }
-    if (this.isFlying && this.isBoomerangStyleShot()) {
+    if (this.isFlying && (this.isBoomerangStyleShot() || this.specialShotType === "devilShield")) {
       this.drawBoomerangFlightEffects(context, drawY);
     }
     if (this.isFlying && this.specialShotType === "triple") {
@@ -1317,6 +1478,10 @@ class Ball {
     }
     if (this.isFlying && this.demonShot) {
       this.drawDemonShotAura(context, drawY);
+    }
+    const miniDevilPass = this.isMiniDevilPass();
+    if (this.isFlying && miniDevilPass) {
+      this.drawMiniDevilPassEffects(context, drawY);
     }
     const shotEffect = this.kind === "shoot" && this.isFlying ? Math.max(0, this.shotMultiplier - 0.92) : 0;
     context.save();
@@ -1944,11 +2109,11 @@ class Ball {
       context.fill();
       context.restore();
     }
-    context.fillStyle = this.specialShotType === "iron" ? "#555a62" : this.specialShotType === "hellfire" ? "#050108" : this.specialShotType === "bloodDrain" ? "#5d0618" : this.demonShot ? "#21040a" : "#f06a32";
+    context.fillStyle = this.specialShotType === "iron" ? "#555a62" : this.specialShotType === "hellfire" ? "#050108" : this.specialShotType === "bloodDrain" ? "#5d0618" : this.demonShot ? "#21040a" : miniDevilPass ? "#2b063b" : "#f06a32";
     context.beginPath();
     context.arc(0, 0, this.radius, 0, Math.PI * 2);
     context.fill();
-    context.strokeStyle = this.specialShotType === "iron" ? "#2f3339" : this.specialShotType === "hellfire" ? "#ff314b" : this.specialShotType === "bloodDrain" ? "#ff5a75" : this.demonShot ? "#7b1026" : "#8e2f22";
+    context.strokeStyle = this.specialShotType === "iron" ? "#2f3339" : this.specialShotType === "hellfire" ? "#ff314b" : this.specialShotType === "bloodDrain" ? "#ff5a75" : this.demonShot ? "#7b1026" : miniDevilPass ? "#ff304a" : "#8e2f22";
     context.lineWidth = 4;
     context.beginPath();
     context.arc(0, 0, this.radius * 0.9, -1.1, 1.1);
@@ -2003,6 +2168,135 @@ class Ball {
     context.textAlign = "center";
     context.textBaseline = "bottom";
     context.fillText("!", 0, -radius * 0.38);
+    context.restore();
+  }
+
+  drawMeteorCrashLandingMarker(context) {
+    const flightProgress = Math.min(1, this.meteorCrashElapsed / METEOR_CRASH_TRAVEL_TIME);
+    const warningProgress = Math.max(0, Math.min(1, (flightProgress - METEOR_CRASH_WARNING_START) / (1 - METEOR_CRASH_WARNING_START)));
+    const pulse = 0.5 + Math.sin(performance.now() / 72) * 0.5;
+    const radius = 192 + warningProgress * 55 + pulse * 18;
+
+    context.save();
+    context.translate(this.meteorCrashTargetX, this.meteorCrashTargetY + 10);
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.28 + warningProgress * 0.38;
+    context.fillStyle = "rgba(255, 74, 20, 0.34)";
+    context.beginPath();
+    context.ellipse(0, 0, radius, radius * 0.45, 0, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = warningProgress > 0.7 ? "#ffd36a" : "#ff5a1f";
+    context.lineWidth = 12;
+    context.shadowColor = "#ff5a1f";
+    context.shadowBlur = 20 + pulse * 16;
+    context.beginPath();
+    context.ellipse(0, 0, radius * 0.92, radius * 0.38, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.shadowBlur = 0;
+
+    context.globalAlpha = 0.72 + warningProgress * 0.2;
+    context.strokeStyle = "#2a0905";
+    context.lineWidth = 6;
+    for (let crack = 0; crack < 11; crack += 1) {
+      const angle = crack * Math.PI * 2 / 11 + warningProgress * 0.28;
+      const inner = radius * (0.12 + (crack % 2) * 0.04);
+      const outer = radius * (0.5 + (crack % 4) * 0.1);
+      context.beginPath();
+      context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner * 0.36);
+      context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer * 0.36);
+      context.stroke();
+    }
+
+    context.strokeStyle = "#ffd36a";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(-radius * 0.48, 0);
+    context.lineTo(radius * 0.48, 0);
+    context.moveTo(0, -radius * 0.22);
+    context.lineTo(0, radius * 0.22);
+    context.stroke();
+    context.restore();
+  }
+
+  drawMeteorCrashBall(context, debugMode) {
+    const drawY = this.y - this.z;
+    const time = performance.now();
+    const pulse = 0.75 + Math.sin(time / 74) * 0.25;
+    const flightProgress = Math.min(1, this.meteorCrashElapsed / METEOR_CRASH_TRAVEL_TIME);
+    const descent = Math.max(0, Math.min(1, (flightProgress - 0.55) / 0.45));
+
+    context.save();
+    context.globalCompositeOperation = "source-over";
+    context.fillStyle = "rgba(42, 16, 8, 0.26)";
+    context.beginPath();
+    context.ellipse(this.x, this.y + 12, this.radius * (1.25 + descent * 0.25), this.radius * 0.38, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 14; i += 1) {
+      const angle = time / 180 + i * Math.PI * 2 / 14;
+      const distance = this.radius * (0.85 + (i % 4) * 0.2 + pulse * 0.18);
+      const sx = this.x + Math.cos(angle) * distance;
+      const sy = drawY + Math.sin(angle) * distance * 0.62;
+      context.globalAlpha = 0.22 + (i % 3) * 0.06;
+      context.fillStyle = i % 2 === 0 ? "#ff5a1f" : "#2a1b17";
+      context.beginPath();
+      context.arc(sx, sy, 4 + (i % 4) * 1.5, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.globalAlpha = 0.44 + pulse * 0.22;
+    context.strokeStyle = "#ff5a1f";
+    context.lineWidth = 12;
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius * 1.16, 0, Math.PI * 2);
+    context.stroke();
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+
+    const gradient = context.createRadialGradient(this.x - this.radius * 0.28, drawY - this.radius * 0.34, this.radius * 0.18, this.x, drawY, this.radius * 1.05);
+    gradient.addColorStop(0, "#3a3330");
+    gradient.addColorStop(0.55, "#100d0d");
+    gradient.addColorStop(1, "#050303");
+    context.fillStyle = gradient;
+    context.strokeStyle = "#070404";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    const cracks = [
+      [-0.52, -0.18, -0.18, 0.08, -0.34, 0.46, 0.02, 0.66],
+      [0.1, -0.62, 0.44, -0.28, 0.26, 0.02, 0.62, 0.28],
+      [-0.08, -0.76, 0.08, -0.34, -0.12, -0.02, 0.12, 0.24]
+    ];
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    for (const crack of cracks) {
+      context.strokeStyle = "#ff5a1f";
+      context.lineWidth = 6;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(this.x + crack[0] * this.radius, drawY + crack[1] * this.radius);
+      for (let i = 2; i < crack.length; i += 2) {
+        context.lineTo(this.x + crack[i] * this.radius, drawY + crack[i + 1] * this.radius);
+      }
+      context.stroke();
+      context.strokeStyle = "#ffd36a";
+      context.lineWidth = 2;
+      context.stroke();
+    }
+    context.restore();
+
+    if (debugMode) {
+      context.strokeStyle = "rgba(255,0,0,0.7)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
+      context.stroke();
+    }
     context.restore();
   }
 
@@ -2720,6 +3014,95 @@ class Ball {
       context.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
       context.stroke();
     }
+  }
+
+  drawMiniDevilPassEffects(context, drawY) {
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const tailX = -this.vx / speed;
+    const tailY = -this.vy / speed;
+    const sideX = -tailY;
+    const sideY = tailX;
+    const time = performance.now();
+    const pulse = 0.82 + Math.sin(time / 45) * 0.18;
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    context.globalAlpha = 0.34;
+    context.strokeStyle = "#2b063b";
+    context.lineWidth = 34;
+    context.beginPath();
+    context.moveTo(this.x, drawY);
+    context.lineTo(this.x + tailX * 190, drawY + tailY * 190);
+    context.stroke();
+
+    context.globalAlpha = 0.72;
+    context.strokeStyle = "#9b2cff";
+    context.lineWidth = 13;
+    context.beginPath();
+    context.moveTo(this.x + sideX * 10, drawY + sideY * 10);
+    context.lineTo(this.x + tailX * 150 + sideX * 34, drawY + tailY * 150 + sideY * 34);
+    context.lineTo(this.x + tailX * 112 - sideX * 34, drawY + tailY * 112 - sideY * 34);
+    context.closePath();
+    context.stroke();
+
+    context.globalAlpha = 0.78;
+    context.strokeStyle = "#ff304a";
+    context.lineWidth = 7;
+    for (let index = 0; index < 3; index += 1) {
+      const offset = (index - 1) * 20;
+      const wave = Math.sin(time / 55 + index * 2.1) * 18;
+      context.beginPath();
+      context.moveTo(this.x + sideX * offset, drawY + sideY * offset);
+      context.bezierCurveTo(
+        this.x + tailX * 45 + sideX * (offset + wave),
+        drawY + tailY * 45 + sideY * (offset + wave),
+        this.x + tailX * 92 + sideX * (offset - wave),
+        drawY + tailY * 92 + sideY * (offset - wave),
+        this.x + tailX * 152 + sideX * offset,
+        drawY + tailY * 152 + sideY * offset
+      );
+      context.stroke();
+    }
+
+    context.globalAlpha = 0.65;
+    for (let index = 0; index < 12; index += 1) {
+      const distance = 28 + index * 15;
+      const spread = Math.sin(time / 38 + index * 1.7) * (18 + index * 1.2);
+      const size = (3 + index % 4) * pulse;
+      context.fillStyle = index % 3 === 0 ? "#ffd1ff" : index % 2 === 0 ? "#ff304a" : "#9b2cff";
+      context.beginPath();
+      context.arc(
+        this.x + tailX * distance + sideX * spread,
+        drawY + tailY * distance + sideY * spread,
+        size,
+        0,
+        Math.PI * 2
+      );
+      context.fill();
+    }
+
+    context.globalAlpha = 0.54;
+    context.fillStyle = "#050407";
+    for (let index = 0; index < 5; index += 1) {
+      const distance = 56 + index * 30;
+      const side = (index % 2 === 0 ? 1 : -1) * (22 + Math.sin(time / 70 + index) * 9);
+      context.beginPath();
+      context.moveTo(this.x + tailX * distance + sideX * side, drawY + tailY * distance + sideY * side);
+      context.lineTo(this.x + tailX * (distance + 18) + sideX * (side + 16), drawY + tailY * (distance + 18) + sideY * (side + 16));
+      context.lineTo(this.x + tailX * (distance + 10) + sideX * (side - 14), drawY + tailY * (distance + 10) + sideY * (side - 14));
+      context.closePath();
+      context.fill();
+    }
+
+    context.globalAlpha = 0.48 + pulse * 0.22;
+    context.fillStyle = "#9b2cff";
+    context.beginPath();
+    context.arc(this.x, drawY, this.radius * 1.65, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
   }
 
   drawLightningZigzagBall(context, debugMode) {

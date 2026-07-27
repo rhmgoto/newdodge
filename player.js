@@ -157,6 +157,34 @@ const CHARACTER_TYPES = {
     legWidth: 0.82,
     legLength: 0.82,
     shieldDevil: true
+  },
+  miniDevil: {
+    maxHp: 130,
+    maxStamina: 135,
+    stats: { power: 7, speed: 13, jump: 13, technique: 12 },
+    label: "Mini Devil",
+    scaleX: 0.78,
+    scaleY: 0.76,
+    torsoX: 0.96,
+    torsoY: 0.82,
+    armWidth: 0.82,
+    legWidth: 0.78,
+    legLength: 0.72,
+    miniDevil: true
+  },
+  lavaGolem: {
+    maxHp: 280,
+    maxStamina: 150,
+    stats: { power: 16, speed: 5, jump: 4, technique: 7 },
+    label: "Lava Golem",
+    scaleX: 1.18,
+    scaleY: 1.08,
+    torsoX: 1.5,
+    torsoY: 1.08,
+    armWidth: 1.75,
+    legWidth: 1.38,
+    legLength: 0.82,
+    lavaGolem: true
   }
 };
 
@@ -828,6 +856,16 @@ class Player {
       return;
     }
 
+    if (this.isMiniDevilStyle()) {
+      this.drawMiniDevilCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
+    if (this.isLavaGolemStyle()) {
+      this.drawLavaGolemCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
     if (this.isDemonStyle()) {
       this.drawDemonCharacter(context, scale, drawY, motionTime);
       return;
@@ -1176,6 +1214,14 @@ class Player {
     return this.characterType === "shieldDevil" || this.uniformEmblem === "shieldDevil";
   }
 
+  isMiniDevilStyle() {
+    return this.characterType === "miniDevil" || this.uniformEmblem === "miniDevil";
+  }
+
+  isLavaGolemStyle() {
+    return this.characterType === "lavaGolem" || this.uniformEmblem === "lavaGolem";
+  }
+
   getIncomingDamageAmount(amount) {
     return amount * (this.isDemonStyle() ? 0.7 : 1);
   }
@@ -1189,7 +1235,7 @@ class Player {
   }
 
   getCharacterVisualScale() {
-    return this.isDemonStyle() ? 1.6 : 1;
+    return this.isDemonStyle() ? 1.6 : this.isLavaGolemStyle() ? 1.92 : 1;
   }
 
   isRobotOverdrive() {
@@ -1202,7 +1248,7 @@ class Player {
   }
 
   getEffectiveThrowPower() {
-    return this.throwPower * (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1);
+    return this.throwPower * (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1) * (this.isLavaGolemStyle() ? 1.18 : 1);
   }
 
   getAlienFloatOffset(motionTime = performance.now()) {
@@ -1347,6 +1393,536 @@ class Player {
     context.restore();
   }
 
+  drawLavaGolemCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const rock = this.faceColor || "#4a3024";
+    const rockEdge = "#1b100c";
+    const rockShadow = "#2a1a14";
+    const lava = this.trimColor || "#ff7a1f";
+    const lavaCore = "#ffd36a";
+    const eye = this.eyeColor || "#ffd43b";
+    const pulse = 0.68 + Math.sin(motionTime / 115) * 0.32;
+    const chargeGlow = (this.hasBall || throwWindup) ? 1.45 : 1;
+    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 58 : 96))) * 3 : 0;
+    const rootY = (crouch ? 14 : 0) + bob;
+    const bodyY = -61 + rootY;
+    const headY = -112 + rootY + (crouch ? 8 : 0);
+    const shoulderY = -71 + rootY;
+    const hipY = -24 + rootY;
+    const stride = moving ? Math.sin(motionTime / 88 + this.x * 0.018) * (this.isDashing ? 9 : 6) : 0;
+    let backHand = { x: -62 - stride * 0.2, y: -34 + rootY };
+    let frontHand = { x: 62 + stride * 0.2, y: -34 + rootY };
+
+    if (throwWindup) {
+      frontHand = { x: -66, y: -120 + rootY };
+      backHand = { x: 54, y: -28 + rootY };
+    } else if (throwRelease) {
+      frontHand = { x: 88, y: -62 + rootY };
+      backHand = { x: -56, y: -32 + rootY };
+    } else if (catching) {
+      frontHand = { x: 26, y: -116 + rootY };
+      backHand = { x: -26, y: -116 + rootY };
+    } else if (crouch) {
+      frontHand = { x: 46, y: -15 + rootY };
+      backHand = { x: -46, y: -15 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-0.7);
+      context.scale(1.12, 0.76);
+    } else if (damaged) {
+      context.rotate(-0.09);
+    }
+
+    context.fillStyle = "rgba(30, 10, 6, 0.28)";
+    context.beginPath();
+    context.ellipse(0, 20, 68, 14, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = rockShadow;
+    context.strokeStyle = rockEdge;
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(-25, hipY + 8);
+    context.quadraticCurveTo(-68, hipY + 19, -82, hipY + 48);
+    context.quadraticCurveTo(-49, hipY + 39, -25, hipY + 24);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    this.drawRockLimb(context, [{ x: -22, y: hipY + 9 }, { x: -27 - stride, y: 4 + rootY }, { x: -30 - stride * 1.05, y: 10 + rootY }], 18);
+    this.drawRockLimb(context, [{ x: 22, y: hipY + 9 }, { x: 27 + stride, y: 4 + rootY }, { x: 30 + stride * 1.05, y: 10 + rootY }], 18);
+    this.drawLavaGolemFoot(context, { x: -30 - stride * 1.05, y: 10 + rootY });
+    this.drawLavaGolemFoot(context, { x: 30 + stride * 1.05, y: 10 + rootY });
+
+    this.drawRockLimb(context, [{ x: -43, y: shoulderY }, { x: -58, y: -52 + rootY }, backHand], 23);
+    this.drawRockLimb(context, [{ x: 43, y: shoulderY }, { x: 58, y: -52 + rootY }, frontHand], 25);
+    this.drawLavaGolemFist(context, backHand, 0.9);
+    this.drawLavaGolemFist(context, frontHand, 1.04);
+
+    context.fillStyle = rock;
+    context.strokeStyle = rockEdge;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, bodyY, 77, 84, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#6a4030";
+    context.beginPath();
+    context.ellipse(-22, bodyY - 10, 39, 53, -0.28, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = rockShadow;
+    context.beginPath();
+    context.ellipse(30, bodyY + 15, 41, 47, 0.25, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    this.drawLavaCrack(context, [-48, bodyY - 41, -15, bodyY - 12, -32, bodyY + 27, -6, bodyY + 59], pulse * chargeGlow);
+    this.drawLavaCrack(context, [18, bodyY - 57, 45, bodyY - 29, 27, bodyY + 5, 57, bodyY + 36], pulse * 0.9 * chargeGlow);
+    this.drawLavaCrack(context, [-5, bodyY - 72, 8, bodyY - 36, -9, bodyY - 5, 12, bodyY + 27], pulse * 1.08 * chargeGlow);
+
+    context.fillStyle = rock;
+    context.strokeStyle = rockEdge;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, headY, 39, 31, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#281713";
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 12, headY - 24);
+      context.lineTo(side * 25, headY - 48);
+      context.lineTo(side * 3, headY - 29);
+      context.closePath();
+      context.fill();
+    }
+    context.globalCompositeOperation = "lighter";
+    context.fillStyle = eye;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 14, headY - 4, 8, 5, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#fff0a6";
+      context.beginPath();
+      context.ellipse(side * 14, headY - 4, 3, 2, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = eye;
+    }
+    context.globalCompositeOperation = "source-over";
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.28 + pulse * 0.22;
+    context.fillStyle = lava;
+    context.beginPath();
+    context.ellipse(0, headY - 35, 13, 7, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = lavaCore;
+    context.beginPath();
+    context.ellipse(0, headY - 38, 6, 4, 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    if (this.hasBall) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.25 + pulse * 0.2;
+      context.strokeStyle = lava;
+      context.lineWidth = 9;
+      context.beginPath();
+      context.arc(frontHand.x, frontHand.y, 36, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = lavaCore;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(frontHand.x, frontHand.y, 45, -0.8, Math.PI * 1.1);
+      context.stroke();
+      context.restore();
+    }
+
+    context.restore();
+  }
+
+  drawRockLimb(context, points, width) {
+    context.strokeStyle = "#4a3024";
+    context.lineWidth = width;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    context.lineTo(points[1].x, points[1].y);
+    context.lineTo(points[2].x, points[2].y);
+    context.stroke();
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 3;
+    context.stroke();
+  }
+
+  drawLavaCrack(context, coords, pulse = 1) {
+    context.save();
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.globalCompositeOperation = "lighter";
+    context.strokeStyle = `rgba(255, 78, 24, ${0.42 + pulse * 0.26})`;
+    context.lineWidth = 6;
+    context.beginPath();
+    context.moveTo(coords[0], coords[1]);
+    for (let i = 2; i < coords.length; i += 2) {
+      context.lineTo(coords[i], coords[i + 1]);
+    }
+    context.stroke();
+    context.strokeStyle = "#ffd36a";
+    context.lineWidth = 2;
+    context.stroke();
+    context.restore();
+  }
+
+  drawLavaGolemFist(context, hand, scale = 1) {
+    context.fillStyle = "#4a3024";
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(hand.x, hand.y, 18 * scale, 15 * scale, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    this.drawLavaCrack(context, [hand.x - 8, hand.y - 4, hand.x + 1, hand.y + 1, hand.x + 8, hand.y - 5], 0.8);
+  }
+
+  drawLavaGolemFoot(context, foot) {
+    context.fillStyle = "#3a241b";
+    context.strokeStyle = "#1b100c";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(foot.x + 4, foot.y + 4, 21, 8, 0.06, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#1b100c";
+    context.fillRect(foot.x - 13, foot.y + 9, 34, 5);
+  }
+
+  drawFireDragonCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const skin = this.faceColor || "#7c1914";
+    const darkSkin = "#4b0e10";
+    const belly = "#f0d8a1";
+    const lava = "#ff5a1f";
+    const lavaDark = "#160507";
+    const wingMembrane = "#b81f1f";
+    const wingBone = "#0b0708";
+    const horn = this.trimColor || "#d9a831";
+    const eye = this.eyeColor || "#ffd43b";
+    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 55 : 88))) * 3.5 : 0;
+    const rootY = (crouch ? 18 : 0) + bob;
+    const hipY = -26 + rootY;
+    const shoulderY = -89 + rootY;
+    const torsoY = -58 + rootY;
+    const headY = -135 + rootY + (crouch ? 12 : 0);
+    const stride = moving ? Math.sin(motionTime / 84 + this.x * 0.018) * (this.isDashing ? 11 : 7) : 0;
+    const flamePulse = 0.7 + Math.sin(motionTime / 85) * 0.3;
+    let backHand = { x: -56 - stride * 0.25, y: -43 + rootY };
+    let frontHand = { x: 58 + stride * 0.25, y: -43 + rootY };
+
+    if (throwWindup) {
+      frontHand = { x: -76, y: -126 + rootY };
+      backHand = { x: 48, y: -36 + rootY };
+    } else if (throwRelease) {
+      frontHand = { x: 90, y: -70 + rootY };
+      backHand = { x: -52, y: -44 + rootY };
+    } else if (catching) {
+      frontHand = { x: 22, y: -122 + rootY };
+      backHand = { x: -22, y: -122 + rootY };
+    } else if (crouch) {
+      frontHand = { x: 42, y: -20 + rootY };
+      backHand = { x: -42, y: -20 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-0.82);
+      context.scale(1.14, 0.78);
+    } else if (damaged) {
+      context.rotate(-0.1);
+    }
+
+    context.fillStyle = "rgba(52, 10, 5, 0.3)";
+    context.beginPath();
+    context.ellipse(0, 24, 52, 11, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.strokeStyle = lavaDark;
+    context.lineWidth = 16;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(-16, hipY + 13);
+    context.quadraticCurveTo(-72, hipY + 28, -94, hipY + 52);
+    context.quadraticCurveTo(-64, hipY + 48, -40, hipY + 31);
+    context.stroke();
+    context.fillStyle = "#2b0909";
+    context.beginPath();
+    context.moveTo(-96, hipY + 52);
+    context.lineTo(-118, hipY + 45);
+    context.lineTo(-103, hipY + 66);
+    context.closePath();
+    context.fill();
+
+    context.save();
+    context.globalAlpha = 0.96;
+    for (const side of [-1, 1]) {
+      context.fillStyle = wingMembrane;
+      context.strokeStyle = wingBone;
+      context.lineWidth = 5;
+      context.beginPath();
+      context.moveTo(side * 20, shoulderY + 4);
+      context.quadraticCurveTo(side * 72, shoulderY - 42, side * 96, shoulderY - 22);
+      context.quadraticCurveTo(side * 76, shoulderY + 26, side * 34, shoulderY + 36);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.strokeStyle = wingBone;
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(side * 25, shoulderY + 2);
+      context.lineTo(side * 86, shoulderY - 20);
+      context.moveTo(side * 35, shoulderY + 29);
+      context.lineTo(side * 72, shoulderY - 5);
+      context.stroke();
+    }
+    context.restore();
+
+    this.drawModelLimb(context, [{ x: -19, y: hipY }, { x: -27 - stride, y: -5 + rootY }, { x: -30 - stride * 1.35, y: 18 + rootY }], darkSkin, 18);
+    this.drawModelLimb(context, [{ x: 19, y: hipY }, { x: 27 + stride, y: -5 + rootY }, { x: 30 + stride * 1.35, y: 18 + rootY }], darkSkin, 18);
+    this.drawDragonFoot(context, { x: -30 - stride * 1.35, y: 18 + rootY });
+    this.drawDragonFoot(context, { x: 30 + stride * 1.35, y: 18 + rootY });
+
+    this.drawModelLimb(context, [{ x: -41, y: shoulderY }, { x: -58, y: -63 + rootY }, backHand], skin, 20);
+    this.drawModelLimb(context, [{ x: 41, y: shoulderY }, { x: 59, y: -63 + rootY }, frontHand], skin, 22);
+    this.drawDragonClaw(context, backHand, -1);
+    this.drawDragonClaw(context, frontHand, 1);
+
+    context.fillStyle = skin;
+    context.strokeStyle = lavaDark;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, torsoY, 48, 52, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = belly;
+    context.beginPath();
+    context.ellipse(0, torsoY + 8, 24, 42, 0, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "rgba(90,45,18,0.45)";
+    context.lineWidth = 2;
+    for (let y = -16; y <= 30; y += 12) {
+      context.beginPath();
+      context.moveTo(-17, torsoY + y);
+      context.quadraticCurveTo(0, torsoY + y + 5, 17, torsoY + y);
+      context.stroke();
+    }
+
+    context.strokeStyle = lava;
+    context.lineWidth = 3;
+    context.lineCap = "round";
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 27, shoulderY + 3);
+      context.lineTo(side * 41, shoulderY + 20);
+      context.lineTo(side * 31, shoulderY + 38);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(side * 16, hipY - 4);
+      context.lineTo(side * 31, hipY + 9);
+      context.stroke();
+    }
+    context.strokeStyle = lavaDark;
+    context.lineWidth = 6;
+    context.beginPath();
+    context.moveTo(0, headY + 38);
+    context.lineTo(0, shoulderY - 5);
+    context.lineTo(0, torsoY - 42);
+    context.stroke();
+    context.fillStyle = "#090607";
+    for (let i = 0; i < 5; i += 1) {
+      const y = headY + 18 + i * 22;
+      context.beginPath();
+      context.moveTo(0, y - 20);
+      context.lineTo(-9, y);
+      context.lineTo(9, y);
+      context.closePath();
+      context.fill();
+    }
+
+    context.fillStyle = skin;
+    context.strokeStyle = lavaDark;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(2, headY, 36, 34, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.ellipse(26, headY + 8, 35, 18, 0.04, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = horn;
+    context.strokeStyle = "#5b3510";
+    context.lineWidth = 3;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 18, headY - 26);
+      context.quadraticCurveTo(side * 50, headY - 60, side * 79, headY - 50);
+      context.quadraticCurveTo(side * 48, headY - 41, side * 28, headY - 11);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+
+    context.fillStyle = eye;
+    for (const side of [-1, 1]) {
+      const ex = side < 0 ? -6 : 18;
+      context.beginPath();
+      context.ellipse(ex, headY - 5, 8, 5, -side * 0.1, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#050505";
+      context.beginPath();
+      context.ellipse(ex + side * 1.5, headY - 5, 2, 5, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = eye;
+    }
+
+    context.strokeStyle = "#240707";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(8, headY + 15);
+    context.quadraticCurveTo(30, headY + 24, 56, headY + 13);
+    context.stroke();
+    context.fillStyle = "#fff0d0";
+    for (const tooth of [
+      { x: 20, y: headY + 18, d: 1 },
+      { x: 34, y: headY + 20, d: 1 },
+      { x: 22, y: headY + 8, d: -1 },
+      { x: 42, y: headY + 7, d: -1 }
+    ]) {
+      context.beginPath();
+      context.moveTo(tooth.x - 4, tooth.y);
+      context.lineTo(tooth.x + 4, tooth.y);
+      context.lineTo(tooth.x, tooth.y + tooth.d * 12);
+      context.closePath();
+      context.fill();
+    }
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.7;
+    context.fillStyle = "#ff8a18";
+    context.beginPath();
+    context.ellipse(62, headY + 10, 8 + flamePulse * 5, 4 + flamePulse * 3, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#ffd66a";
+    context.beginPath();
+    context.ellipse(66, headY + 10, 4 + flamePulse * 3, 2 + flamePulse * 2, 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    if (this.hasBall) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.25 + flamePulse * 0.18;
+      context.strokeStyle = "#ff4b1f";
+      context.lineWidth = 8;
+      context.beginPath();
+      context.arc(frontHand.x, frontHand.y, 34, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#ffd36a";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(frontHand.x, frontHand.y, 43, -0.6, Math.PI * 1.2);
+      context.stroke();
+      context.restore();
+    }
+
+    context.restore();
+  }
+
+  drawDragonFoot(context, foot) {
+    context.fillStyle = "#3d0b0b";
+    context.strokeStyle = "#100304";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(foot.x + 5, foot.y + 3, 19, 8, 0.06, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#050505";
+    for (const offset of [-9, 2, 13]) {
+      context.beginPath();
+      context.moveTo(foot.x + offset, foot.y + 7);
+      context.lineTo(foot.x + offset + 8, foot.y + 7);
+      context.lineTo(foot.x + offset + 4, foot.y + 17);
+      context.closePath();
+      context.fill();
+    }
+  }
+
+  drawDragonClaw(context, hand, side) {
+    context.fillStyle = "#050505";
+    for (let i = 0; i < 5; i += 1) {
+      const spread = (i - 2) * 4.5;
+      context.beginPath();
+      context.moveTo(hand.x + side * 2, hand.y + spread);
+      context.lineTo(hand.x + side * 15, hand.y + spread + 2);
+      context.lineTo(hand.x + side * 5, hand.y + spread + 7);
+      context.closePath();
+      context.fill();
+    }
+  }
+
+  drawDemonBoot(context, foot, gold) {
+    context.fillStyle = "#050407";
+    context.strokeStyle = "#020103";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(foot.x + 5, foot.y + 4, 17, 6, 0.08, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.strokeStyle = gold;
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.moveTo(foot.x - 8, foot.y + 2);
+    context.lineTo(foot.x + 17, foot.y + 2);
+    context.stroke();
+  }
+
+  drawDemonClaws(context, hand, side) {
+    context.fillStyle = "#050407";
+    for (let i = 0; i < 3; i += 1) {
+      const spread = (i - 1) * 5;
+      context.beginPath();
+      context.moveTo(hand.x + side * 4, hand.y + spread);
+      context.lineTo(hand.x + side * 15, hand.y + spread + 2);
+      context.lineTo(hand.x + side * 5, hand.y + spread + 6);
+      context.closePath();
+      context.fill();
+    }
+  }
+
   drawDemonCharacter(context, scale, drawY, motionTime) {
     const moving = Math.hypot(this.vx, this.vy) > 15;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
@@ -1356,30 +1932,30 @@ class Player {
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
     const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
     const bodyColor = this.faceColor || "#43205f";
-    const hairColor = this.hairColor || "#09070d";
     const eyeColor = this.eyeColor || "#ff304a";
-    const armor = this.uniformColor || "#161018";
-    const crimson = "#6f1326";
+    const armor = this.uniformColor || "#0c0a10";
+    const crimson = "#4f0b14";
+    const capeInner = "#3a050b";
     const gold = this.trimColor || "#d7a331";
-    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 58 : 92))) * 3 : 0;
+    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 62 : 100))) * 2.6 : 0;
     const rootY = (crouch ? 18 : 0) + bob;
-    const hipY = -28 + rootY;
-    const shoulderY = -82 + rootY;
-    const torsoY = -56 + rootY;
-    const headY = -126 + rootY + (crouch ? 13 : 0);
-    const stride = moving ? Math.sin(motionTime / 92 + this.x * 0.02) * (this.isDashing ? 13 : 8) : 0;
-    let backHand = { x: -48 - stride * 0.3, y: -42 + rootY };
-    let frontHand = { x: 48 + stride * 0.3, y: -42 + rootY };
+    const hipY = -24 + rootY;
+    const shoulderY = -84 + rootY;
+    const torsoY = -52 + rootY;
+    const headY = -114 + rootY + (crouch ? 13 : 0);
+    const stride = moving ? Math.sin(motionTime / 96 + this.x * 0.02) * (this.isDashing ? 10 : 6) : 0;
+    let backHand = { x: -46 - stride * 0.18, y: -13 + rootY };
+    let frontHand = { x: 46 + stride * 0.18, y: -13 + rootY };
 
     if (throwWindup) {
-      frontHand = { x: -70, y: -122 + rootY };
+      frontHand = { x: -72, y: -122 + rootY };
       backHand = { x: 48, y: -36 + rootY };
     } else if (throwRelease) {
-      frontHand = { x: 84, y: -62 + rootY };
+      frontHand = { x: 86, y: -62 + rootY };
       backHand = { x: -44, y: -42 + rootY };
     } else if (catching) {
-      frontHand = { x: 18, y: -120 + rootY };
-      backHand = { x: -18, y: -120 + rootY };
+      frontHand = { x: 20, y: -118 + rootY };
+      backHand = { x: -20, y: -118 + rootY };
     } else if (crouch) {
       frontHand = { x: 34, y: -18 + rootY };
       backHand = { x: -34, y: -18 + rootY };
@@ -1397,155 +1973,212 @@ class Player {
 
     context.fillStyle = "rgba(35, 20, 45, 0.28)";
     context.beginPath();
-    context.ellipse(0, 24, 45, 10, 0, 0, Math.PI * 2);
+    context.ellipse(0, 69, 44, 9, 0, 0, Math.PI * 2);
     context.fill();
 
-    context.fillStyle = "#100c15";
+    const capeGradient = context.createLinearGradient(0, shoulderY - 8, 0, hipY + 76);
+    capeGradient.addColorStop(0, "#050407");
+    capeGradient.addColorStop(0.55, "#0c060a");
+    capeGradient.addColorStop(1, capeInner);
+    context.fillStyle = capeGradient;
     context.strokeStyle = "#050407";
-    context.lineWidth = 3;
+    context.lineWidth = 5;
     context.beginPath();
-    context.moveTo(-28, shoulderY + 6);
-    context.lineTo(-52, -12 + rootY);
-    context.lineTo(-14, -24 + rootY);
-    context.closePath();
-    context.moveTo(28, shoulderY + 6);
-    context.lineTo(52, -12 + rootY);
-    context.lineTo(14, -24 + rootY);
+    context.moveTo(-45, shoulderY - 6);
+    context.quadraticCurveTo(-78, shoulderY + 8, -84, hipY + 82);
+    context.lineTo(-31, hipY + 58);
+    context.quadraticCurveTo(-18, hipY + 15, -20, shoulderY + 9);
+    context.lineTo(20, shoulderY + 9);
+    context.quadraticCurveTo(18, hipY + 15, 31, hipY + 58);
+    context.lineTo(84, hipY + 82);
+    context.quadraticCurveTo(78, shoulderY + 8, 45, shoulderY - 6);
     context.closePath();
     context.fill();
     context.stroke();
-
-    context.fillStyle = "#0b0710";
+    context.save();
+    context.globalAlpha = 0.42;
+    context.strokeStyle = "#5d0a17";
+    context.lineWidth = 4;
     context.beginPath();
-    context.moveTo(-16, hipY + 2);
-    context.quadraticCurveTo(-58, hipY + 15, -70, hipY + 40);
-    context.lineTo(-58, hipY + 35);
-    context.lineTo(-60, hipY + 50);
-    context.lineTo(-73, hipY + 43);
-    context.closePath();
-    context.fill();
+    context.moveTo(-35, shoulderY + 7);
+    context.quadraticCurveTo(-47, shoulderY + 46, -49, hipY + 52);
+    context.moveTo(35, shoulderY + 7);
+    context.quadraticCurveTo(47, shoulderY + 46, 49, hipY + 52);
+    context.stroke();
+    context.restore();
 
-    context.fillStyle = "#120c18";
-    context.beginPath();
-    context.moveTo(-31, shoulderY - 2);
-    context.lineTo(31, shoulderY - 2);
-    context.lineTo(42, hipY + 28);
-    context.lineTo(0, hipY + 47);
-    context.lineTo(-42, hipY + 28);
-    context.closePath();
-    context.fill();
+    this.drawModelLimb(context, [{ x: -13, y: hipY + 8 }, { x: -18 - stride, y: 28 + rootY }, { x: -20 - stride * 1.05, y: 76 + rootY }], "#111016", 20);
+    this.drawModelLimb(context, [{ x: 13, y: hipY + 8 }, { x: 18 + stride, y: 28 + rootY }, { x: 20 + stride * 1.05, y: 76 + rootY }], "#111016", 20);
+    this.drawDemonBoot(context, { x: -20 - stride * 1.05, y: 76 + rootY }, gold);
+    this.drawDemonBoot(context, { x: 20 + stride * 1.05, y: 76 + rootY }, gold);
 
-    this.drawModelLimb(context, [{ x: -17, y: hipY }, { x: -23 - stride, y: -6 + rootY }, { x: -22 - stride * 1.4, y: 18 + rootY }], "#24101c", 14);
-    this.drawModelLimb(context, [{ x: 17, y: hipY }, { x: 23 + stride, y: -6 + rootY }, { x: 22 + stride * 1.4, y: 18 + rootY }], "#24101c", 14);
-    this.drawModelFoot(context, { x: -22 - stride * 1.4, y: 18 + rootY }, "#0b0710");
-    this.drawModelFoot(context, { x: 22 + stride * 1.4, y: 18 + rootY }, "#0b0710");
+    this.drawModelLimb(context, [{ x: -39, y: shoulderY + 6 }, { x: -49, y: -48 + rootY }, backHand], bodyColor, 13);
+    this.drawModelLimb(context, [{ x: 39, y: shoulderY + 6 }, { x: 49, y: -48 + rootY }, frontHand], bodyColor, 13);
+    this.drawDemonClaws(context, backHand, -1);
+    this.drawDemonClaws(context, frontHand, 1);
 
-    this.drawModelLimb(context, [{ x: -31, y: shoulderY }, { x: -45, y: -62 + rootY }, backHand], bodyColor, 14);
-    this.drawModelLimb(context, [{ x: 31, y: shoulderY }, { x: 45, y: -62 + rootY }, frontHand], bodyColor, 14);
+    context.fillStyle = gold;
+    context.strokeStyle = "#4d3209";
+    context.lineWidth = 4;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 33, shoulderY + 1, 16, 11, side * -0.2, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
 
     context.fillStyle = armor;
     context.strokeStyle = "#050407";
-    context.lineWidth = 4;
-    context.beginPath();
-    context.ellipse(0, torsoY, 40, 46, 0, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-    context.fillStyle = crimson;
-    context.beginPath();
-    context.moveTo(-24, torsoY - 35);
-    context.lineTo(24, torsoY - 35);
-    context.lineTo(10, torsoY + 34);
-    context.lineTo(-10, torsoY + 34);
-    context.closePath();
-    context.fill();
-    context.strokeStyle = gold;
     context.lineWidth = 5;
     context.beginPath();
-    context.arc(0, torsoY - 5, 13, 0, Math.PI * 2);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(-8, torsoY - 4);
-    context.lineTo(0, torsoY - 14);
-    context.lineTo(8, torsoY - 4);
-    context.lineTo(0, torsoY + 8);
+    context.moveTo(-30, shoulderY + 4);
+    context.lineTo(30, shoulderY + 4);
+    context.lineTo(17, hipY + 23);
+    context.lineTo(0, hipY + 31);
+    context.lineTo(-17, hipY + 23);
     context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = crimson;
+    context.strokeStyle = "#20040a";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(-11, shoulderY + 10);
+    context.lineTo(11, shoulderY + 10);
+    context.lineTo(7, hipY + 19);
+    context.lineTo(-7, hipY + 19);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = gold;
+    context.lineWidth = 4.5;
+    context.beginPath();
+    context.moveTo(-12, torsoY - 6);
+    context.lineTo(0, torsoY - 22);
+    context.lineTo(12, torsoY - 6);
+    context.lineTo(0, torsoY + 10);
+    context.closePath();
+    context.stroke();
     context.fillStyle = gold;
     context.fill();
 
     context.fillStyle = gold;
-    for (const side of [-1, 1]) {
-      context.beginPath();
-      context.ellipse(side * 34, shoulderY + 5, 17, 12, side * 0.25, 0, Math.PI * 2);
-      context.fill();
-    }
-    context.fillRect(-34, hipY + 18, 68, 8);
+    context.fillRect(-22, hipY + 8, 44, 8);
+    context.strokeStyle = "#4d3209";
+    context.lineWidth = 2;
+    context.strokeRect(-22, hipY + 8, 44, 8);
+
+    const mantleBottomY = 82 + rootY;
+    const mantleFront = context.createLinearGradient(0, shoulderY - 8, 0, mantleBottomY);
+    mantleFront.addColorStop(0, "#050407");
+    mantleFront.addColorStop(0.52, "#060407");
+    mantleFront.addColorStop(1, "#26050c");
+    context.fillStyle = mantleFront;
+    context.strokeStyle = "#020103";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.moveTo(-49, shoulderY - 6);
+    context.quadraticCurveTo(-63, shoulderY + 6, -68, shoulderY + 34);
+    context.quadraticCurveTo(-76, hipY + 44, -62, mantleBottomY - 6);
+    context.quadraticCurveTo(-34, mantleBottomY + 4, 0, mantleBottomY);
+    context.quadraticCurveTo(34, mantleBottomY + 4, 62, mantleBottomY - 6);
+    context.quadraticCurveTo(76, hipY + 44, 68, shoulderY + 34);
+    context.quadraticCurveTo(63, shoulderY + 6, 49, shoulderY - 6);
+    context.quadraticCurveTo(28, shoulderY + 4, 14, shoulderY + 17);
+    context.quadraticCurveTo(7, hipY + 8, 0, hipY + 8);
+    context.quadraticCurveTo(-7, hipY + 8, -14, shoulderY + 17);
+    context.quadraticCurveTo(-28, shoulderY + 4, -49, shoulderY - 6);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.save();
+    context.globalAlpha = 0.4;
+    context.strokeStyle = "#5d0a17";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-33, shoulderY + 10);
+    context.quadraticCurveTo(-39, hipY + 40, -32, mantleBottomY - 8);
+    context.moveTo(33, shoulderY + 10);
+    context.quadraticCurveTo(39, hipY + 40, 32, mantleBottomY - 8);
+    context.stroke();
+    context.restore();
 
     context.fillStyle = bodyColor;
     context.strokeStyle = "#251133";
     context.lineWidth = 4;
     context.beginPath();
-    context.ellipse(0, headY, 36, 40, 0, 0, Math.PI * 2);
+    context.ellipse(0, headY, 21, 25, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+
+    context.fillStyle = bodyColor;
+    context.beginPath();
+    context.moveTo(-19, headY - 1);
+    context.lineTo(-40, headY - 5);
+    context.lineTo(-24, headY + 9);
+    context.moveTo(19, headY - 1);
+    context.lineTo(40, headY - 5);
+    context.lineTo(24, headY + 9);
+    context.fill();
 
     context.fillStyle = "#050407";
     context.beginPath();
-    context.moveTo(-23, headY - 29);
-    context.lineTo(-62, headY - 62);
-    context.quadraticCurveTo(-42, headY - 48, -27, headY - 22);
-    context.moveTo(23, headY - 29);
-    context.lineTo(62, headY - 62);
-    context.quadraticCurveTo(42, headY - 48, 27, headY - 22);
+    context.moveTo(-17, headY - 22);
+    context.quadraticCurveTo(-54, headY - 58, -80, headY - 54);
+    context.quadraticCurveTo(-55, headY - 43, -26, headY - 10);
+    context.quadraticCurveTo(-21, headY - 18, -17, headY - 22);
+    context.moveTo(17, headY - 22);
+    context.quadraticCurveTo(54, headY - 58, 80, headY - 54);
+    context.quadraticCurveTo(55, headY - 43, 26, headY - 10);
+    context.quadraticCurveTo(21, headY - 18, 17, headY - 22);
     context.fill();
-    context.fillStyle = hairColor;
+    context.strokeStyle = "#171019";
+    context.lineWidth = 4;
+    context.stroke();
+
+    context.fillStyle = "#050407";
+    context.strokeStyle = "#1b1720";
+    context.lineWidth = 2.5;
     context.beginPath();
-    context.moveTo(-22, headY - 30);
-    context.lineTo(-13, headY - 58);
-    context.lineTo(-4, headY - 34);
-    context.lineTo(8, headY - 60);
-    context.lineTo(17, headY - 31);
-    context.lineTo(27, headY - 47);
-    context.lineTo(25, headY - 18);
-    context.lineTo(-25, headY - 18);
+    context.moveTo(-23, headY - 23);
+    context.lineTo(-14, headY - 36);
+    context.lineTo(-6, headY - 29);
+    context.lineTo(0, headY - 41);
+    context.lineTo(6, headY - 29);
+    context.lineTo(14, headY - 36);
+    context.lineTo(23, headY - 23);
+    context.lineTo(15, headY - 17);
+    context.lineTo(-15, headY - 17);
     context.closePath();
     context.fill();
-
-    context.strokeStyle = "#050407";
-    context.lineWidth = 5;
-    context.beginPath();
-    context.moveTo(-23, headY - 7);
-    context.lineTo(-7, headY - 12);
-    context.moveTo(23, headY - 7);
-    context.lineTo(7, headY - 12);
     context.stroke();
+    context.fillStyle = "#b31534";
+    context.strokeStyle = "#ffb85a";
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.arc(0, headY - 26, 4.2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.shadowColor = eyeColor;
+    context.shadowBlur = 12;
+    context.fillStyle = eyeColor;
+    context.beginPath();
+    context.arc(-10, headY - 7, 5, 0, Math.PI * 2);
+    context.arc(10, headY - 7, 5, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
     context.fillStyle = eyeColor;
     for (const side of [-1, 1]) {
       context.beginPath();
-      context.ellipse(side * 15, headY - 4, 7, 4, -side * 0.18, 0, Math.PI * 2);
+      context.arc(side * 10, headY - 7, 4.2, 0, Math.PI * 2);
       context.fill();
     }
-    context.fillStyle = "#ff2748";
-    context.beginPath();
-    context.arc(0, headY - 23, 6, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "#16070d";
-    context.lineWidth = 2;
-    context.stroke();
-
-    context.strokeStyle = "#130819";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.arc(0, headY + 11, 11, 0.1, Math.PI - 0.1);
-    context.stroke();
-    context.fillStyle = "#f7f7f2";
-    context.beginPath();
-    context.moveTo(-7, headY + 14);
-    context.lineTo(-2, headY + 25);
-    context.lineTo(2, headY + 14);
-    context.moveTo(7, headY + 14);
-    context.lineTo(2, headY + 25);
-    context.lineTo(-2, headY + 14);
-    context.fill();
 
     if (this.hasBall) {
       context.save();
@@ -1738,6 +2371,144 @@ class Player {
       context.fillText("!!", 0, headY - 58);
       context.restore();
     }
+
+    context.restore();
+  }
+
+  drawMiniDevilCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const bodyColor = this.faceColor || "#7b3eb0";
+    const eyeColor = this.eyeColor || "#ff304a";
+    const capeColor = this.trimColor || "#c91f35";
+    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 42 : 78))) * 5 : 0;
+    const rootY = (crouch ? 14 : 0) + bob;
+    const torsoY = -42 + rootY;
+    const headY = -82 + rootY + (crouch ? 10 : 0);
+    const shoulderY = -58 + rootY;
+    const hipY = -22 + rootY;
+    const stride = moving ? Math.sin(motionTime / 68 + this.x * 0.025) * (this.isDashing ? 13 : 8) : 0;
+    let leftHand = { x: -34 - stride * 0.25, y: -34 + rootY };
+    let rightHand = { x: 34 + stride * 0.25, y: -34 + rootY };
+
+    if (throwWindup) {
+      rightHand = { x: -54, y: -98 + rootY };
+      leftHand = { x: 32, y: -34 + rootY };
+    } else if (throwRelease) {
+      rightHand = { x: 62, y: -55 + rootY };
+      leftHand = { x: -28, y: -32 + rootY };
+    } else if (catching) {
+      leftHand = { x: -13, y: -96 + rootY };
+      rightHand = { x: 13, y: -96 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-0.72);
+      context.scale(1.08, 0.78);
+    } else if (damaged) {
+      context.rotate(-0.12);
+    }
+
+    context.fillStyle = "rgba(20, 8, 28, 0.26)";
+    context.beginPath();
+    context.ellipse(0, 19, 31, 8, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#08050c";
+    context.strokeStyle = "#030205";
+    context.lineWidth = 3;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 12, shoulderY + 4);
+      context.quadraticCurveTo(side * 45, shoulderY + 3, side * 55, shoulderY + 33);
+      context.quadraticCurveTo(side * 28, shoulderY + 22, side * 9, shoulderY + 13);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+
+    context.fillStyle = capeColor;
+    context.strokeStyle = "#3b0710";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-25, shoulderY - 2);
+    context.lineTo(25, shoulderY - 2);
+    context.lineTo(39, hipY + 38);
+    context.quadraticCurveTo(0, hipY + 56, -39, hipY + 38);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#09050d";
+    context.beginPath();
+    context.moveTo(-18, hipY + 12);
+    context.quadraticCurveTo(-50, hipY + 24, -52, hipY + 46);
+    context.quadraticCurveTo(-40, hipY + 38, -35, hipY + 51);
+    context.strokeStyle = "#09050d";
+    context.lineWidth = 6;
+    context.stroke();
+
+    this.drawModelLimb(context, [{ x: -11, y: hipY }, { x: -15 - stride, y: -5 + rootY }, { x: -15 - stride * 1.2, y: 15 + rootY }], bodyColor, 9);
+    this.drawModelLimb(context, [{ x: 11, y: hipY }, { x: 15 + stride, y: -5 + rootY }, { x: 15 + stride * 1.2, y: 15 + rootY }], bodyColor, 9);
+    this.drawModelFoot(context, { x: -15 - stride * 1.2, y: 15 + rootY }, "#070409");
+    this.drawModelFoot(context, { x: 15 + stride * 1.2, y: 15 + rootY }, "#070409");
+
+    this.drawModelLimb(context, [{ x: -22, y: shoulderY }, { x: -30, y: -47 + rootY }, leftHand], bodyColor, 9);
+    this.drawModelLimb(context, [{ x: 22, y: shoulderY }, { x: 30, y: -47 + rootY }, rightHand], bodyColor, 9);
+    context.fillStyle = "#050407";
+    for (const hand of [leftHand, rightHand]) {
+      context.beginPath();
+      context.ellipse(hand.x, hand.y, 8, 7, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.fillStyle = "#050407";
+    context.beginPath();
+    context.ellipse(0, hipY + 3, 24, 18, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = bodyColor;
+    context.strokeStyle = "#251133";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(0, torsoY, 25, 29, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.beginPath();
+    context.ellipse(0, headY, 31, 32, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#050407";
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.moveTo(side * 12, headY - 25);
+      context.lineTo(side * 23, headY - 47);
+      context.lineTo(side * 3, headY - 30);
+      context.closePath();
+      context.fill();
+    }
+
+    context.fillStyle = eyeColor;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 11, headY - 4, 6, 4, -side * 0.14, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.strokeStyle = "#16070d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, headY + 9, 8, 0.12, Math.PI - 0.12);
+    context.stroke();
 
     context.restore();
   }
@@ -2253,8 +3024,12 @@ class Player {
 
   drawVampireCape(context, torsoY, body) {
     context.save();
-    context.fillStyle = "#12071a";
-    context.strokeStyle = "#4f0a1d";
+    const capeGradient = context.createLinearGradient(0, torsoY - 34, 0, torsoY + 62);
+    capeGradient.addColorStop(0, "#7a1630");
+    capeGradient.addColorStop(0.58, "#5b1029");
+    capeGradient.addColorStop(1, "#361227");
+    context.fillStyle = capeGradient;
+    context.strokeStyle = "#8f1d3a";
     context.lineWidth = 3;
     context.beginPath();
     context.moveTo(-28 * body.torsoX, torsoY - 28 * body.torsoY);
@@ -2267,7 +3042,7 @@ class Player {
     context.closePath();
     context.fill();
     context.stroke();
-    context.fillStyle = "#8b0f28";
+    context.fillStyle = "#d6284a";
     context.beginPath();
     context.moveTo(-13 * body.torsoX, torsoY - 32);
     context.lineTo(0, torsoY - 12);
@@ -2494,17 +3269,53 @@ class Player {
       context.stroke();
       context.restore();
     }
-    context.fillStyle = "#f06a32";
-    context.beginPath();
     const radius = 24 * ballScale;
+    if (this.isLavaGolemStyle()) {
+      const pulse = 0.72 + Math.sin(performance.now() / 70) * 0.28;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.32 + pulse * 0.22;
+      context.strokeStyle = "#ff4b1f";
+      context.lineWidth = 11 * ballScale;
+      context.beginPath();
+      context.arc(bx, by, radius * 1.36, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#ffd36a";
+      context.lineWidth = 3 * ballScale;
+      context.beginPath();
+      context.arc(bx, by, radius * 1.7, -0.8, Math.PI * 1.1);
+      context.stroke();
+      context.restore();
+    }
+    context.fillStyle = this.isLavaGolemStyle() ? "#050303" : "#f06a32";
+    context.beginPath();
     context.arc(bx, by, radius, 0, Math.PI * 2);
     context.fill();
-    context.strokeStyle = "#8e2f22";
+    if (this.isLavaGolemStyle()) {
+      context.strokeStyle = "#ff5a1f";
+      context.lineWidth = 3 * ballScale;
+      context.beginPath();
+      context.moveTo(bx - radius * 0.6, by - radius * 0.2);
+      context.lineTo(bx - radius * 0.1, by + radius * 0.06);
+      context.lineTo(bx + radius * 0.18, by - radius * 0.34);
+      context.moveTo(bx + radius * 0.08, by + radius * 0.32);
+      context.lineTo(bx + radius * 0.48, by + radius * 0.06);
+      context.lineTo(bx + radius * 0.72, by + radius * 0.38);
+      context.stroke();
+      context.fillStyle = "rgba(255, 210, 76, 0.72)";
+      context.beginPath();
+      context.arc(bx - radius * 0.08, by + radius * 0.05, radius * 0.12, 0, Math.PI * 2);
+      context.arc(bx + radius * 0.49, by + radius * 0.08, radius * 0.1, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.strokeStyle = this.isLavaGolemStyle() ? "#3b0906" : "#8e2f22";
     context.lineWidth = 3 * ballScale;
     context.beginPath();
     context.arc(bx, by, radius, -0.8, 0.8);
-    context.moveTo(bx - radius, by);
-    context.lineTo(bx + radius, by);
+    if (!this.isLavaGolemStyle()) {
+      context.moveTo(bx - radius, by);
+      context.lineTo(bx + radius, by);
+    }
     context.stroke();
   }
 
@@ -2559,8 +3370,9 @@ class Player {
   }
 
   drawStatusBars(context) {
-    const width = 58;
-    const y = this.getVisualTop() - 10;
+    const arkmaLord = this.uniformEmblem === "arkmaLord";
+    const width = arkmaLord ? 86 : 58;
+    const y = this.getVisualTop() - (arkmaLord ? 76 : this.isDemonStyle() ? 46 : 10);
     let staminaY = y;
 
     if (this.role === "inner") {
@@ -2574,7 +3386,7 @@ class Player {
       staminaY += 11;
     }
 
-    if (!this.cpuControlled) {
+    if (!this.cpuControlled || arkmaLord) {
       const staminaRatio = Math.max(0, this.stamina / this.maxStamina);
       context.fillStyle = "rgba(25,25,32,0.72)";
       this.roundRect(context, this.x - width / 2, staminaY, width, 7, 3);

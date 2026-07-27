@@ -100,13 +100,17 @@ class CPUController {
     if (cpuHolder && this.currentHolderId !== cpuHolder.id) {
       this.currentHolderId = cpuHolder.id;
       this.holderPlan = null;
-      this.throwTimer = this.isRobotOverdrive(cpuHolder)
+      if ((cpuHolder.cpuForceDevilTriangleShotUntil || 0) > Date.now()) {
+        this.throwTimer = Math.min(this.throwTimer, 0.03);
+      } else {
+        this.throwTimer = this.isRobotOverdrive(cpuHolder)
         ? 0.22 + Math.random() * 0.16
         : this.shouldUseTacticalQuickShot(cpuHolder)
         ? 0.04 + Math.random() * 0.05
         : cpuHolder.aerialPassCatchTimer > 0 && cpuHolder.jumpZ > 0
         ? Math.min(this.throwTimer, 0.08 + Math.random() * 0.08)
         : Math.max(this.throwTimer, 0.85 + Math.random() * 0.45);
+      }
     } else if (!cpuHolder) {
       this.currentHolderId = null;
       this.holderPlan = null;
@@ -421,7 +425,24 @@ class CPUController {
       if (this.throwTimer <= 0) {
         command.shoot = true;
         this.finishAttackTactic(plan);
+        if (plan.devilTriangleFinal) this.specialAttackState = null;
         this.throwTimer = 0.42 + Math.random() * 0.18;
+        this.holderPlan = null;
+      }
+      return;
+    }
+    if (plan.type === "devil-triangle-final") {
+      holder.passChainBlockTimer = 0;
+      holder.quickShotReadyTimer = 0;
+      holder.throwLockTimer = 0;
+      this.faceNearestThreat(command, holder);
+      if (this.throwTimer <= 0) {
+        command.chargeShoot = true;
+        command.chargeTime = 0.48;
+        command.chargeReleaseMode = "time";
+        holder.cpuForceDevilTriangleShotUntil = 0;
+        this.specialAttackState = null;
+        this.throwTimer = 0.62;
         this.holderPlan = null;
       }
       return;
@@ -437,6 +458,7 @@ class CPUController {
       this.moveToHome(command, holder);
       if (this.throwTimer <= 0) {
         if (plan.passTargetId) holder.cpuPreferredPassTargetId = plan.passTargetId;
+        if (plan.devilTrianglePass) holder.cpuDevilTrianglePass = true;
         command.pass = true;
         if (plan.specialAttackPass && this.specialAttackState) {
           this.specialAttackState.passUsed = true;
@@ -446,8 +468,13 @@ class CPUController {
         } else if (plan.tactical) {
           this.advanceAttackTactic(holder);
         }
+        if (plan.devilTrianglePass) {
+          this.advanceDevilTriangle(plan);
+        }
         this.throwTimer = plan.slowPass
           ? 0.72 + Math.random() * 0.3
+          : plan.devilTrianglePass
+            ? 0.12 + Math.random() * 0.08
           : 0.42 + Math.random() * 0.32;
         this.holderPlan = null;
       }
@@ -656,6 +683,14 @@ class CPUController {
   }
 
   getHolderPlan(holder) {
+    if ((holder.cpuForceDevilTriangleShotUntil || 0) > Date.now()) {
+      if (this.attackTactic) this.attackTactic.finished = true;
+      const plan = this.createHolderPlan(holder, "devil-triangle-final", 0);
+      plan.specialAttackPlan = true;
+      plan.devilTriangleFinal = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.03);
+      return plan;
+    }
     if (
       this.holderPlan &&
       this.holderPlan.holderId === holder.id &&
@@ -721,6 +756,11 @@ class CPUController {
     if (!this.config.isSpiritReady?.(this.teamName)) {
       this.specialAttackState = null;
       return null;
+    }
+
+    if (this.isArkmazTeam()) {
+      const devilTrianglePlan = this.getDevilTriangleHolderPlan(holder);
+      if (devilTrianglePlan) return devilTrianglePlan;
     }
 
     let shooter = this.getSpecialAttackShooter();
@@ -813,7 +853,9 @@ class CPUController {
               ? ["よこづな"]
               : profile === "townDodgies"
                 ? ["まさる"]
-                : [];
+                : profile === "arkmaz"
+                  ? ["大魔王アークマ"]
+                  : [];
     const preferred = active.filter((member) => preferredNames.includes(member.name));
     if (preferred.length > 0 && Math.random() < 0.7) {
       return preferred[Math.floor(Math.random() * preferred.length)];
@@ -832,6 +874,96 @@ class CPUController {
       if (roll <= 0) return entry.member;
     }
     return active[0];
+  }
+
+  isArkmazTeam() {
+    return this.team.some((member) => member.cpuProfile === "arkmaz" || member.uniformEmblem === "arkmaLord");
+  }
+
+  getArkmaPlayer() {
+    return this.team.find((member) => member.uniformEmblem === "arkmaLord" && !member.defeated && member.hp > 0) || null;
+  }
+
+  getMiniDevils() {
+    return this.team.filter((member) => member.isMiniDevilStyle?.() && !member.defeated && member.hp > 0);
+  }
+
+  getDevilTriangleHolderPlan(holder) {
+    if (this.specialAttackState?.mode && this.specialAttackState.mode !== "devilTriangle") return null;
+    const arkma = this.getArkmaPlayer();
+    const miniDevils = this.getMiniDevils();
+    if (!arkma || miniDevils.length < 3) return null;
+
+    if (!this.specialAttackState || this.specialAttackState.mode !== "devilTriangle") {
+      if (Math.random() >= 0.7) {
+        this.specialAttackState = { mode: "normalSpecial" };
+        return null;
+      }
+      const ordered = [...miniDevils].sort((a, b) => a.homeY - b.homeY);
+      this.specialAttackState = {
+        mode: "devilTriangle",
+        arkmaId: arkma.id,
+        miniIds: ordered.map((member) => member.id),
+        nextMiniIndex: 0,
+        passesRemaining: 3 + Math.floor(Math.random() * 3),
+        readyForArkmaShot: false
+      };
+      if (this.attackTactic) this.attackTactic.finished = true;
+    }
+
+    const state = this.specialAttackState;
+    if (state.readyForArkmaShot && holder.id === state.arkmaId) {
+      const plan = this.createHolderPlan(holder, "devil-triangle-final", 0);
+      plan.specialAttackPlan = true;
+      plan.devilTriangleFinal = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.04);
+      state.finished = true;
+      return plan;
+    }
+
+    if (state.readyForArkmaShot) return null;
+
+    let target = null;
+    const holderIsMini = state.miniIds.includes(holder.id);
+    if (!holderIsMini) {
+      target = this.team.find((member) => member.id === state.miniIds[state.nextMiniIndex] && !member.defeated);
+    } else if (state.passesRemaining > 0) {
+      const currentIndex = state.miniIds.indexOf(holder.id);
+      const nextIndex = (currentIndex + 1 + Math.floor(Math.random() * 2)) % state.miniIds.length;
+      target = this.team.find((member) => member.id === state.miniIds[nextIndex] && !member.defeated && member.id !== holder.id)
+        || this.team.find((member) => state.miniIds.includes(member.id) && member.id !== holder.id && !member.defeated);
+    } else {
+      target = arkma;
+    }
+
+    if (!target) return null;
+    const plan = this.createHolderPlan(holder, "pass-chain", 0);
+    plan.passTargetId = target.id;
+    plan.specialAttackPlan = true;
+    plan.devilTrianglePass = true;
+    plan.devilTriangleTargetId = target.id;
+    this.throwTimer = Math.min(this.throwTimer, holderIsMini ? 0.05 : 0.16);
+    return plan;
+  }
+
+  advanceDevilTriangle(plan) {
+    const state = this.specialAttackState;
+    if (!state || state.mode !== "devilTriangle") return;
+    if (plan.devilTriangleTargetId === state.arkmaId) {
+      state.readyForArkmaShot = true;
+      const arkma = this.team.find((member) => member.id === state.arkmaId);
+      if (arkma) {
+        arkma.cpuForceDevilTriangleShotUntil = Date.now() + 2200;
+        arkma.cpuPreferredPassTargetId = null;
+        arkma.passChainBlockTimer = Math.max(arkma.passChainBlockTimer || 0, 1.4);
+      }
+      this.throwTimer = Math.min(this.throwTimer, 0.08);
+      return;
+    }
+    if (state.miniIds.includes(plan.devilTriangleTargetId)) {
+      state.nextMiniIndex = (state.miniIds.indexOf(plan.devilTriangleTargetId) + 1) % state.miniIds.length;
+      state.passesRemaining = Math.max(0, state.passesRemaining - 1);
+    }
   }
 
   createLockRocketLaunchPlan(holder) {
@@ -1557,6 +1689,8 @@ class CPUController {
   getCatchRollScale() {
     let scale = CPU_CATCH_TUNING.globalScale;
     if (this.ball.specialShotType) scale *= CPU_CATCH_TUNING.specialScale;
+    if (this.ball.specialShotType === "hellfire") scale *= 0.7;
+    if (this.ball.specialShotType === "meteorCrash") scale *= 0.45;
     if (this.ball.counterShot) scale *= CPU_CATCH_TUNING.counterScale;
     return scale;
   }
@@ -1708,7 +1842,8 @@ class CPUController {
       const ballInFront = (this.ball.x - member.x) * member.facing > 0;
       const veryClose = handDistance < 46 && bodyDistance < 76;
       const technique = member.stats?.technique || 5;
-      const cutChance = Math.max(0.16, Math.min(0.72, 0.22 + (technique - 5) * 0.045));
+      const cutChanceBase = Math.max(0.16, Math.min(0.72, 0.22 + (technique - 5) * 0.045));
+      const cutChance = this.ball.devilTrianglePass ? cutChanceBase * 0.08 : cutChanceBase;
       if (!ballInFront || !veryClose || Math.random() > cutChance) continue;
       command.catch = true;
       if (this.ball.z > 120 && handDistance < 42 && member.jumpZ <= 0 && member.jumpVelocity <= 0 && Math.random() < 0.25) command.jump = true;
