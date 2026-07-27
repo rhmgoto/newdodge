@@ -1223,11 +1223,40 @@ class Player {
   }
 
   getIncomingDamageAmount(amount) {
-    return amount * (this.isDemonStyle() ? 0.7 : 1);
+    return amount * (this.isDemonStyle() || this.isLavaGolemStyle() ? 0.7 : 1);
   }
 
   getIncomingKnockbackScale() {
     return this.isDemonStyle() ? 0.5 : 1;
+  }
+
+  getLavaGolemHeatStage() {
+    if (!this.isLavaGolemStyle()) return 0;
+    const hpRatio = this.hp / Math.max(1, this.maxHp);
+    if (hpRatio <= 0.2) return 4;
+    if (hpRatio <= 0.4) return 3;
+    if (hpRatio <= 0.6) return 2;
+    if (hpRatio <= 0.8) return 1;
+    return 0;
+  }
+
+  getLavaGolemPowerScale() {
+    const stage = this.getLavaGolemHeatStage();
+    if (stage >= 4) return 1.3;
+    if (stage >= 2) return 1.2;
+    if (stage >= 1) return 1.1;
+    return 1;
+  }
+
+  getLavaGolemHeatPalette() {
+    const palettes = [
+      { rock: this.faceColor || "#4a3024", edge: "#1b100c", shadow: "#2a1a14", highlight: "#6a4030", limb: "#4a3024", foot: "#3a241b", horn: "#281713", lava: this.trimColor || "#ff7a1f", core: "#ffd36a" },
+      { rock: "#5a2f24", edge: "#2a0f0a", shadow: "#321510", highlight: "#7c3a2a", limb: "#5a2f24", foot: "#462119", horn: "#35130e", lava: "#ff8424", core: "#ffd96a" },
+      { rock: "#6f2b20", edge: "#35100a", shadow: "#3f120c", highlight: "#963727", limb: "#6f2b20", foot: "#561b13", horn: "#45120b", lava: "#ff6b1d", core: "#ffe06a" },
+      { rock: "#85251a", edge: "#3d0b07", shadow: "#4a0e09", highlight: "#b33725", limb: "#85251a", foot: "#68130d", horn: "#560d08", lava: "#ff5520", core: "#ffe86a" },
+      { rock: "#b51e14", edge: "#520806", shadow: "#5c0906", highlight: "#ef3b20", limb: "#b51e14", foot: "#831006", horn: "#6b0805", lava: "#ff3218", core: "#fff06a" }
+    ];
+    return palettes[this.getLavaGolemHeatStage()] || palettes[0];
   }
 
   isVampireStyle() {
@@ -1248,7 +1277,9 @@ class Player {
   }
 
   getEffectiveThrowPower() {
-    return this.throwPower * (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1) * (this.isLavaGolemStyle() ? 1.18 : 1);
+    return this.throwPower *
+      (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1) *
+      (this.isLavaGolemStyle() ? 1.18 * this.getLavaGolemPowerScale() : 1);
   }
 
   getAlienFloatOffset(motionTime = performance.now()) {
@@ -1401,14 +1432,15 @@ class Player {
     const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
     const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
-    const rock = this.faceColor || "#4a3024";
-    const rockEdge = "#1b100c";
-    const rockShadow = "#2a1a14";
-    const lava = this.trimColor || "#ff7a1f";
-    const lavaCore = "#ffd36a";
+    const heat = this.getLavaGolemHeatPalette();
+    const rock = heat.rock;
+    const rockEdge = heat.edge;
+    const rockShadow = heat.shadow;
+    const lava = heat.lava;
+    const lavaCore = heat.core;
     const eye = this.eyeColor || "#ffd43b";
     const pulse = 0.68 + Math.sin(motionTime / 115) * 0.32;
-    const chargeGlow = (this.hasBall || throwWindup) ? 1.45 : 1;
+    const chargeGlow = ((this.hasBall || throwWindup) ? 1.45 : 1) + this.getLavaGolemHeatStage() * 0.12;
     const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 58 : 96))) * 3 : 0;
     const rootY = (crouch ? 14 : 0) + bob;
     const bodyY = -61 + rootY;
@@ -1476,7 +1508,7 @@ class Player {
     context.ellipse(0, bodyY, 77, 84, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = "#6a4030";
+    context.fillStyle = heat.highlight;
     context.beginPath();
     context.ellipse(-22, bodyY - 10, 39, 53, -0.28, 0, Math.PI * 2);
     context.fill();
@@ -1498,7 +1530,7 @@ class Player {
     context.ellipse(0, headY, 39, 31, 0, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = "#281713";
+    context.fillStyle = heat.horn;
     for (const side of [-1, 1]) {
       context.beginPath();
       context.moveTo(side * 12, headY - 24);
@@ -1555,7 +1587,8 @@ class Player {
   }
 
   drawRockLimb(context, points, width) {
-    context.strokeStyle = "#4a3024";
+    const heat = this.getLavaGolemHeatPalette();
+    context.strokeStyle = heat.limb;
     context.lineWidth = width;
     context.lineCap = "round";
     context.lineJoin = "round";
@@ -1564,7 +1597,7 @@ class Player {
     context.lineTo(points[1].x, points[1].y);
     context.lineTo(points[2].x, points[2].y);
     context.stroke();
-    context.strokeStyle = "#1b100c";
+    context.strokeStyle = heat.edge;
     context.lineWidth = 3;
     context.stroke();
   }
@@ -1589,8 +1622,9 @@ class Player {
   }
 
   drawLavaGolemFist(context, hand, scale = 1) {
-    context.fillStyle = "#4a3024";
-    context.strokeStyle = "#1b100c";
+    const heat = this.getLavaGolemHeatPalette();
+    context.fillStyle = heat.limb;
+    context.strokeStyle = heat.edge;
     context.lineWidth = 3;
     context.beginPath();
     context.ellipse(hand.x, hand.y, 18 * scale, 15 * scale, 0, 0, Math.PI * 2);
@@ -1600,14 +1634,15 @@ class Player {
   }
 
   drawLavaGolemFoot(context, foot) {
-    context.fillStyle = "#3a241b";
-    context.strokeStyle = "#1b100c";
+    const heat = this.getLavaGolemHeatPalette();
+    context.fillStyle = heat.foot;
+    context.strokeStyle = heat.edge;
     context.lineWidth = 3;
     context.beginPath();
     context.ellipse(foot.x + 4, foot.y + 4, 21, 8, 0.06, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = "#1b100c";
+    context.fillStyle = heat.edge;
     context.fillRect(foot.x - 13, foot.y + 9, 34, 5);
   }
 
@@ -2202,11 +2237,13 @@ class Player {
     const guarding = this.shieldGuardTimer > 0 || this.catchTimer > 0;
     const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
     const throwRelease = this.state === "throwing" && this.throwPhase === "release";
-    const bodyColor = this.faceColor || "#7b3eb0";
-    const armor = this.uniformColor || "#1a1028";
+    const bodyColor = this.faceColor || "#b991e6";
+    const armor = this.uniformColor || bodyColor;
+    const armorShadow = this.pantsColor || "#9d6ed1";
     const trim = this.trimColor || "#9b2cff";
     const eyeColor = this.eyeColor || "#ff304a";
-    const bob = moving ? Math.abs(Math.sin(motionTime / (this.isDashing ? 46 : 82))) * 5 : 0;
+    const hoverOffset = down ? 0 : 18 + Math.sin(motionTime / 520 + this.x * 0.01) * 5;
+    const bob = Math.sin(motionTime / (moving ? (this.isDashing ? 92 : 128) : 210)) * (moving ? 4 : 3);
     const rootY = (crouch ? 17 : 0) + bob;
     const torsoY = -48 + rootY;
     const headY = -91 + rootY + (crouch ? 12 : 0);
@@ -2228,7 +2265,7 @@ class Player {
     }
 
     context.save();
-    context.translate(this.x, drawY);
+    context.translate(this.x, drawY - hoverOffset);
     context.scale(scale * this.facing, scale);
     if (down) {
       context.rotate(-0.75);
@@ -2237,13 +2274,13 @@ class Player {
       context.rotate(-0.12);
     }
 
-    context.fillStyle = "rgba(22, 8, 32, 0.28)";
+    context.fillStyle = "rgba(22, 8, 32, 0.22)";
     context.beginPath();
-    context.ellipse(0, 21, 38, 9, 0, 0, Math.PI * 2);
+    context.ellipse(0, 21 + hoverOffset, 34, 7, 0, 0, Math.PI * 2);
     context.fill();
 
-    context.fillStyle = "#0b0710";
-    context.strokeStyle = "#040206";
+    context.fillStyle = armorShadow;
+    context.strokeStyle = "#5b3486";
     context.lineWidth = 3;
     for (const side of [-1, 1]) {
       context.beginPath();
@@ -2255,10 +2292,10 @@ class Player {
       context.stroke();
     }
 
-    this.drawModelLimb(context, [{ x: -13, y: hipY }, { x: -18 - stride, y: -7 + rootY }, { x: -18 - stride * 1.3, y: 17 + rootY }], "#241033", 11);
-    this.drawModelLimb(context, [{ x: 13, y: hipY }, { x: 18 + stride, y: -7 + rootY }, { x: 18 + stride * 1.3, y: 17 + rootY }], "#241033", 11);
-    this.drawModelFoot(context, { x: -18 - stride * 1.3, y: 17 + rootY }, "#0c0710");
-    this.drawModelFoot(context, { x: 18 + stride * 1.3, y: 17 + rootY }, "#0c0710");
+    this.drawModelLimb(context, [{ x: -13, y: hipY }, { x: -18 - stride, y: -7 + rootY }, { x: -18 - stride * 1.3, y: 17 + rootY }], armorShadow, 11);
+    this.drawModelLimb(context, [{ x: 13, y: hipY }, { x: 18 + stride, y: -7 + rootY }, { x: 18 + stride * 1.3, y: 17 + rootY }], armorShadow, 11);
+    this.drawModelFoot(context, { x: -18 - stride * 1.3, y: 17 + rootY }, armorShadow);
+    this.drawModelFoot(context, { x: 18 + stride * 1.3, y: 17 + rootY }, armorShadow);
 
     this.drawModelLimb(context, [{ x: -27, y: shoulderY }, { x: -40, y: -58 + rootY }, shieldHand], bodyColor, 11);
     this.drawModelLimb(context, [{ x: 27, y: shoulderY }, { x: 34, y: -55 + rootY }, spearHand], bodyColor, 9);

@@ -826,11 +826,11 @@ class DodgeballGame {
           }),
           player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 280, 150, 8, 12, 8, 14, "devilShield", {
             uniformEmblem: "shieldDevil",
-            uniformColor: "#1a1028",
-            pantsColor: "#210d31",
-            trimColor: "#9b2cff",
+            uniformColor: "#b991e6",
+            pantsColor: "#9d6ed1",
+            trimColor: "#d7b8ff",
             hairColor: "#0b0612",
-            faceColor: "#7b3eb0",
+            faceColor: "#b991e6",
             eyeColor: "#ff304a",
             cpuProfile: "arkmaGuard"
           }),
@@ -3369,6 +3369,24 @@ class DodgeballGame {
     this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "catch");
   }
 
+  completeShieldDevilThrownGuard(protector, target, direction) {
+    protector.shieldAlertTimer = Math.max(protector.shieldAlertTimer || 0, 0.9);
+    protector.shieldGuardTimer = Math.max(protector.shieldGuardTimer || 0, 0.82);
+    this.ball.hitPlayerIds?.add(target.id);
+    this.ball.hitPlayerIds?.add(protector.id);
+    this.ball.drop();
+    this.ball.x = protector.x - direction * Math.min(68, Math.max(34, this.ball.radius * 1.35));
+    this.ball.y = protector.y + (Math.random() - 0.5) * 34;
+    this.ball.z = Math.max(18, Math.min(58, protector.jumpZ * 0.22 + 20));
+    this.ball.vx = -direction * (190 + Math.random() * 80);
+    this.ball.vy = (Math.random() - 0.5) * 120;
+    this.ball.vz = 120 + Math.random() * 80;
+    this.addSpirit(protector.team, GAME_CONFIG.battle.spiritCatchGain);
+    this.startScreenShake(16, 0.18);
+    this.spawnEffect(protector.x, protector.y - protector.jumpZ - 72, "#9b2cff", "shieldImpact", 1.05);
+    this.spawnEffect(target.x, target.y - target.jumpZ - 82, "#fff7a0", "shieldImpact", 0.65);
+  }
+
   resolveArkmaShieldDevilGuard(target, targets, ballY) {
     if (!target?.isDemonStyle?.() || target.uniformEmblem !== "arkmaLord") return null;
     const flightSerial = this.ball.flightSerial || 0;
@@ -3391,17 +3409,8 @@ class DodgeballGame {
     protector.clampToArea(this.areas[protector.zone]);
 
     this.spawnEffect(protector.x, protector.y - protector.jumpZ - 82, "#fff7a0", "shieldImpact", 0.55);
-    if (protector.catchTimer > 0 && this.ball.catchable) {
-      const caughtShotDamage = this.getSpecialShotDamage(this.ball.power, this.ball.specialShotType, this.ball.travelDistance);
-      const counterChainCount = this.ball.counterShot ? (this.ball.counterChainCount || 0) + 1 : 0;
-      this.ball.pickUp(protector);
-      this.addSpirit(protector.team, GAME_CONFIG.battle.spiritCatchGain);
-      protector.startCatchSuccess();
-      protector.startCounterOpportunity(caughtShotDamage, this.ball.thrower, COUNTER_CONFIG, counterChainCount);
-      this.spawnEffect(protector.x, protector.y - protector.jumpZ - 66, "#9b2cff", "shieldImpact", 0.8);
-      return "caught";
-    }
-    return protector;
+    this.completeShieldDevilThrownGuard(protector, target, direction);
+    return "shielded";
   }
 
   handleHits() {
@@ -3430,6 +3439,7 @@ class DodgeballGame {
       }
       const guardedTarget = this.resolveArkmaShieldDevilGuard(originalTarget, targets, ballY);
       if (guardedTarget === "caught") return;
+      if (guardedTarget === "shielded") return;
       if (guardedTarget) target = guardedTarget;
 
       const direction = this.ball.vx >= 0 ? 1 : -1;
@@ -5167,7 +5177,12 @@ class DodgeballGame {
       context.font = "12px Meiryo, sans-serif";
       context.fillText(roleLabel, cardX + 61, cardY + 32);
 
-      this.drawCharacterPreview(cardX + 61, cardY + 105, side, type, previewStyle, 0.36);
+      context.save();
+      context.beginPath();
+      context.rect(cardX + 5, cardY + 35, 112, 91);
+      context.clip();
+      this.drawCharacterPreview(cardX + 61, cardY + 111, side, type, previewStyle, 0.36);
+      context.restore();
 
       context.fillStyle = "#263241";
       context.font = "bold 12px Meiryo, sans-serif";
@@ -5238,6 +5253,21 @@ class DodgeballGame {
 
   drawCharacterPreview(x, y, side, type, style = null, scale = 0.48) {
     const context = this.context;
+    if (
+      style?.uniformEmblem === "arkmaLord" ||
+      style?.uniformEmblem === "lavaGolem" ||
+      style?.uniformEmblem === "vampire" ||
+      style?.uniformEmblem === "shieldDevil" ||
+      style?.uniformEmblem === "miniDevil" ||
+      type === "demon" ||
+      type === "lavaGolem" ||
+      type === "vampire" ||
+      type === "shieldDevil" ||
+      type === "miniDevil"
+    ) {
+      this.drawPlayerModelPreview(x, y, side, type, style, scale);
+      return;
+    }
     if (style?.uniformEmblem === "robot" || style?.uniformEmblem === "robotCaptain") {
       this.drawRobotPreview(x, y, style, scale);
       return;
@@ -5502,6 +5532,53 @@ class DodgeballGame {
       context.restore();
     }
     context.restore();
+  }
+
+  drawPlayerModelPreview(x, y, side, type, style = null, scale = 0.48) {
+    const previewPlayer = new Player({
+      id: `preview-${style?.name || type || "player"}`,
+      name: style?.name || "",
+      team: side,
+      role: "out",
+      zone: "out",
+      x,
+      y,
+      radius: style?.radius || (type === "lavaGolem" || style?.uniformEmblem === "lavaGolem" ? 66 : 37),
+      characterType: type || style?.characterType || "normal",
+      stats: style?.stats,
+      maxHp: style?.maxHp,
+      maxStamina: style?.maxStamina,
+      uniformColor: style?.uniformColor,
+      pantsColor: style?.pantsColor,
+      uniformEmblem: style?.uniformEmblem,
+      trimColor: style?.trimColor,
+      faceColor: style?.faceColor,
+      hairColor: style?.hairColor,
+      eyeColor: style?.eyeColor,
+      specialShotType: style?.specialShotType,
+      cpuControlled: true
+    });
+    previewPlayer.visualDirection = "down";
+    previewPlayer.robotBodyDirection = "down";
+    previewPlayer.robotHeadDirection = "down";
+    previewPlayer.facing = 1;
+    previewPlayer.lastDrawScale = 1;
+
+    const modelScale = (type === "demon" || style?.uniformEmblem === "arkmaLord")
+      ? scale * 0.82
+      : (type === "lavaGolem" || style?.uniformEmblem === "lavaGolem")
+        ? scale * 0.62
+        : (type === "vampire" || style?.uniformEmblem === "vampire")
+          ? scale * 0.95
+          : scale;
+    const previewConfig = {
+      ...GAME_CONFIG.battle,
+      depthTop: y - 120,
+      depthBottom: y + 120,
+      characterScale: modelScale * 1.55,
+      exitDelay: GAME_CONFIG.battle.exitDelay || 0.9
+    };
+    previewPlayer.draw(this.context, previewConfig, false, false, false, false, false, 1);
   }
 
   drawDemonPreview(x, y, style = null, scale = 0.48) {
