@@ -1532,9 +1532,6 @@ class DodgeballGame {
         this.releaseChargedThrow(holder, "pass");
       }
     } else {
-      if (this.input.wasPressed("button0")) {
-        active.startReflectShield?.();
-      }
       if (this.input.wasPressed("avoid")) {
         active.startDodge(0, 0, GAME_CONFIG.battle);
       }
@@ -1569,9 +1566,6 @@ class DodgeballGame {
           this.releaseChargedThrow(holder, "pass", 2);
         }
       } else if (activeRight && !activeRight.defeated) {
-        if (this.input.wasPressed("button0", 2)) {
-          activeRight.startReflectShield?.();
-        }
         if (this.input.wasPressed("avoid", 2)) {
           activeRight.startDodge(0, 0, GAME_CONFIG.battle);
         }
@@ -1617,7 +1611,6 @@ class DodgeballGame {
       }
       if (command.catch) member.startCatch(this.getCatchDuration(member));
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
-      if (command.reflect) member.startReflectShield?.();
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
         const started = this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
@@ -3606,57 +3599,7 @@ class DodgeballGame {
   }
 
   resolveWitchReflectShield(target, ballY) {
-    if (!target?.isWitchStyle?.() || target.reflectShieldTimer <= 0 || !this.ball.thrower) return false;
-    if (this.getIncomingFacingQuality(target) !== "front") return false;
-    const facing = this.getFacingVector(target);
-    const shieldX = target.x + facing.x * 84;
-    const shieldY = target.y - target.jumpZ - 72 + facing.y * 58;
-    const dx = (this.ball.x - shieldX) / 68;
-    const dy = (ballY - shieldY) / 82;
-    if (dx * dx + dy * dy > 1) return false;
-
-    const oldThrower = this.ball.thrower;
-    const speed = Math.max(520, Math.hypot(this.ball.vx, this.ball.vy));
-    const reflectedTarget = oldThrower && !oldThrower.defeated ? oldThrower : this.getNearestOpponentFor(target);
-    const targetX = reflectedTarget?.x ?? (target.x + (target.team === "left" ? 480 : -480));
-    const targetY = (reflectedTarget?.y ?? target.y) - 38;
-    const dirX = targetX - this.ball.x;
-    const dirY = targetY - this.ball.y;
-    const length = Math.hypot(dirX, dirY) || 1;
-
-    this.ball.thrower = target;
-    this.ball.target = reflectedTarget || null;
-    this.ball.kind = "shoot";
-    this.ball.owner = null;
-    this.ball.isFlying = true;
-    this.ball.isLoose = false;
-    this.ball.catchable = true;
-    this.ball.hasBounced = false;
-    this.ball.specialShotType = null;
-    this.ball.specialShot = false;
-    this.ball.demonShot = false;
-    this.ball.counterShot = false;
-    this.ball.quickShot = false;
-    this.ball.flightSerial = (this.ball.flightSerial || 0) + 1;
-    this.ball.travelDistance = 0;
-    this.ball.hitPlayerIds?.clear();
-    this.ball.clearClockStop?.();
-    this.ball.clearLockRocket?.();
-    this.ball.clearTsutenkakuDrop?.();
-    this.ball.clearMeteorCrash?.();
-    this.ball.clearLightningZigzag?.();
-    this.ball.clearArcanaSphere?.();
-    this.ball.returning = false;
-    this.ball.boomerangTrail = [];
-    this.ball.vx = dirX / length * speed * 1.03;
-    this.ball.vy = dirY / length * speed * 1.03;
-    this.ball.vz = Math.max(-120, Math.min(260, this.ball.vz || 0));
-    target.reflectShieldTimer = Math.min(target.reflectShieldTimer, 0.28);
-    this.addSpirit(target.team, GAME_CONFIG.battle.spiritCatchGain * 0.75);
-    this.startScreenShake(12, 0.12);
-    this.spawnEffect(shieldX, shieldY, "#b56cff", "shieldImpact", 1.25);
-    this.spawnCatchResultLabel(target, "REFLECT", "#d8b6ff");
-    return true;
+    return false;
   }
 
   getNearestOpponentFor(player) {
@@ -7282,17 +7225,30 @@ class DodgeballGame {
       }
       if (effect.type === "arcanaImpact") {
         const intensity = effect.intensity || 1;
-        const radius = 36 + progress * (160 + intensity * 42);
+        const radius = 42 + progress * (188 + intensity * 58);
+        const columnHeight = 110 + progress * (250 + intensity * 80);
         context.save();
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
         context.globalAlpha = Math.max(0, 1 - progress);
+        const column = context.createLinearGradient(0, 36, 0, -columnHeight);
+        column.addColorStop(0, "rgba(159,220,255,0.04)");
+        column.addColorStop(0.28, "rgba(155,44,255,0.34)");
+        column.addColorStop(0.68, "rgba(216,182,255,0.54)");
+        column.addColorStop(1, "rgba(255,255,255,0)");
+        context.fillStyle = column;
+        context.beginPath();
+        context.ellipse(0, -columnHeight * 0.42, 44 + intensity * 11, columnHeight * 0.58, 0, 0, Math.PI * 2);
+        context.fill();
         context.fillStyle = `rgba(216,182,255,${Math.max(0, 0.65 - progress * 0.72)})`;
         context.beginPath();
         context.arc(0, 0, 42 * (1 - progress * 0.45), 0, Math.PI * 2);
         context.fill();
+        context.save();
+        context.scale(1, 0.42);
+        context.rotate(progress * 1.8);
         context.strokeStyle = "#d8b6ff";
-        context.lineWidth = 16 - progress * 8;
+        context.lineWidth = 16 - progress * 7;
         context.beginPath();
         context.arc(0, 0, radius, 0, Math.PI * 2);
         context.stroke();
@@ -7301,6 +7257,17 @@ class DodgeballGame {
         context.beginPath();
         context.arc(0, 0, radius * 1.24, 0, Math.PI * 2);
         context.stroke();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 4;
+        for (let mark = 0; mark < 12; mark += 1) {
+          const angle = mark * Math.PI * 2 / 12;
+          const inner = radius * 0.46;
+          const outer = radius * (0.78 + (mark % 3) * 0.08);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
         context.strokeStyle = "#8ffcff";
         context.lineWidth = 4;
         context.beginPath();
@@ -7313,17 +7280,39 @@ class DodgeballGame {
         }
         context.closePath();
         context.stroke();
+        context.restore();
         const colors = ["#ffffff", "#d8b6ff", "#9b2cff", "#8ffcff"];
-        for (let index = 0; index < 18; index += 1) {
-          const angle = index * Math.PI * 2 / 18 + progress * 0.9;
-          const inner = radius * 0.25;
-          const outer = radius * (0.86 + (index % 4) * 0.16);
+        for (let index = 0; index < 28; index += 1) {
+          const angle = index * Math.PI * 2 / 28 + progress * 1.3;
+          const inner = radius * 0.18;
+          const outer = radius * (0.78 + (index % 4) * 0.18);
           context.strokeStyle = colors[index % colors.length];
-          context.lineWidth = index % 3 === 0 ? 5 : 3;
+          context.lineWidth = index % 3 === 0 ? 6 : 3;
           context.beginPath();
-          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner - progress * 24);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer - progress * 68);
           context.stroke();
+        }
+        context.fillStyle = "#f5e7ff";
+        for (let star = 0; star < 18; star += 1) {
+          const angle = star * Math.PI * 2 / 18 + progress * 2.2;
+          const dist = radius * (0.24 + (star % 5) * 0.14);
+          context.globalAlpha = Math.max(0, (1 - progress) * (0.42 + (star % 4) * 0.12));
+          context.save();
+          context.translate(Math.cos(angle) * dist, Math.sin(angle) * dist * 0.45 - progress * (40 + star * 5));
+          context.rotate(angle);
+          context.beginPath();
+          context.moveTo(0, -7);
+          context.lineTo(2, -2);
+          context.lineTo(7, 0);
+          context.lineTo(2, 2);
+          context.lineTo(0, 7);
+          context.lineTo(-2, 2);
+          context.lineTo(-7, 0);
+          context.lineTo(-2, -2);
+          context.closePath();
+          context.fill();
+          context.restore();
         }
         context.restore();
         continue;
@@ -7773,6 +7762,106 @@ class DodgeballGame {
         context.moveTo(x + Math.cos(angle) * inner, y + Math.sin(angle) * inner);
         context.lineTo(x + Math.cos(angle) * outer, y + Math.sin(angle) * outer);
         context.stroke();
+      }
+      context.restore();
+      return;
+    }
+
+    if (pending.specialType === "arcanaSphere") {
+      const groundY = actor.y + 12;
+      const time = performance.now();
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.28 + progress * 0.48;
+      context.fillStyle = "rgba(54, 12, 88, 0.42)";
+      context.beginPath();
+      context.ellipse(actor.x, groundY, 92 + progress * 54, 30 + progress * 18, 0, 0, Math.PI * 2);
+      context.fill();
+
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.save();
+        context.translate(actor.x, groundY);
+        context.rotate((ring % 2 === 0 ? 1 : -1) * time / (430 + ring * 95));
+        context.scale(1, 0.38);
+        context.globalAlpha = 0.88 - ring * 0.18;
+        context.strokeStyle = ring === 0 ? "#f5e7ff" : ring === 1 ? "#9fdcff" : "#ff6ee7";
+        context.lineWidth = 5 + progress * 3 - ring;
+        const ringRadius = 58 + progress * 44 + ring * 24;
+        context.beginPath();
+        context.arc(0, 0, ringRadius, 0, Math.PI * 2);
+        context.stroke();
+        context.lineWidth = 3;
+        context.beginPath();
+        for (let mark = 0; mark < 12; mark += 1) {
+          const angle = mark * Math.PI * 2 / 12;
+          const inner = ringRadius * 0.58;
+          const outer = ringRadius * 0.84;
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+        }
+        context.stroke();
+        context.restore();
+      }
+
+      const handGlow = context.createRadialGradient(x, y, 4, x, y, burstRadius * 1.15);
+      handGlow.addColorStop(0, "rgba(255,255,255,0.95)");
+      handGlow.addColorStop(0.2, "rgba(216,182,255,0.82)");
+      handGlow.addColorStop(0.5, "rgba(155,44,255,0.48)");
+      handGlow.addColorStop(1, "rgba(10,3,18,0)");
+      context.globalAlpha = 0.82;
+      context.fillStyle = handGlow;
+      context.beginPath();
+      context.arc(x, y, burstRadius * (0.82 + pulse * 0.12), 0, Math.PI * 2);
+      context.fill();
+
+      context.save();
+      context.translate(x, y);
+      context.rotate(time / 95);
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 4 + progress * 2;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.save();
+        context.rotate(ring * Math.PI / 3);
+        context.scale(ring === 1 ? 0.72 : 1, ring === 2 ? 0.62 : 1);
+        context.globalAlpha = 0.88 - ring * 0.16;
+        context.beginPath();
+        context.ellipse(0, 0, 28 + progress * 28 + ring * 12, 12 + progress * 13 + ring * 5, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+      }
+      context.globalCompositeOperation = "source-over";
+      const core = context.createRadialGradient(-8, -8, 3, 0, 0, 34 + progress * 18);
+      core.addColorStop(0, "#ffffff");
+      core.addColorStop(0.28, "#d8b6ff");
+      core.addColorStop(0.62, "#381058");
+      core.addColorStop(1, "#050108");
+      context.fillStyle = core;
+      context.beginPath();
+      context.arc(0, 0, 22 + progress * 17 + pulse * 4, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+
+      context.globalCompositeOperation = "lighter";
+      const colors = ["#ffffff", "#d8b6ff", "#9fdcff", "#ff6ee7"];
+      for (let index = 0; index < 22; index += 1) {
+        const angle = -time / 85 + index * Math.PI * 2 / 22;
+        const dist = 46 + progress * 54 + (index % 4) * 12;
+        context.globalAlpha = 0.42 + (index % 4) * 0.1;
+        context.fillStyle = colors[index % colors.length];
+        context.save();
+        context.translate(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist * 0.68);
+        context.rotate(angle + time / 260);
+        context.beginPath();
+        if (index % 3 === 0) {
+          context.rect(-4, -7, 8, 14);
+        } else {
+          context.moveTo(0, -6);
+          context.lineTo(5, 5);
+          context.lineTo(-5, 5);
+          context.closePath();
+        }
+        context.fill();
+        context.restore();
       }
       context.restore();
       return;

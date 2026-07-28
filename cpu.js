@@ -1685,21 +1685,6 @@ class CPUController {
         distance < CPU_CLOSE_SHOT_DEFENSE.ballDistance &&
         laneThreat
       );
-      if (
-        member.isWitchStyle?.() &&
-        !member.hasBall &&
-        frontShot &&
-        laneThreat &&
-        distance > 300 &&
-        distance < 620 &&
-        member.reflectCooldownTimer <= 0 &&
-        member.reflectChantTimer <= 0 &&
-        member.reflectShieldTimer <= 0 &&
-        Math.random() < (targeted ? 0.62 : 0.34)
-      ) {
-        command.reflect = true;
-        continue;
-      }
       const farShot = throwerDistance > 520 || distance > 260;
       const quickDefender = defenseStat >= 7;
       const readyToReact = frontShot && (farShot || (quickDefender && nearShot));

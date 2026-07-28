@@ -21,7 +21,7 @@ const ARCANA_SPHERE_CONFIG = {
   maxSpeedScale: 2,
   maxChargeDistance: 600,
   wobbleForce: 34,
-  trailLimit: 28
+  trailLimit: 36
 };
 
 class Ball {
@@ -2229,6 +2229,8 @@ class Ball {
     const velocity = Math.hypot(this.vx, this.vy) || 1;
     const tailX = -this.vx / velocity;
     const tailY = -this.vy / velocity;
+    const sideX = -tailY;
+    const sideY = tailX;
     const trailWidth = 14 + charge * 28;
     context.save();
     context.globalCompositeOperation = "lighter";
@@ -2254,17 +2256,62 @@ class Ball {
       context.stroke();
     }
 
-    const particles = 5 + Math.floor(charge * 12);
-    context.fillStyle = "#f5e7ff";
+    const runeCount = 12 + Math.floor(charge * 10);
+    const runeColors = ["#ffffff", "#d8b6ff", "#9fdcff", "#ff6ee7"];
+    for (let i = 0; i < runeCount; i += 1) {
+      const distance = 26 + i * (13 + charge * 8);
+      const phase = this.spin * 0.62 + i * 1.42;
+      const side = Math.sin(phase) * (22 + charge * 42);
+      const px = this.x + tailX * distance + sideX * side;
+      const py = drawY + tailY * distance + sideY * side;
+      context.save();
+      context.translate(px, py);
+      context.rotate(phase + Math.PI * 0.2);
+      context.globalAlpha = 0.3 + (i % 5) * 0.1;
+      context.strokeStyle = runeColors[i % runeColors.length];
+      context.fillStyle = runeColors[(i + 1) % runeColors.length];
+      context.lineWidth = 2 + charge * 1.8;
+      if (i % 3 === 0) {
+        context.beginPath();
+        context.moveTo(0, -6 - charge * 3);
+        context.lineTo(6 + charge * 3, 4 + charge * 2);
+        context.lineTo(-6 - charge * 3, 4 + charge * 2);
+        context.closePath();
+        context.stroke();
+      } else if (i % 3 === 1) {
+        context.beginPath();
+        context.rect(-5 - charge * 2, -7 - charge * 2, 10 + charge * 4, 14 + charge * 4);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(-3, 0);
+        context.lineTo(3, 0);
+        context.stroke();
+      } else {
+        context.beginPath();
+        context.arc(0, 0, 4 + charge * 3, 0, Math.PI * 2);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(-8 - charge * 3, 0);
+        context.lineTo(8 + charge * 3, 0);
+        context.moveTo(0, -8 - charge * 3);
+        context.lineTo(0, 8 + charge * 3);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    const particles = 9 + Math.floor(charge * 16);
     for (let i = 0; i < particles; i += 1) {
-      const distance = 24 + i * (14 + charge * 9);
-      const side = Math.sin(this.spin * 0.7 + i * 1.91) * (18 + charge * 36);
-      const radius = 2 + (i % 3) + charge * 2.2;
-      context.globalAlpha = 0.32 + (i % 4) * 0.12;
+      const distance = 18 + i * (11 + charge * 7);
+      const phase = this.spin * 1.05 + i * 1.91;
+      const side = Math.sin(phase) * (16 + charge * 32);
+      const radius = 2 + (i % 3) + charge * 2.6;
+      context.globalAlpha = 0.38 + (i % 4) * 0.12;
+      context.fillStyle = runeColors[i % runeColors.length];
       context.beginPath();
       context.arc(
-        this.x + tailX * distance - tailY * side,
-        drawY + tailY * distance + tailX * side,
+        this.x + tailX * distance + sideX * side,
+        drawY + tailY * distance + sideY * side,
         radius,
         0,
         Math.PI * 2
@@ -2277,23 +2324,52 @@ class Ball {
   drawArcanaSphereOrb(context) {
     const charge = this.getArcanaChargeRate();
     const time = performance.now();
-    const auraRadius = this.radius * (1.55 + charge * 0.78);
+    const auraRadius = this.radius * (1.88 + charge * 0.96);
     context.save();
     context.globalCompositeOperation = "lighter";
-    context.globalAlpha = 0.26 + charge * 0.34;
-    context.fillStyle = "#9b2cff";
+    context.globalAlpha = 0.22 + charge * 0.32;
+    context.fillStyle = "#7b2cff";
     context.beginPath();
     context.arc(0, 0, auraRadius, 0, Math.PI * 2);
     context.fill();
-    context.globalAlpha = 0.18 + charge * 0.22;
-    context.fillStyle = "#8ffcff";
+    context.globalAlpha = 0.16 + charge * 0.2;
+    context.fillStyle = "#9fdcff";
     context.beginPath();
     context.arc(0, 0, this.radius * (1.18 + charge * 0.38), 0, Math.PI * 2);
     context.fill();
 
-    this.drawArcanaCircle(context, this.spin * (1.35 + charge * 1.3), this.radius * (1.72 + charge * 0.55), "#d8b6ff", 1, 1);
+    this.drawArcanaCircle(context, this.spin * (1.35 + charge * 1.3), this.radius * (2.05 + charge * 0.72), "#f2e5ff", 1, 1.12);
+    context.save();
+    context.rotate(-this.spin * 1.1 + time / 210);
+    context.scale(0.72, 1.22);
+    this.drawArcanaCircle(context, this.spin * 0.4, this.radius * (1.7 + charge * 0.46), "#ff6ee7", 0.72, 0.78);
+    context.restore();
     context.scale(1, 0.58);
-    this.drawArcanaCircle(context, -this.spin * (1.75 + charge * 1.7) - time / 170, this.radius * (1.43 + charge * 0.35), "#9fdcff", 0.72, 0.82);
+    this.drawArcanaCircle(context, -this.spin * (1.75 + charge * 1.7) - time / 170, this.radius * (1.62 + charge * 0.42), "#9fdcff", 0.76, 0.88);
+    context.restore();
+
+    context.save();
+    context.globalCompositeOperation = "source-over";
+    const crystal = context.createRadialGradient(-this.radius * 0.42, -this.radius * 0.5, 3, 0, 0, this.radius * 1.2);
+    crystal.addColorStop(0, "rgba(255,255,255,0.95)");
+    crystal.addColorStop(0.18, "rgba(199,153,255,0.8)");
+    crystal.addColorStop(0.48, "rgba(54,12,88,0.86)");
+    crystal.addColorStop(1, "rgba(10,3,18,0.98)");
+    context.fillStyle = crystal;
+    context.beginPath();
+    context.arc(0, 0, this.radius * (1.02 + charge * 0.08), 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "rgba(231,206,255,0.82)";
+    context.lineWidth = 4 + charge * 2;
+    context.beginPath();
+    context.arc(0, 0, this.radius * 1.14, 0, Math.PI * 2);
+    context.stroke();
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.66;
+    context.fillStyle = "#ffffff";
+    context.beginPath();
+    context.ellipse(-this.radius * 0.34, -this.radius * 0.38, this.radius * 0.18, this.radius * 0.1, -0.55, 0, Math.PI * 2);
+    context.fill();
     context.restore();
   }
 

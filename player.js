@@ -355,9 +355,9 @@ class Player {
     this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
     this.passChainBlockTimer = Math.max(0, this.passChainBlockTimer - delta);
     if (!this.hasBall) this.quickShotReadyTimer = 0;
-    if (this.isWitchStyle() && this.reflectChantTimer <= 0 && this.reflectShieldTimer <= 0 && this.state === "reflectChant") {
-      this.reflectShieldTimer = 3;
-      this.state = "reflectShield";
+    if (this.isWitchStyle() && (this.reflectChantTimer > 0 || this.reflectShieldTimer > 0)) {
+      this.reflectChantTimer = 0;
+      this.reflectShieldTimer = 0;
     }
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
@@ -564,18 +564,7 @@ class Player {
   }
 
   startReflectShield() {
-    if (!this.isWitchStyle() || this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.stunTimer > 0) return false;
-    if (this.hasBall || this.reflectChantTimer > 0 || this.reflectShieldTimer > 0 || this.reflectCooldownTimer > 0) return false;
-    this.reflectChantTimer = 0.8;
-    this.reflectShieldTimer = 0;
-    this.reflectCooldownTimer = 4.2;
-    this.catchTimer = 0;
-    this.dodgeTimer = 0;
-    this.throwTimer = 0;
-    this.throwPhase = "none";
-    this.throwKind = "none";
-    this.state = "reflectChant";
-    return true;
+    return false;
   }
 
   updateRobotVisualState(delta, catchTimerBeforeUpdate) {
