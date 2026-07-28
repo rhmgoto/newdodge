@@ -32,7 +32,8 @@ const CATCH_DIFFICULTY = {
   ufoSpin: { duration: 0.08, areaScale: 0.76 },
   hellfire: { duration: 0.0455, areaScale: 0.504 },
   meteorCrash: { duration: 0.035, areaScale: 0.48 },
-  bloodDrain: { duration: 0.08, areaScale: 0.8 }
+  bloodDrain: { duration: 0.08, areaScale: 0.8 },
+  arcanaSphere: { duration: 0.075, areaScale: 0.74 }
 };
 const HELLFIRE_CONFIG = {
   speedScale: 1.38,
@@ -69,6 +70,12 @@ const BLOOD_DRAIN_CONFIG = {
   normalDrainRatio: 0.22,
   catchHeal: 8,
   lightWeaknessScale: 1.35
+};
+const ARCANA_SPHERE_DAMAGE_CONFIG = {
+  minDamageScale: 0.8,
+  maxDamageScale: 1.8,
+  maxChargeDistance: 600,
+  maxKnockbackScale: 1.4
 };
 const COUNTER_CONFIG = {
   lockDuration: 0.2,
@@ -783,7 +790,7 @@ class DodgeballGame {
         name: "\u30a2\u30fc\u30af\u30de\u30fc\u30ba",
         description: "\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de\u304c\u7387\u3044\u308b\u30e9\u30b9\u30dc\u30b9\u30c1\u30fc\u30e0",
         characterType: "normal",
-        innerNames: ["\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "\u30ce\u30af\u30b9"],
+        innerNames: ["\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "\u9b54\u5973\u30e1\u30eb\u30c6\u30a3"],
         outNames: ["\u30d4\u30b3", "\u30da\u30b3", "\u30dd\u30b3"],
         uniformColor: "#0057ff",
         pantsColor: "#0057ff",
@@ -834,7 +841,16 @@ class DodgeballGame {
             eyeColor: "#56eaff",
             cpuProfile: "arkmaGuard"
           }),
-          player("\u30ce\u30af\u30b9", "inner", "normal", 120, 100, 7, 7, 7, 7, "kiai"),
+          player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 170, 150, 8, 10, 9, 13, "arcanaSphere", {
+            uniformEmblem: "witch",
+            uniformColor: "#6f2aa6",
+            pantsColor: "#35114f",
+            trimColor: "#d8b6ff",
+            hairColor: "#edf1ff",
+            faceColor: "#f4d4c8",
+            eyeColor: "#e0183c",
+            cpuProfile: "arkmaz"
+          }),
           player("\u30d4\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "kiai", {
             uniformEmblem: "miniDevil",
             uniformColor: "#17101f",
@@ -1516,6 +1532,9 @@ class DodgeballGame {
         this.releaseChargedThrow(holder, "pass");
       }
     } else {
+      if (this.input.wasPressed("button0")) {
+        active.startReflectShield?.();
+      }
       if (this.input.wasPressed("avoid")) {
         active.startDodge(0, 0, GAME_CONFIG.battle);
       }
@@ -1550,6 +1569,9 @@ class DodgeballGame {
           this.releaseChargedThrow(holder, "pass", 2);
         }
       } else if (activeRight && !activeRight.defeated) {
+        if (this.input.wasPressed("button0", 2)) {
+          activeRight.startReflectShield?.();
+        }
         if (this.input.wasPressed("avoid", 2)) {
           activeRight.startDodge(0, 0, GAME_CONFIG.battle);
         }
@@ -1595,6 +1617,7 @@ class DodgeballGame {
       }
       if (command.catch) member.startCatch(this.getCatchDuration(member));
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
+      if (command.reflect) member.startReflectShield?.();
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
         const started = this.startCpuChargedShoot(member, command.chargeTime, command.chargeReleaseMode);
@@ -2404,6 +2427,9 @@ class DodgeballGame {
       };
       actor.markThrowing(releaseDelay + 0.18 * windupScale, kind);
       actor.throwLockTimer = Math.max(actor.throwLockTimer, releaseDelay + 0.06 * windupScale);
+      if (specialType === "arcanaSphere") {
+        actor.arcanaAnticipation = true;
+      }
       return true;
     }
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
@@ -2479,6 +2505,9 @@ class DodgeballGame {
         if (this.pendingThrow.specialType === "clockStop") {
           actor.clockStopAnticipation = true;
         }
+        if (this.pendingThrow.specialType === "arcanaSphere") {
+          actor.arcanaAnticipation = true;
+        }
       }
     }
     const throwDuration = kind === "shoot"
@@ -2501,6 +2530,7 @@ class DodgeballGame {
     const pending = this.pendingThrow;
     if (pending.actor.defeated || pending.actor.hitRecoveryTimer > 0 || this.ball.owner !== pending.actor) {
       pending.actor.clockStopAnticipation = false;
+      pending.actor.arcanaAnticipation = false;
       this.pendingThrow = null;
       return;
     }
@@ -2510,6 +2540,7 @@ class DodgeballGame {
 
     this.pendingThrow = null;
     pending.actor.clockStopAnticipation = false;
+    pending.actor.arcanaAnticipation = false;
     const specialType = pending.counter || pending.quickShot
       ? null
       : pending.kind === "shoot"
@@ -2862,6 +2893,7 @@ class DodgeballGame {
   getSpecialShotType(actor) {
     if (!this.hasFullSpirit(actor.team)) return null;
     if (actor.specialShotType) return actor.specialShotType;
+    if (actor.characterType === "witch" || actor.uniformEmblem === "witch") return "arcanaSphere";
     if (actor.characterType === "mage") return "soul";
     if (actor.characterType === "jump") return "boost";
     if (actor.characterType === "alien") return "ufoSpin";
@@ -3129,6 +3161,9 @@ class DodgeballGame {
         : 0;
       const counterTarget = caughtEnemyShot ? this.ball.thrower : null;
       const caughtIronShot = caughtEnemyShot && this.ball.specialShotType === "iron";
+      const caughtArcanaShot = caughtEnemyShot && this.ball.specialShotType === "arcanaSphere";
+      const caughtArcanaCharge = caughtArcanaShot ? this.getArcanaSphereChargeRate(this.ball.travelDistance) : 0;
+      const arcanaDirection = caughtArcanaShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
       const ironDirection = caughtIronShot ? (this.ball.vx >= 0 ? 1 : -1) : 0;
       const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
       const counterChainCount = caughtEnemyShot && this.ball.counterShot ? (this.ball.counterChainCount || 0) + 1 : 0;
@@ -3154,6 +3189,11 @@ class DodgeballGame {
         if (caughtIronShot) {
           catcher.knockbackX += ironDirection * GAME_CONFIG.battle.knockbackSpeed * 2.2;
           catcher.knockbackY += ironVerticalDirection * GAME_CONFIG.battle.knockbackSpeed * 0.55;
+        }
+        if (caughtArcanaShot && caughtArcanaCharge > 0.55) {
+          catcher.knockbackX += arcanaDirection * GAME_CONFIG.battle.knockbackSpeed * (0.35 + caughtArcanaCharge * 0.45);
+          catcher.drainStamina?.(5 + caughtArcanaCharge * 10, GAME_CONFIG.battle.stamina.recoveryDelay * 0.6);
+          this.spawnEffect(catcher.x, catcher.y - catcher.jumpZ - 72, "#d8b6ff", "arcanaImpact", 0.45 + caughtArcanaCharge * 0.35);
         }
         if (this.ball.specialShotType === "hellfire") {
           const hpBefore = catcher.hp;
@@ -3216,9 +3256,12 @@ class DodgeballGame {
       );
     }
 
-    const baseDuration = this.ball.quickShot
-        ? 0.14
-        : difficulty.duration;
+    const arcanaCatchScale = this.ball.specialShotType === "arcanaSphere"
+      ? 1 - this.getArcanaSphereChargeRate(this.ball.travelDistance) * 0.25
+      : 1;
+    const baseDuration = (this.ball.quickShot
+      ? 0.14
+      : difficulty.duration) * arcanaCatchScale;
     const techniqueScale = this.getCatchTechniqueWindowScale(catcher.stats?.technique || 5);
     const facingQuality = this.getIncomingFacingQuality(catcher);
     const facingScale = facingQuality === "front" ? 1 : facingQuality === "side" ? 0.55 : 0.2;
@@ -3425,6 +3468,7 @@ class DodgeballGame {
       const originalTarget = target;
       const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
+      if (this.resolveWitchReflectShield(target, ballY)) return;
       if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
           this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
@@ -3456,6 +3500,9 @@ class DodgeballGame {
       if (shieldGuardBlock) {
         damage *= 0.55;
       }
+      const arcanaCharge = specialType === "arcanaSphere"
+        ? this.getArcanaSphereChargeRate(this.ball.travelDistance)
+        : 0;
       let knockbackScale = this.ball.counterShot
         ? COUNTER_CONFIG.knockbackScale
         : specialType === "lockRocket"
@@ -3464,6 +3511,9 @@ class DodgeballGame {
             ? 1.5
             : demonShot ? 1.18 : 1;
       if (shieldGuardBlock) knockbackScale *= 0.45;
+      if (specialType === "arcanaSphere" && arcanaCharge >= 0.92) {
+        knockbackScale *= ARCANA_SPHERE_DAMAGE_CONFIG.maxKnockbackScale;
+      }
       const hpBefore = target.hp;
       const wasDodging = target.dodgeTimer > 0;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
@@ -3512,6 +3562,9 @@ class DodgeballGame {
           this.startScreenShake(14, 0.16);
           this.applyHellfireBurn(target, direction);
         }
+        if (specialType === "arcanaSphere") {
+          this.startScreenShake(12 + arcanaCharge * 8, 0.13 + arcanaCharge * 0.08);
+        }
         if (shieldGuardBlock) {
           this.startScreenShake(12, 0.12);
         }
@@ -3528,6 +3581,7 @@ class DodgeballGame {
             : specialType === "clockStop" ? "clockImpact"
             : specialType === "lockRocket" ? "lockRocketImpact"
             : specialType === "hellfire" ? "hellfireImpact"
+            : specialType === "arcanaSphere" ? "arcanaImpact"
             : specialType === "ufoSpin" ? "ufoSpinImpact"
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : demonShot ? "maouImpact" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
@@ -3549,6 +3603,75 @@ class DodgeballGame {
       }
       break;
     }
+  }
+
+  resolveWitchReflectShield(target, ballY) {
+    if (!target?.isWitchStyle?.() || target.reflectShieldTimer <= 0 || !this.ball.thrower) return false;
+    if (this.getIncomingFacingQuality(target) !== "front") return false;
+    const facing = this.getFacingVector(target);
+    const shieldX = target.x + facing.x * 84;
+    const shieldY = target.y - target.jumpZ - 72 + facing.y * 58;
+    const dx = (this.ball.x - shieldX) / 68;
+    const dy = (ballY - shieldY) / 82;
+    if (dx * dx + dy * dy > 1) return false;
+
+    const oldThrower = this.ball.thrower;
+    const speed = Math.max(520, Math.hypot(this.ball.vx, this.ball.vy));
+    const reflectedTarget = oldThrower && !oldThrower.defeated ? oldThrower : this.getNearestOpponentFor(target);
+    const targetX = reflectedTarget?.x ?? (target.x + (target.team === "left" ? 480 : -480));
+    const targetY = (reflectedTarget?.y ?? target.y) - 38;
+    const dirX = targetX - this.ball.x;
+    const dirY = targetY - this.ball.y;
+    const length = Math.hypot(dirX, dirY) || 1;
+
+    this.ball.thrower = target;
+    this.ball.target = reflectedTarget || null;
+    this.ball.kind = "shoot";
+    this.ball.owner = null;
+    this.ball.isFlying = true;
+    this.ball.isLoose = false;
+    this.ball.catchable = true;
+    this.ball.hasBounced = false;
+    this.ball.specialShotType = null;
+    this.ball.specialShot = false;
+    this.ball.demonShot = false;
+    this.ball.counterShot = false;
+    this.ball.quickShot = false;
+    this.ball.flightSerial = (this.ball.flightSerial || 0) + 1;
+    this.ball.travelDistance = 0;
+    this.ball.hitPlayerIds?.clear();
+    this.ball.clearClockStop?.();
+    this.ball.clearLockRocket?.();
+    this.ball.clearTsutenkakuDrop?.();
+    this.ball.clearMeteorCrash?.();
+    this.ball.clearLightningZigzag?.();
+    this.ball.clearArcanaSphere?.();
+    this.ball.returning = false;
+    this.ball.boomerangTrail = [];
+    this.ball.vx = dirX / length * speed * 1.03;
+    this.ball.vy = dirY / length * speed * 1.03;
+    this.ball.vz = Math.max(-120, Math.min(260, this.ball.vz || 0));
+    target.reflectShieldTimer = Math.min(target.reflectShieldTimer, 0.28);
+    this.addSpirit(target.team, GAME_CONFIG.battle.spiritCatchGain * 0.75);
+    this.startScreenShake(12, 0.12);
+    this.spawnEffect(shieldX, shieldY, "#b56cff", "shieldImpact", 1.25);
+    this.spawnCatchResultLabel(target, "REFLECT", "#d8b6ff");
+    return true;
+  }
+
+  getNearestOpponentFor(player) {
+    const enemies = player.team === "left" ? this.rightTeam : this.leftTeam;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const enemy of enemies) {
+      if (enemy.defeated || enemy.role !== "inner") continue;
+      const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+      if (distance < bestDistance) {
+        best = enemy;
+        bestDistance = distance;
+      }
+    }
+    return best;
   }
 
   spillHitBallInDefenderCourt(target, direction, damage) {
@@ -3702,8 +3825,18 @@ class DodgeballGame {
       damage = baseDamage * METEOR_CRASH_CONFIG.damageScale;
     } else if (specialType === "bloodDrain") {
       damage = baseDamage * BLOOD_DRAIN_CONFIG.damageScale;
+    } else if (specialType === "arcanaSphere") {
+      const charge = this.getArcanaSphereChargeRate(travelDistance);
+      damage = baseDamage * (
+        ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale +
+        (ARCANA_SPHERE_DAMAGE_CONFIG.maxDamageScale - ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale) * charge
+      );
     }
     return damage * SHOT_DAMAGE_SCALE;
+  }
+
+  getArcanaSphereChargeRate(travelDistance = 0) {
+    return Math.max(0, Math.min(1, travelDistance / ARCANA_SPHERE_DAMAGE_CONFIG.maxChargeDistance));
   }
 
   handleBoostShotExit() {
@@ -4079,6 +4212,7 @@ class DodgeballGame {
     if (specialType === "hellfire") return "#2b0a30";
     if (specialType === "meteorCrash") return "#ff5a1f";
     if (specialType === "bloodDrain") return "#8d061e";
+    if (specialType === "arcanaSphere") return "#9b2cff";
     return "#ffe46a";
   }
 
@@ -4410,7 +4544,7 @@ class DodgeballGame {
       : type === "maouImpact" ? 0.56
       : type === "maouLaunch" ? 0.42
       : type === "tripleSplit" ? 0.42
-      : type === "tripleImpact" || type === "bananaImpact" || type === "shieldImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" || type === "hellfireImpact" ? 0.62
+      : type === "tripleImpact" || type === "bananaImpact" || type === "shieldImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" || type === "hellfireImpact" || type === "arcanaImpact" ? 0.62
       : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
@@ -4527,6 +4661,7 @@ class DodgeballGame {
     if (specialType === "ufoSpin") return "UFO SPIN";
     if (specialType === "hellfire") return "\u30d8\u30eb\u30d5\u30a1\u30a4\u30a2";
     if (specialType === "bloodDrain") return "\u30d6\u30e9\u30c3\u30c9\u30c9\u30ec\u30a4\u30f3";
+    if (specialType === "arcanaSphere") return "\u30a2\u30eb\u30ab\u30ca\u30b9\u30d5\u30a3\u30a2";
     return "";
   }
 
@@ -4942,6 +5077,7 @@ class DodgeballGame {
     if (specialType === "ufoSpin") return "G";
     if (specialType === "hellfire") return "\u706b";
     if (specialType === "bloodDrain") return "\u5438";
+    if (specialType === "arcanaSphere") return "\u9b54";
     return "-";
   }
 
@@ -5260,11 +5396,13 @@ class DodgeballGame {
       style?.uniformEmblem === "arkmaLord" ||
       style?.uniformEmblem === "lavaGolem" ||
       style?.uniformEmblem === "vampire" ||
+      style?.uniformEmblem === "witch" ||
       style?.uniformEmblem === "shieldDevil" ||
       style?.uniformEmblem === "miniDevil" ||
       type === "demon" ||
       type === "lavaGolem" ||
       type === "vampire" ||
+      type === "witch" ||
       type === "shieldDevil" ||
       type === "miniDevil"
     ) {
@@ -5573,11 +5711,13 @@ class DodgeballGame {
         ? scale * 0.46
         : (type === "shieldDevil" || style?.uniformEmblem === "shieldDevil")
           ? scale * 0.82
-        : (type === "miniDevil" || style?.uniformEmblem === "miniDevil")
-          ? scale * 0.82
-        : (type === "vampire" || style?.uniformEmblem === "vampire")
-          ? scale * 0.95
-          : scale;
+          : (type === "miniDevil" || style?.uniformEmblem === "miniDevil")
+            ? scale * 0.82
+            : (type === "vampire" || style?.uniformEmblem === "vampire")
+              ? scale * 0.95
+              : (type === "witch" || style?.uniformEmblem === "witch")
+                ? scale * 0.94
+                : scale;
     const previewConfig = {
       ...GAME_CONFIG.battle,
       depthTop: y - 120,
@@ -7136,6 +7276,54 @@ class DodgeballGame {
             Math.PI * 2
           );
           context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "arcanaImpact") {
+        const intensity = effect.intensity || 1;
+        const radius = 36 + progress * (160 + intensity * 42);
+        context.save();
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.fillStyle = `rgba(216,182,255,${Math.max(0, 0.65 - progress * 0.72)})`;
+        context.beginPath();
+        context.arc(0, 0, 42 * (1 - progress * 0.45), 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#d8b6ff";
+        context.lineWidth = 16 - progress * 8;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = 8 - progress * 3;
+        context.beginPath();
+        context.arc(0, 0, radius * 1.24, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#8ffcff";
+        context.lineWidth = 4;
+        context.beginPath();
+        for (let i = 0; i < 3; i += 1) {
+          const angle = -Math.PI / 2 + i * Math.PI * 2 / 3 + progress * 1.4;
+          const px = Math.cos(angle) * radius * 0.72;
+          const py = Math.sin(angle) * radius * 0.72;
+          if (i === 0) context.moveTo(px, py);
+          else context.lineTo(px, py);
+        }
+        context.closePath();
+        context.stroke();
+        const colors = ["#ffffff", "#d8b6ff", "#9b2cff", "#8ffcff"];
+        for (let index = 0; index < 18; index += 1) {
+          const angle = index * Math.PI * 2 / 18 + progress * 0.9;
+          const inner = radius * 0.25;
+          const outer = radius * (0.86 + (index % 4) * 0.16);
+          context.strokeStyle = colors[index % colors.length];
+          context.lineWidth = index % 3 === 0 ? 5 : 3;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
         }
         context.restore();
         continue;

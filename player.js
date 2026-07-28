@@ -144,6 +144,21 @@ const CHARACTER_TYPES = {
     legLength: 1.34,
     vampire: true
   },
+  witch: {
+    maxHp: 160,
+    maxStamina: 150,
+    stats: { power: 8, speed: 10, jump: 9, technique: 13 },
+    label: "Witch",
+    scaleX: 0.88,
+    scaleY: 1.06,
+    headScale: 0.9,
+    torsoX: 0.76,
+    torsoY: 1.02,
+    armWidth: 0.82,
+    legWidth: 0.78,
+    legLength: 1.02,
+    witch: true
+  },
   shieldDevil: {
     maxHp: 230,
     maxStamina: 150,
@@ -272,6 +287,10 @@ class Player {
     this.passChainBlockTimer = 0;
     this.shieldAlertTimer = 0;
     this.shieldGuardTimer = 0;
+    this.reflectChantTimer = 0;
+    this.reflectShieldTimer = 0;
+    this.reflectCooldownTimer = 0;
+    this.arcanaAnticipation = false;
     this.maxStamina = options.maxStamina ?? typeDefinition.maxStamina ?? 100;
     this.stamina = this.maxStamina;
     this.staminaRecoveryDelay = 0;
@@ -306,6 +325,9 @@ class Player {
     this.slowTimer = Math.max(0, this.slowTimer - delta);
     this.shieldAlertTimer = Math.max(0, this.shieldAlertTimer - delta);
     this.shieldGuardTimer = Math.max(0, this.shieldGuardTimer - delta);
+    this.reflectChantTimer = Math.max(0, this.reflectChantTimer - delta);
+    this.reflectShieldTimer = Math.max(0, this.reflectShieldTimer - delta);
+    this.reflectCooldownTimer = Math.max(0, this.reflectCooldownTimer - delta);
     if (this.slowTimer <= 0) this.slowScale = 1;
     this.throwTimer = Math.max(0, this.throwTimer - delta);
     if (this.throwTimer > 0) {
@@ -333,6 +355,10 @@ class Player {
     this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
     this.passChainBlockTimer = Math.max(0, this.passChainBlockTimer - delta);
     if (!this.hasBall) this.quickShotReadyTimer = 0;
+    if (this.isWitchStyle() && this.reflectChantTimer <= 0 && this.reflectShieldTimer <= 0 && this.state === "reflectChant") {
+      this.reflectShieldTimer = 3;
+      this.state = "reflectShield";
+    }
     if (this.dodgeTimer <= 0) {
       this.dodgeType = "none";
     }
@@ -370,6 +396,14 @@ class Player {
       this.vx = 0;
       this.vy = 0;
       this.state = "damaged";
+      this.updateJump(delta, config);
+      return;
+    }
+
+    if (this.isWitchStyle() && this.reflectChantTimer > 0) {
+      this.vx = 0;
+      this.vy = 0;
+      this.state = "reflectChant";
       this.updateJump(delta, config);
       return;
     }
@@ -419,6 +453,8 @@ class Player {
       this.state = "damaged";
     } else if (this.throwTimer > 0) {
       this.state = "throwing";
+    } else if (this.reflectShieldTimer > 0 && this.isWitchStyle()) {
+      this.state = "reflectShield";
     } else if (this.catchTimer > 0) {
       this.state = "catching";
     } else if (this.dodgeTimer > 0) {
@@ -467,6 +503,7 @@ class Player {
 
   startCatch(duration) {
     if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0) return;
+    if (this.reflectChantTimer > 0) return;
     this.catchTimer = duration;
     this.state = "catching";
   }
@@ -515,6 +552,7 @@ class Player {
 
   startDodge(moveX, moveY, config) {
     if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.dodgeTimer > 0) return false;
+    if (this.reflectChantTimer > 0) return false;
     const cost = config.stamina.duckCost;
     if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
 
@@ -522,6 +560,21 @@ class Player {
     this.dodgeTimer = config.duckDuration;
     this.robotDodgeDirection = Math.abs(moveX) > 0.08 ? Math.sign(moveX) : this.facing;
     this.state = "dodging";
+    return true;
+  }
+
+  startReflectShield() {
+    if (!this.isWitchStyle() || this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.stunTimer > 0) return false;
+    if (this.hasBall || this.reflectChantTimer > 0 || this.reflectShieldTimer > 0 || this.reflectCooldownTimer > 0) return false;
+    this.reflectChantTimer = 0.8;
+    this.reflectShieldTimer = 0;
+    this.reflectCooldownTimer = 4.2;
+    this.catchTimer = 0;
+    this.dodgeTimer = 0;
+    this.throwTimer = 0;
+    this.throwPhase = "none";
+    this.throwKind = "none";
+    this.state = "reflectChant";
     return true;
   }
 
@@ -646,6 +699,8 @@ class Player {
     this.throwPhase = "none";
     this.throwKind = "none";
     this.dodgeTimer = 0;
+    this.reflectChantTimer = 0;
+    this.reflectShieldTimer = 0;
     this.clearCounterOpportunity();
     const damageRatio = Math.max(0.65, Math.min(2.1, finalAmount / 20));
     const isDefeatHit = this.hp <= 0;
@@ -666,6 +721,8 @@ class Player {
     if (this.defeated || this.hp <= 0) return false;
     this.hp = Math.max(0, this.hp - this.getIncomingDamageAmount(amount));
     this.isDamaged = true;
+    this.reflectChantTimer = 0;
+    this.reflectShieldTimer = 0;
     if (this.hp <= 0) {
       this.hasBall = false;
       this.downTimer = config.downTime;
@@ -863,6 +920,11 @@ class Player {
 
     if (this.isLavaGolemStyle()) {
       this.drawLavaGolemCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
+    if (this.isWitchStyle()) {
+      this.drawWitchCharacter(context, scale, drawY, motionTime);
       return;
     }
 
@@ -1212,6 +1274,10 @@ class Player {
 
   isShieldDevilStyle() {
     return this.characterType === "shieldDevil" || this.uniformEmblem === "shieldDevil";
+  }
+
+  isWitchStyle() {
+    return this.characterType === "witch" || this.uniformEmblem === "witch";
   }
 
   isMiniDevilStyle() {
@@ -1934,6 +2000,265 @@ class Player {
       context.closePath();
       context.fill();
     }
+  }
+
+  drawWitchCharacter(context, scale, drawY, motionTime) {
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    const catching = this.catchTimer > 0 || this.catchSuccessTimer > 0;
+    const reflectChant = this.reflectChantTimer > 0;
+    const reflectShield = this.reflectShieldTimer > 0;
+    const arcanaChant = this.arcanaAnticipation && this.hasBall;
+    const robe = this.uniformColor || "#6f2aa6";
+    const robeDark = this.pantsColor || "#35114f";
+    const trim = this.trimColor || "#d8b6ff";
+    const skin = this.faceColor || "#f4d4c8";
+    const hair = this.hairColor || "#edf1ff";
+    const eye = this.eyeColor || "#e0183c";
+    const floatBob = Math.sin(motionTime / (moving ? 135 : 230) + this.x * 0.01) * (moving ? 5 : 3);
+    const glide = moving ? Math.sin(motionTime / 180 + this.y * 0.01) * 3 : 0;
+    const rootY = (crouch ? 14 : 0) + floatBob;
+    const headY = -112 + rootY;
+    const shoulderY = -72 + rootY;
+    const hipY = -19 + rootY;
+    const stride = moving ? Math.sin(motionTime / 118 + this.x * 0.018) * (this.isDashing ? 7 : 4) : 0;
+    let wandHand = { x: 49 + glide, y: -67 + rootY };
+    let freeHand = { x: -33 - glide, y: -58 + rootY };
+
+    if (reflectChant || reflectShield || arcanaChant) {
+      wandHand = { x: 16, y: -150 + rootY };
+      freeHand = { x: -25, y: -86 + rootY };
+    } else if (throwWindup) {
+      wandHand = { x: -56, y: -111 + rootY };
+      freeHand = { x: 37, y: -45 + rootY };
+    } else if (throwRelease) {
+      wandHand = { x: 71, y: -94 + rootY };
+      freeHand = { x: -34, y: -52 + rootY };
+    } else if (catching) {
+      wandHand = { x: 28, y: -112 + rootY };
+      freeHand = { x: -28, y: -112 + rootY };
+    } else if (crouch) {
+      wandHand = { x: 43, y: -27 + rootY };
+      freeHand = { x: -31, y: -30 + rootY };
+    }
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * this.facing, scale);
+    if (down) {
+      context.rotate(-Math.PI / 2.5);
+      context.translate(-18, 20);
+    }
+
+    context.fillStyle = "rgba(28, 10, 42, 0.23)";
+    context.beginPath();
+    context.ellipse(0, 22, 29, 7, 0, 0, Math.PI * 2);
+    context.fill();
+
+    if (reflectShield) {
+      const pulse = 1 + Math.sin(motionTime / 85) * 0.06;
+      context.save();
+      context.translate(76, -72 + rootY);
+      context.scale(pulse, pulse);
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.36;
+      context.fillStyle = "#7b2cff";
+      context.beginPath();
+      for (let i = 0; i < 6; i += 1) {
+        const angle = Math.PI / 6 + i * Math.PI / 3;
+        const px = Math.cos(angle) * 48;
+        const py = Math.sin(angle) * 58;
+        if (i === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.fill();
+      context.globalAlpha = 0.92;
+      context.strokeStyle = "#e1b8ff";
+      context.lineWidth = 5;
+      context.stroke();
+      context.strokeStyle = "#9b2cff";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(0, 0, 31, 0, Math.PI * 2);
+      context.stroke();
+      for (let i = 0; i < 6; i += 1) {
+        const angle = Math.PI / 6 + i * Math.PI / 3;
+        context.beginPath();
+        context.moveTo(0, 0);
+        context.lineTo(Math.cos(angle) * 44, Math.sin(angle) * 52);
+        context.stroke();
+      }
+      context.restore();
+    }
+
+    context.fillStyle = "#08050e";
+    context.beginPath();
+    context.moveTo(-34, shoulderY - 1);
+    context.quadraticCurveTo(-52, -38 + rootY, -40, 12 + rootY);
+    context.quadraticCurveTo(-14, 29 + rootY, 0, 17 + rootY);
+    context.quadraticCurveTo(14, 29 + rootY, 40, 12 + rootY);
+    context.quadraticCurveTo(52, -38 + rootY, 34, shoulderY - 1);
+    context.closePath();
+    context.fill();
+
+    this.drawModelLimb(context, [{ x: -10, y: hipY }, { x: -14 - stride, y: 0 + rootY }, { x: -16 - stride * 1.1, y: 23 + rootY }], "#221027", 8);
+    this.drawModelLimb(context, [{ x: 10, y: hipY }, { x: 14 + stride, y: 0 + rootY }, { x: 16 + stride * 1.1, y: 23 + rootY }], "#221027", 8);
+    this.drawModelFoot(context, { x: -16 - stride * 1.1, y: 23 + rootY }, "#120816");
+    this.drawModelFoot(context, { x: 16 + stride * 1.1, y: 23 + rootY }, "#120816");
+
+    this.drawModelLimb(context, [{ x: -22, y: shoulderY }, { x: -30, y: -62 + rootY }, freeHand], skin, 8);
+    this.drawModelLimb(context, [{ x: 22, y: shoulderY }, { x: 34, y: -64 + rootY }, wandHand], skin, 8);
+
+    const robeGradient = context.createLinearGradient(-26, shoulderY, 27, 22 + rootY);
+    robeGradient.addColorStop(0, "#9a4bd5");
+    robeGradient.addColorStop(0.5, robe);
+    robeGradient.addColorStop(1, robeDark);
+    context.fillStyle = robeGradient;
+    context.strokeStyle = "#180824";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(-24, shoulderY - 3);
+    context.quadraticCurveTo(-34, -26 + rootY, -27, 22 + rootY);
+    context.lineTo(0, 32 + rootY);
+    context.lineTo(27, 22 + rootY);
+    context.quadraticCurveTo(34, -26 + rootY, 24, shoulderY - 3);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.strokeStyle = trim;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(0, shoulderY + 3);
+    context.lineTo(0, 24 + rootY);
+    context.moveTo(-18, -53 + rootY);
+    context.quadraticCurveTo(0, -43 + rootY, 18, -53 + rootY);
+    context.stroke();
+
+    context.strokeStyle = "#6b3b1b";
+    context.lineWidth = 5;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(wandHand.x + 5, wandHand.y + 18);
+    context.lineTo(wandHand.x + 31, wandHand.y - 60);
+    context.stroke();
+    context.fillStyle = "#ff304a";
+    context.strokeStyle = "#ffd1d8";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(wandHand.x + 33, wandHand.y - 66, 8 + Math.sin(motionTime / 120) * 1.2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    if (reflectChant || arcanaChant) {
+      const ratio = arcanaChant ? 0.85 : Math.max(0, Math.min(1, 1 - this.reflectChantTimer / 0.8));
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.28 + ratio * 0.45;
+      context.strokeStyle = "#d8b6ff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.arc(wandHand.x + 33, wandHand.y - 66, 18 + ratio * 26, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9b2cff";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(wandHand.x + 33, wandHand.y - 94 - ratio * 12);
+      context.lineTo(wandHand.x + 33, wandHand.y - 38 + ratio * 12);
+      context.moveTo(wandHand.x + 5 - ratio * 12, wandHand.y - 66);
+      context.lineTo(wandHand.x + 61 + ratio * 12, wandHand.y - 66);
+      context.stroke();
+      context.restore();
+    }
+
+    if (arcanaChant && this.hasBall) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.translate(0, -55 + rootY);
+      context.globalAlpha = 0.5 + Math.sin(motionTime / 70) * 0.15;
+      context.strokeStyle = "#d8b6ff";
+      context.lineWidth = 3.5;
+      context.beginPath();
+      context.arc(0, 0, 28, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9b2cff";
+      context.beginPath();
+      for (let i = 0; i < 3; i += 1) {
+        const angle = -Math.PI / 2 + i * Math.PI * 2 / 3 + motionTime / 420;
+        const px = Math.cos(angle) * 22;
+        const py = Math.sin(angle) * 22;
+        if (i === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.stroke();
+      context.restore();
+    }
+
+    context.fillStyle = hair;
+    context.strokeStyle = "#aeb8d0";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-23, headY - 8);
+    context.quadraticCurveTo(-42, headY + 20, -31, headY + 67);
+    context.quadraticCurveTo(-10, headY + 54, -5, headY + 10);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(22, headY - 8);
+    context.quadraticCurveTo(42, headY + 21, 31, headY + 66);
+    context.quadraticCurveTo(10, headY + 54, 5, headY + 10);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = skin;
+    context.strokeStyle = "#2a102a";
+    context.lineWidth = 3.5;
+    context.beginPath();
+    context.ellipse(0, headY, 23, 25, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#23102f";
+    context.strokeStyle = "#130719";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.ellipse(0, headY - 22, 36, 9, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = robe;
+    context.beginPath();
+    context.moveTo(-22, headY - 23);
+    context.quadraticCurveTo(-6, headY - 86, 16, headY - 31);
+    context.quadraticCurveTo(7, headY - 20, -22, headY - 23);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.strokeStyle = trim;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-14, headY - 36);
+    context.quadraticCurveTo(-1, headY - 30, 12, headY - 35);
+    context.stroke();
+
+    context.fillStyle = eye;
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.ellipse(side * 8, headY - 2, damaged ? 6 : 4.5, damaged ? 4.5 : 3.5, -side * 0.12, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.strokeStyle = "#351530";
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.arc(0, headY + 10, 7, 0.2, Math.PI - 0.2);
+    context.stroke();
+
+    context.restore();
   }
 
   drawDemonBoot(context, foot, gold) {
