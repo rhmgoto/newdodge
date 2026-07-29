@@ -1328,7 +1328,13 @@ class Player {
   }
 
   getCharacterVisualScale() {
-    return this.isDemonStyle() ? 1.6 : this.isLavaGolemStyle() ? 1.92 : 1;
+    return this.isDemonStyle()
+      ? 1.6
+      : this.isLavaGolemStyle()
+        ? 1.92
+        : this.isAlienStyle() && (this.isCaptain || this.uniformEmblem === "galactakoCaptain")
+          ? 1.16
+          : 1;
   }
 
   isRobotOverdrive() {
@@ -1354,6 +1360,7 @@ class Player {
   }
 
   drawAlienCharacter(context, scale, drawY, motionTime) {
+    const captain = this.isCaptain || this.uniformEmblem === "galactakoCaptain";
     const moving = Math.hypot(this.vx, this.vy) > 15;
     const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
     const damaged = this.state === "damaged";
@@ -1369,6 +1376,10 @@ class Player {
     const eyeColor = this.eyeColor || "#cafff7";
     const trimColor = this.trimColor || "#7cffcb";
     const suitColor = this.uniformColor || "#1d9ec4";
+    const bodyWidth = captain ? 63 : 55;
+    const bodyHeight = captain ? 78 : 70;
+    const tentacleCount = captain ? 7 : 5;
+    const tentacleCenter = (tentacleCount - 1) / 2;
 
     context.save();
     context.translate(this.x, drawY - floatLift);
@@ -1387,58 +1398,49 @@ class Player {
     context.fill();
 
     const tentacleBaseY = -38;
-    for (let index = 0; index < 5; index += 1) {
-      const t = index - 2;
+    for (let index = 0; index < tentacleCount; index += 1) {
+      const t = index - tentacleCenter;
       const phase = motionTime / 190 + index * 1.35 + this.x * 0.015;
       const sway = Math.sin(phase) * (moving ? 10 : 5) + drift * 4;
       const dashBend = this.isDashing ? -this.facing * (8 + index * 1.5) : 0;
-      const startX = t * 12;
+      const startX = t * (captain ? 10 : 12);
       const midX = startX + sway * 0.35 + dashBend * 0.35;
       const endX = startX + sway + dashBend;
-      const endY = 20 + Math.cos(phase * 0.8) * 5;
+      const endY = (captain ? 24 : 20) + Math.cos(phase * 0.8) * 5;
       context.strokeStyle = index % 2 === 0 ? shadeColor : bodyColor;
-      context.lineWidth = 10 - Math.abs(t);
+      context.lineWidth = Math.max(5, (captain ? 11 : 10) - Math.abs(t));
       context.lineCap = "round";
       context.beginPath();
       context.moveTo(startX, tentacleBaseY);
       context.quadraticCurveTo(midX, -10, endX, endY);
       context.stroke();
 
-      context.fillStyle = "rgba(202,255,247,0.45)";
+      context.fillStyle = captain
+        ? (index % 2 === 0 ? "rgba(255,216,74,0.76)" : "rgba(124,255,203,0.72)")
+        : "rgba(202,255,247,0.45)";
       context.beginPath();
-      context.arc(endX - this.facing * 2, endY - 2, 2.5, 0, Math.PI * 2);
+      context.arc(endX - this.facing * 2, endY - 2, captain ? 4.2 : 2.5, 0, Math.PI * 2);
       context.fill();
     }
 
-    const bodyGradient = context.createRadialGradient(-18, -120, 10, 0, -84, 82);
+    const bodyGradient = context.createRadialGradient(-18, -120, 10, 0, -84, captain ? 92 : 82);
     bodyGradient.addColorStop(0, "#8fffe4");
     bodyGradient.addColorStop(0.55, bodyColor);
     bodyGradient.addColorStop(1, shadeColor);
     context.fillStyle = bodyGradient;
     context.beginPath();
-    context.ellipse(0, -83, 55, 70, 0, 0, Math.PI * 2);
+    context.ellipse(0, -83, bodyWidth, bodyHeight, 0, 0, Math.PI * 2);
     context.fill();
 
     context.fillStyle = suitColor;
     context.beginPath();
-    context.ellipse(0, -35, 32, 25, 0, 0, Math.PI * 2);
+    context.ellipse(0, -35, captain ? 37 : 32, captain ? 28 : 25, 0, 0, Math.PI * 2);
     context.fill();
     context.strokeStyle = trimColor;
     context.lineWidth = 4;
     context.beginPath();
-    context.arc(0, -40, 29, 0.12, Math.PI - 0.12);
+    context.arc(0, -40, captain ? 34 : 29, 0.12, Math.PI - 0.12);
     context.stroke();
-
-    if (this.isCaptain || this.uniformEmblem === "galactakoCaptain") {
-      context.fillStyle = "#f7f7f2";
-      this.roundRect(context, -14, -47, 28, 27, 4);
-      context.fill();
-      context.fillStyle = "#157f9d";
-      context.font = "bold 15px Meiryo, sans-serif";
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.fillText("G", 0, -33);
-    }
 
     const eyeY = -102 + (catchProgress ? -4 : 0);
     const eyeSpread = this.visualDirection === "up" || this.visualDirection === "down" ? 18 : 20;
@@ -1455,6 +1457,16 @@ class Player {
       context.arc(side * eyeSpread + side * (throwRelease ? 4 : throwWindup ? -3 : 0), eyeY + 2, 5.5, 0, Math.PI * 2);
       context.fill();
       context.fillStyle = "#eaffff";
+    }
+    if (captain) {
+      context.beginPath();
+      context.ellipse(0, eyeY - 22, 10, 12, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#ffd84a";
+      context.beginPath();
+      context.arc(0, eyeY - 20, 4.8, 0, Math.PI * 2);
+      context.fill();
     }
 
     context.strokeStyle = damaged ? "#ffffff" : "#145466";
@@ -3816,18 +3828,29 @@ class Player {
 
   drawShootMarker(context) {
     const y = this.getVisualTop() - 68;
+    const phase = performance.now() / 120;
+    const pulse = 0.5 + Math.sin(phase) * 0.5;
     context.save();
-    context.fillStyle = "#ffef62";
-    context.strokeStyle = "#8e2f22";
-    context.lineWidth = 4;
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.3 + pulse * 0.28;
+    context.strokeStyle = "#ff304a";
+    context.lineWidth = 8;
     context.beginPath();
-    context.arc(this.x, y, 18, 0, Math.PI * 2);
+    context.ellipse(this.x, this.y - this.jumpZ - 48, 58 + pulse * 12, 78 + pulse * 16, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+    context.fillStyle = "#ffef62";
+    context.strokeStyle = "#8e1712";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.arc(this.x, y, 22 + pulse * 3, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    context.fillStyle = "#8e2f22";
-    context.font = "bold 23px Meiryo, sans-serif";
+    context.fillStyle = "#8e1712";
+    context.font = "bold 29px Meiryo, sans-serif";
     context.textAlign = "center";
-    context.fillText("S", this.x, y + 8);
+    context.fillText("!", this.x, y + 10);
     context.restore();
   }
 

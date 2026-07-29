@@ -1918,8 +1918,7 @@ class DodgeballGame {
       if (this.ball.canBePickedUpBy(member, pickupDistance)) {
         this.ball.pickUp(member);
         this.setControlledMember(member.team, member);
-        break;
-      }
+  }
     }
   }
 
@@ -3128,6 +3127,7 @@ class DodgeballGame {
       if (catcher.defeated || catcher.hitRecoveryTimer > 0 || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
       const friendly = catcher.team === this.ball.thrower.team;
       if (friendly && this.ball.kind === "shoot") continue;
+      if (!friendly && this.ball.kind === "shoot" && catcher !== this.ball.target) continue;
       if (friendly && (this.ball.specialShotType === "boomerang" || this.ball.specialShotType === "devilShield")) continue;
       if (!this.canPlayerAcquireBallAt(catcher, this.ball.x, this.ball.y)) continue;
       const box = this.getCatchArea(catcher, friendly);
@@ -3215,7 +3215,6 @@ class DodgeballGame {
         this.startScreenShake(6 + Math.min(5, caughtShotDamage / 24), 0.12);
         this.spawnCatchResultLabel(catcher, "CATCH", "#8fffe8");
       }
-      break;
     }
   }
 
@@ -3551,9 +3550,9 @@ class DodgeballGame {
     const targets = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
     if (this.tryIncomingWitchWarpEscapes(targets)) return;
 
-    for (let target of targets) {
-      if (target.defeated || target.role !== "inner") continue;
-      if (this.ball.hitPlayerIds?.has(target.id)) continue;
+    let target = this.ball.target;
+    if (!target || !targets.includes(target) || target.defeated || target.role !== "inner") return;
+    if (this.ball.hitPlayerIds?.has(target.id)) return;
       const originalTarget = target;
       const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
@@ -3568,7 +3567,7 @@ class DodgeballGame {
             return;
           }
         }
-        continue;
+        return;
       }
       const guardedTarget = this.resolveArkmaShieldDevilGuard(originalTarget, targets, ballY);
       if (guardedTarget === "caught") return;
@@ -3697,8 +3696,6 @@ class DodgeballGame {
           return;
         }
       }
-      break;
-    }
   }
 
   resolveWitchReflectShield(target, ballY) {
@@ -4832,39 +4829,62 @@ class DodgeballGame {
     if (
       !this.ball?.isFlying ||
       this.ball.kind !== "shoot" ||
-      !this.ball.specialShotType ||
       !target ||
       target.defeated
     ) return;
 
-    const phase = performance.now() / 115;
+    const phase = performance.now() / 95;
     const pulse = 0.5 + Math.sin(phase) * 0.5;
     const visualTop = target.getVisualTop();
     const visualBottom = target.y - target.jumpZ + 18;
     const bodyCenterY = (visualTop + visualBottom) * 0.5;
-    const bodyRadius = Math.max(92, (visualBottom - visualTop) * 0.66);
-    const y = visualTop - 126 - Math.sin(phase * 0.55) * 7;
+    const bodyRadius = Math.max(108, (visualBottom - visualTop) * 0.74);
+    const y = visualTop - 136 - Math.sin(phase * 0.55) * 8;
     context.save();
     context.globalCompositeOperation = "screen";
     context.translate(target.x, bodyCenterY);
     context.scale(0.72, 1);
     const aura = context.createRadialGradient(0, 0, bodyRadius * 0.12, 0, 0, bodyRadius);
-    aura.addColorStop(0, `rgba(255,245,120,${0.12 + pulse * 0.1})`);
-    aura.addColorStop(0.48, `rgba(255,92,48,${0.15 + pulse * 0.13})`);
+    aura.addColorStop(0, `rgba(255,245,120,${0.16 + pulse * 0.12})`);
+    aura.addColorStop(0.48, `rgba(255,92,48,${0.2 + pulse * 0.16})`);
     aura.addColorStop(1, "rgba(255,40,24,0)");
     context.fillStyle = aura;
     context.shadowColor = "#ff4b2c";
-    context.shadowBlur = 28 + pulse * 18;
+    context.shadowBlur = 34 + pulse * 22;
     context.beginPath();
     context.arc(0, 0, bodyRadius * (0.96 + pulse * 0.08), 0, Math.PI * 2);
     context.fill();
     context.restore();
 
     context.save();
+    context.globalCompositeOperation = "lighter";
+    context.translate(target.x, bodyCenterY);
+    context.scale(1, 0.56);
+    context.rotate(phase * 0.16);
+    context.globalAlpha = 0.72 + pulse * 0.28;
+    context.strokeStyle = "#ff304a";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.arc(0, 0, bodyRadius * (0.86 + pulse * 0.04), 0, Math.PI * 2);
+    context.stroke();
+    context.strokeStyle = "#fff15a";
+    context.lineWidth = 4;
+    for (let mark = 0; mark < 4; mark += 1) {
+      const angle = mark * Math.PI / 2;
+      const inner = bodyRadius * 0.56;
+      const outer = bodyRadius * 1.08;
+      context.beginPath();
+      context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+      context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+      context.stroke();
+    }
+    context.restore();
+
+    context.save();
     context.globalAlpha = 0.42 + pulse * 0.58;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.font = "bold 87px Meiryo, sans-serif";
+    context.font = "bold 98px Meiryo, sans-serif";
     context.lineJoin = "round";
     context.lineWidth = 14;
     context.strokeStyle = "rgba(255,255,255,0.96)";
@@ -7039,7 +7059,7 @@ class DodgeballGame {
           context.fill();
         }
         context.restore();
-        continue;
+        return;
       }
       if (effect.type === "witchWarp") {
         const intensity = effect.intensity || 1;
@@ -7073,7 +7093,7 @@ class DodgeballGame {
           context.stroke();
         }
         context.restore();
-        continue;
+        return;
       }
       if (effect.type === "clockImpact") {
         const radius = 34 + progress * 150;
@@ -7500,7 +7520,7 @@ class DodgeballGame {
           context.restore();
         }
         context.restore();
-        continue;
+        return;
       }
       if (effect.type === "hellfireImpact") {
         const intensity = effect.intensity || 1;

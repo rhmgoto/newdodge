@@ -461,6 +461,7 @@ class CPUController {
         command.chargeShoot = true;
         command.chargeTime = 0.28;
         command.chargeReleaseMode = "time";
+        holder.cpuForceDevilTriangleMiniShotUntil = 0;
         this.specialAttackState = null;
         this.throwTimer = 0.48;
         this.holderPlan = null;
@@ -703,6 +704,14 @@ class CPUController {
   }
 
   getHolderPlan(holder) {
+    if ((holder.cpuForceDevilTriangleMiniShotUntil || 0) > Date.now()) {
+      if (this.attackTactic) this.attackTactic.finished = true;
+      const plan = this.createHolderPlan(holder, "devil-triangle-mini-final", 0);
+      plan.specialAttackPlan = true;
+      plan.devilTriangleFinal = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.03);
+      return plan;
+    }
     if ((holder.cpuForceDevilTriangleShotUntil || 0) > Date.now()) {
       if (this.attackTactic) this.attackTactic.finished = true;
       const plan = this.createHolderPlan(holder, "devil-triangle-final", 0);
@@ -936,6 +945,7 @@ class CPUController {
 
     const state = this.specialAttackState;
     if (state.readyForArkmaShot && holder.id === state.arkmaId) {
+      holder.cpuForceDevilTriangleShotUntil = Math.max(holder.cpuForceDevilTriangleShotUntil || 0, Date.now() + 1800);
       const plan = this.createHolderPlan(holder, "devil-triangle-final", 0);
       plan.specialAttackPlan = true;
       plan.devilTriangleFinal = true;
@@ -945,6 +955,7 @@ class CPUController {
     }
 
     if (state.readyForMiniShotId && holder.id === state.readyForMiniShotId) {
+      holder.cpuForceDevilTriangleMiniShotUntil = Math.max(holder.cpuForceDevilTriangleMiniShotUntil || 0, Date.now() + 1800);
       const plan = this.createHolderPlan(holder, "devil-triangle-mini-final", 0);
       plan.specialAttackPlan = true;
       plan.devilTriangleFinal = true;
@@ -972,6 +983,9 @@ class CPUController {
       plan.devilTriangleFinal = true;
       state.readyForMiniShotId = holder.id;
       state.finished = true;
+      holder.cpuForceDevilTriangleMiniShotUntil = Date.now() + 2200;
+      holder.cpuPreferredPassTargetId = null;
+      holder.passChainBlockTimer = Math.max(holder.passChainBlockTimer || 0, 1.4);
       this.throwTimer = Math.min(this.throwTimer, 0.03);
       return plan;
     }
@@ -1016,6 +1030,7 @@ class CPUController {
         if (miniFinisher) {
           miniFinisher.cpuPreferredPassTargetId = null;
           miniFinisher.passChainBlockTimer = Math.max(miniFinisher.passChainBlockTimer || 0, 1.4);
+          miniFinisher.cpuForceDevilTriangleMiniShotUntil = Date.now() + 2200;
         }
         this.throwTimer = Math.min(this.throwTimer, 0.06);
       }
