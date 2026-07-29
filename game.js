@@ -841,7 +841,7 @@ class DodgeballGame {
             eyeColor: "#56eaff",
             cpuProfile: "arkmaGuard"
           }),
-          player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 170, 150, 8, 10, 9, 13, "arcanaSphere", {
+          player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 250, 150, 12, 10, 9, 13, "arcanaSphere", {
             uniformEmblem: "witch",
             uniformColor: "#6f2aa6",
             pantsColor: "#35114f",
@@ -3418,9 +3418,11 @@ class DodgeballGame {
     this.ball.vy = (Math.random() - 0.5) * 120;
     this.ball.vz = 120 + Math.random() * 80;
     this.addSpirit(protector.team, GAME_CONFIG.battle.spiritCatchGain);
-    this.startScreenShake(16, 0.18);
-    this.spawnEffect(protector.x, protector.y - protector.jumpZ - 72, "#9b2cff", "shieldImpact", 1.05);
-    this.spawnEffect(target.x, target.y - target.jumpZ - 82, "#fff7a0", "shieldImpact", 0.65);
+    this.startScreenShake(22, 0.24);
+    this.spawnEffect(protector.x, protector.y - protector.jumpZ - 72, "#9b2cff", "shieldImpact", 1.48);
+    this.spawnEffect(protector.x - direction * 34, protector.y - protector.jumpZ - 78, "#fff7a0", "shieldImpact", 0.94);
+    this.spawnEffect(target.x, target.y - target.jumpZ - 82, "#fff7a0", "shieldImpact", 0.82);
+    this.spawnCatchResultLabel(protector, "GUARD", "#fff7a0");
   }
 
   resolveArkmaShieldDevilGuard(target, targets, ballY) {
@@ -3440,13 +3442,106 @@ class DodgeballGame {
     protector.shieldGuardTimer = Math.max(protector.shieldGuardTimer || 0, 0.58);
     protector.x = target.x - direction * 64;
     protector.y = target.y + Math.max(-46, Math.min(46, this.ball.y - target.y));
-    protector.jumpZ = Math.max(protector.jumpZ || 0, Math.max(0, this.ball.z - 30));
+    protector.jumpZ = 0;
+    protector.jumpVelocity = 0;
     protector.facing = -direction;
     protector.clampToArea(this.areas[protector.zone]);
 
-    this.spawnEffect(protector.x, protector.y - protector.jumpZ - 82, "#fff7a0", "shieldImpact", 0.55);
+    this.spawnEffect(protector.x, protector.y - 82, "#fff7a0", "shieldImpact", 0.78);
     this.completeShieldDevilThrownGuard(protector, target, direction);
     return "shielded";
+  }
+
+  getRandomPointInArea(area, padding = 40) {
+    if (!area) return null;
+    if (area.trapezoid) {
+      const t = 0.12 + Math.random() * 0.76;
+      const y = area.trapezoid.yTop + (area.trapezoid.yBottom - area.trapezoid.yTop) * t;
+      const left = area.trapezoid.leftTop + (area.trapezoid.leftBottom - area.trapezoid.leftTop) * t + padding;
+      const right = area.trapezoid.rightTop + (area.trapezoid.rightBottom - area.trapezoid.rightTop) * t - padding;
+      return { x: left + Math.random() * Math.max(1, right - left), y };
+    }
+    const rects = area.rects || [area];
+    const rect = rects[Math.floor(Math.random() * rects.length)] || area;
+    return {
+      x: rect.x + padding + Math.random() * Math.max(1, rect.w - padding * 2),
+      y: rect.y + padding + Math.random() * Math.max(1, rect.h - padding * 2)
+    };
+  }
+
+  tryWitchWarpEscape(target, ballY, rollResolved = false) {
+    if (!target?.isWitchStyle?.() || target.hp <= 0 || target.defeated) return false;
+    if (target.witchWarpTimer > 0 || target.hitRecoveryTimer > 0 || target.invincibleTime > 0) return false;
+    if (!rollResolved && Math.random() >= 0.4) return false;
+
+    const area = this.areas[target.zone];
+    const oldX = target.x;
+    const oldY = target.y;
+    let destination = null;
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const point = this.getRandomPointInArea(area, target.radius + 34);
+      if (!point) break;
+      const ballDistance = Math.hypot(point.x - this.ball.x, point.y - this.ball.y);
+      const oldDistance = Math.hypot(point.x - oldX, point.y - oldY);
+      if (ballDistance > 170 && oldDistance > 150) {
+        destination = point;
+        break;
+      }
+      destination = destination || point;
+    }
+    if (!destination) return false;
+
+    this.spawnEffect(oldX, oldY - target.jumpZ - 62, "#d8b6ff", "witchWarp", 1.22);
+    target.x = destination.x;
+    target.y = destination.y;
+    target.jumpZ = 0;
+    target.jumpVelocity = 0;
+    target.knockbackX = 0;
+    target.knockbackY = 0;
+    target.witchWarpTimer = 0.55;
+    target.invincibleTime = Math.max(target.invincibleTime || 0, 0.64);
+    target.clampToArea(area);
+    this.ball.hitPlayerIds?.add(target.id);
+    if (this.ball.target === target) this.ball.target = null;
+    this.spawnEffect(target.x, target.y - 62, "#9fdcff", "witchWarp", 1.38);
+    this.spawnEffect(target.x, target.y - 26, "#ff6ee7", "arcanaImpact", 0.32);
+    this.spawnCatchResultLabel(target, "WARP", "#d8b6ff");
+    this.startScreenShake(8, 0.1);
+    return true;
+  }
+
+  isWitchWarpThreat(target) {
+    if (!target?.isWitchStyle?.() || target.hp <= 0 || target.defeated) return false;
+    if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower) return false;
+    if (this.ball.thrower.team === target.team) return false;
+    const flightSerial = this.ball.flightSerial || 0;
+    if (this.ball.witchWarpFlight !== flightSerial) {
+      this.ball.witchWarpFlight = flightSerial;
+      this.ball.witchWarpCheckedIds?.clear();
+    }
+    if (this.ball.witchWarpCheckedIds?.has(target.id) || this.ball.hitPlayerIds?.has(target.id)) return false;
+    const ballY = this.ball.y - this.ball.z;
+    const dx = target.x - this.ball.x;
+    const dy = target.y - ballY;
+    const distance = Math.hypot(dx, dy);
+    const speed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+    const approaching = (dx * this.ball.vx + dy * this.ball.vy) / speed;
+    const aimedAtMelty = this.ball.target === target;
+    const nearLine = Math.abs(dx * this.ball.vy - dy * this.ball.vx) / speed < 92 + this.ball.radius;
+    return aimedAtMelty
+      ? distance < 620 && approaching > -80
+      : distance < 390 && approaching > 80 && nearLine;
+  }
+
+  tryIncomingWitchWarpEscapes(targets) {
+    for (const target of targets) {
+      if (!this.isWitchWarpThreat(target)) continue;
+      this.ball.witchWarpCheckedIds?.add(target.id);
+      if (Math.random() < 0.4 && this.tryWitchWarpEscape(target, this.ball.y - this.ball.z, true)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   handleHits() {
@@ -3454,6 +3549,7 @@ class DodgeballGame {
     if (this.ball.specialShotType === "clockStop" && this.ball.clockStopPhase === "hold") return;
     if (this.ball.specialShotType === "meteorCrash") return;
     const targets = this.ball.thrower.team === "left" ? this.rightTeam : this.leftTeam;
+    if (this.tryIncomingWitchWarpEscapes(targets)) return;
 
     for (let target of targets) {
       if (target.defeated || target.role !== "inner") continue;
@@ -3478,6 +3574,13 @@ class DodgeballGame {
       if (guardedTarget === "caught") return;
       if (guardedTarget === "shielded") return;
       if (guardedTarget) target = guardedTarget;
+      if (
+        target?.isWitchStyle?.() &&
+        !this.ball.witchWarpCheckedIds?.has(target.id)
+      ) {
+        this.ball.witchWarpCheckedIds?.add(target.id);
+        if (this.tryWitchWarpEscape(target, ballY)) return;
+      }
 
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const specialType = this.ball.specialShotType;
@@ -6859,17 +6962,22 @@ class DodgeballGame {
         continue;
       }
       if (effect.type === "shieldImpact") {
-        const radius = 46 + progress * 158;
+        const intensity = effect.intensity || 1;
+        const radius = (52 + progress * 218) * (0.82 + intensity * 0.2);
         context.save();
         context.globalCompositeOperation = "lighter";
         context.translate(effect.x, effect.y);
         context.globalAlpha = Math.max(0, 1 - progress);
-        context.fillStyle = `rgba(34, 6, 52, ${Math.max(0, 0.46 - progress * 0.28)})`;
+        context.fillStyle = `rgba(34, 6, 52, ${Math.max(0, 0.56 - progress * 0.3)})`;
         context.beginPath();
-        context.arc(0, 0, radius * 0.72, 0, Math.PI * 2);
+        context.arc(0, 0, radius * 0.82, 0, Math.PI * 2);
         context.fill();
-        context.strokeStyle = "#b56cff";
-        context.lineWidth = 20 - progress * 10;
+        context.fillStyle = `rgba(255, 247, 160, ${Math.max(0, 0.24 - progress * 0.16)})`;
+        context.beginPath();
+        context.ellipse(0, 0, radius * 1.05, radius * 0.78, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#f8fbff";
+        context.lineWidth = Math.max(5, 38 - progress * 20);
         context.beginPath();
         context.moveTo(0, -radius);
         context.quadraticCurveTo(radius * 0.88, -radius * 0.65, radius * 0.78, radius * 0.1);
@@ -6878,13 +6986,90 @@ class DodgeballGame {
         context.quadraticCurveTo(-radius * 0.88, -radius * 0.65, 0, -radius);
         context.closePath();
         context.stroke();
-        context.strokeStyle = "#ff304a";
-        context.lineWidth = 7 - progress * 2;
-        for (let index = 0; index < 12; index += 1) {
-          const angle = index * Math.PI * 2 / 12 + progress * 0.4;
+        context.strokeStyle = "#fff7a0";
+        context.lineWidth = Math.max(4, 22 - progress * 11);
+        context.beginPath();
+        context.moveTo(0, -radius * 1.18);
+        context.quadraticCurveTo(radius * 1.04, -radius * 0.78, radius * 0.96, radius * 0.12);
+        context.quadraticCurveTo(radius * 0.58, radius * 0.98, 0, radius * 1.24);
+        context.quadraticCurveTo(-radius * 0.58, radius * 0.98, -radius * 0.96, radius * 0.12);
+        context.quadraticCurveTo(-radius * 1.04, -radius * 0.78, 0, -radius * 1.18);
+        context.closePath();
+        context.stroke();
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = Math.max(3, 20 - progress * 9);
+        context.beginPath();
+        context.arc(0, 0, radius * 0.9, 0, Math.PI * 2);
+        context.stroke();
+        context.save();
+        context.rotate(progress * 2.2);
+        context.scale(1, 0.58);
+        context.strokeStyle = "#dff7ff";
+        context.lineWidth = Math.max(3, 12 - progress * 5);
+        for (let ring = 0; ring < 3; ring += 1) {
           context.beginPath();
-          context.moveTo(Math.cos(angle) * radius * 0.35, Math.sin(angle) * radius * 0.35);
-          context.lineTo(Math.cos(angle) * radius * 1.28, Math.sin(angle) * radius * 1.28);
+          context.arc(0, 0, radius * (0.48 + ring * 0.22), 0, Math.PI * 2);
+          context.stroke();
+        }
+        context.restore();
+        context.strokeStyle = "#fff7a0";
+        context.lineWidth = Math.max(3, 10 - progress * 4);
+        context.beginPath();
+        context.moveTo(0, -radius * 0.82);
+        context.lineTo(0, radius * 0.72);
+        context.moveTo(-radius * 0.58, -radius * 0.08);
+        context.lineTo(radius * 0.58, -radius * 0.08);
+        context.stroke();
+        context.strokeStyle = "#ff304a";
+        context.lineWidth = Math.max(2, 8 - progress * 2);
+        for (let index = 0; index < 28; index += 1) {
+          const angle = index * Math.PI * 2 / 28 + progress * 1.1;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * radius * 0.28, Math.sin(angle) * radius * 0.28);
+          context.lineTo(Math.cos(angle) * radius * (1.1 + (index % 3) * 0.12), Math.sin(angle) * radius * (1.1 + (index % 3) * 0.12));
+          context.stroke();
+        }
+        context.fillStyle = "#ffffff";
+        for (let spark = 0; spark < 24; spark += 1) {
+          const angle = spark * Math.PI * 2 / 24 - progress * 3.2;
+          const dist = radius * (0.48 + (spark % 4) * 0.16);
+          context.globalAlpha = Math.max(0, (1 - progress) * (0.42 + (spark % 3) * 0.16));
+          context.beginPath();
+          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, 3 + (spark % 3), 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "witchWarp") {
+        const intensity = effect.intensity || 1;
+        const radius = (28 + progress * 126) * intensity;
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.translate(effect.x, effect.y);
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.strokeStyle = "#d8b6ff";
+        context.lineWidth = 8 - progress * 4;
+        for (let ring = 0; ring < 3; ring += 1) {
+          context.save();
+          context.rotate(progress * (ring % 2 === 0 ? 3 : -4) + ring * 0.7);
+          context.scale(1, 0.42);
+          context.beginPath();
+          context.arc(0, 0, radius * (0.52 + ring * 0.22), 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+        }
+        context.fillStyle = `rgba(155, 44, 255, ${Math.max(0, 0.36 - progress * 0.24)})`;
+        context.beginPath();
+        context.ellipse(0, 0, radius * 0.52, radius * 1.08, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#9fdcff";
+        context.lineWidth = 4;
+        for (let ray = 0; ray < 12; ray += 1) {
+          const angle = ray * Math.PI * 2 / 12 + progress * 2.4;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * radius * 0.18, Math.sin(angle) * radius * 0.42);
+          context.lineTo(Math.cos(angle) * radius * 0.95, Math.sin(angle) * radius * 1.2);
           context.stroke();
         }
         context.restore();

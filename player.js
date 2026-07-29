@@ -287,6 +287,7 @@ class Player {
     this.passChainBlockTimer = 0;
     this.shieldAlertTimer = 0;
     this.shieldGuardTimer = 0;
+    this.witchWarpTimer = 0;
     this.reflectChantTimer = 0;
     this.reflectShieldTimer = 0;
     this.reflectCooldownTimer = 0;
@@ -325,6 +326,7 @@ class Player {
     this.slowTimer = Math.max(0, this.slowTimer - delta);
     this.shieldAlertTimer = Math.max(0, this.shieldAlertTimer - delta);
     this.shieldGuardTimer = Math.max(0, this.shieldGuardTimer - delta);
+    this.witchWarpTimer = Math.max(0, this.witchWarpTimer - delta);
     this.reflectChantTimer = Math.max(0, this.reflectChantTimer - delta);
     this.reflectShieldTimer = Math.max(0, this.reflectShieldTimer - delta);
     this.reflectCooldownTimer = Math.max(0, this.reflectCooldownTimer - delta);
@@ -2048,6 +2050,41 @@ class Player {
     context.ellipse(0, 22, 29, 7, 0, 0, Math.PI * 2);
     context.fill();
 
+    if (this.witchWarpTimer > 0) {
+      const ratio = Math.max(0, Math.min(1, this.witchWarpTimer / 0.55));
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.28 + ratio * 0.52;
+      context.strokeStyle = "#d8b6ff";
+      context.lineWidth = 6;
+      context.beginPath();
+      context.ellipse(0, 20, 48 + ratio * 30, 15 + ratio * 9, motionTime / 180, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9fdcff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.ellipse(0, -52, 36 + ratio * 22, 92 + ratio * 22, motionTime / 260, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#ff6ee7";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-42 - ratio * 18, -96);
+      context.quadraticCurveTo(0, -132 - ratio * 20, 42 + ratio * 18, -96);
+      context.moveTo(-38 - ratio * 18, -10);
+      context.quadraticCurveTo(0, 26 + ratio * 12, 38 + ratio * 18, -10);
+      context.stroke();
+      for (let spark = 0; spark < 18; spark += 1) {
+        const angle = spark * Math.PI * 2 / 18 + motionTime / 145;
+        const sx = Math.cos(angle) * (26 + ratio * 52);
+        const sy = -52 + Math.sin(angle) * (45 + ratio * 35);
+        context.fillStyle = spark % 3 === 0 ? "#ffffff" : spark % 3 === 1 ? "#ff6ee7" : "#9fdcff";
+        context.beginPath();
+        context.arc(sx, sy, 2.5 + (spark % 3), 0, Math.PI * 2);
+        context.fill();
+      }
+      context.restore();
+    }
+
     if (reflectShield) {
       const pulse = 1 + Math.sin(motionTime / 85) * 0.06;
       context.save();
@@ -2564,7 +2601,7 @@ class Player {
     const trim = this.trimColor || "#f8fbff";
     const eyeColor = this.eyeColor || "#56eaff";
     const silverStroke = "#5d6673";
-    const hoverOffset = down ? 0 : 18 + Math.sin(motionTime / 520 + this.x * 0.01) * 5;
+    const hoverOffset = 0;
     const bob = Math.sin(motionTime / (moving ? (this.isDashing ? 92 : 128) : 210)) * (moving ? 4 : 3);
     const rootY = (crouch ? 17 : 0) + bob;
     const torsoY = -48 + rootY;
@@ -2596,9 +2633,9 @@ class Player {
       context.rotate(-0.12);
     }
 
-    context.fillStyle = "rgba(68, 76, 86, 0.22)";
+    context.fillStyle = "rgba(68, 76, 86, 0.26)";
     context.beginPath();
-    context.ellipse(0, 21 + hoverOffset, 34, 7, 0, 0, Math.PI * 2);
+    context.ellipse(0, 23, moving ? 39 : 34, moving ? 8 : 7, 0, 0, Math.PI * 2);
     context.fill();
 
     context.fillStyle = armorShadow;
@@ -2666,12 +2703,27 @@ class Player {
     context.translate(shieldHand.x - 12, shieldHand.y + 5);
     context.rotate(guarding ? -0.08 : -0.22);
     if (this.shieldGuardTimer > 0) {
+      const guardPulse = Math.max(0, Math.min(1, this.shieldGuardTimer / 0.82));
       context.globalCompositeOperation = "lighter";
-      context.globalAlpha = 0.34 + this.shieldGuardTimer * 0.4;
+      context.globalAlpha = 0.26 + guardPulse * 0.42;
       context.fillStyle = "#dff7ff";
       context.beginPath();
-      context.ellipse(0, 0, 54, 70, 0, 0, Math.PI * 2);
+      context.ellipse(0, 0, 66 + guardPulse * 18, 84 + guardPulse * 20, 0, 0, Math.PI * 2);
       context.fill();
+      context.strokeStyle = "#fff7a0";
+      context.lineWidth = 6;
+      context.beginPath();
+      context.ellipse(0, 0, 54 + guardPulse * 16, 72 + guardPulse * 16, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9b2cff";
+      context.lineWidth = 4;
+      for (let ray = 0; ray < 10; ray += 1) {
+        const angle = ray * Math.PI * 2 / 10 + motionTime / 180;
+        context.beginPath();
+        context.moveTo(Math.cos(angle) * 28, Math.sin(angle) * 36);
+        context.lineTo(Math.cos(angle) * (72 + guardPulse * 16), Math.sin(angle) * (92 + guardPulse * 20));
+        context.stroke();
+      }
       context.globalCompositeOperation = "source-over";
       context.globalAlpha = 1;
     }

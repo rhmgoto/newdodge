@@ -53,6 +53,8 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.witchWarpFlight = -1;
+    this.witchWarpCheckedIds = new Set();
     this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
@@ -432,6 +434,8 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.witchWarpFlight = -1;
+    this.witchWarpCheckedIds?.clear();
     this.devilTrianglePass = false;
     if (kind === "pass" && actor.cpuDevilTrianglePass) {
       this.devilTrianglePass = true;

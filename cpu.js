@@ -450,37 +450,20 @@ class CPUController {
     }
     if (plan.type === "devil-triangle-mini-final") {
       const now = Date.now();
-      const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
       holder.passChainBlockTimer = 0;
       holder.quickShotReadyTimer = 0;
       holder.throwLockTimer = 0;
       if (!plan.startedAt) plan.startedAt = now;
-      if (grounded) {
-        const target = this.nearestActiveOpponent(holder);
-        if (target) this.facePoint(command, holder, target.x, target.y);
-        command.dash = true;
-        if (!plan.jumpAttempted && now - plan.startedAt > 90) {
-          command.jump = true;
-          plan.jumpAttempted = true;
-          plan.jumpStartedAt = now;
-          holder.cpuJumpAttackCooldownUntil = now + 2200;
-        } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 450) {
-          this.specialAttackState = null;
-          this.resetHolderPlanSoon();
-        }
-      } else {
-        this.stop(command);
-      }
-      if ((this.isNearJumpApex(holder) || (holder.jumpZ > 110 && now - (plan.jumpStartedAt || now) > 260)) && this.throwTimer <= 0) {
+      const target = this.nearestActiveOpponent(holder);
+      if (target) this.facePoint(command, holder, target.x, target.y);
+      command.dash = true;
+      if (this.throwTimer <= 0 && now - plan.startedAt > 90) {
         command.chargeShoot = true;
         command.chargeTime = 0.28;
         command.chargeReleaseMode = "time";
         this.specialAttackState = null;
         this.throwTimer = 0.48;
         this.holderPlan = null;
-      } else if (plan.jumpAttempted && now - plan.jumpStartedAt > 1700) {
-        this.specialAttackState = null;
-        this.resetHolderPlanSoon();
       }
       return;
     }
@@ -894,7 +877,8 @@ class CPUController {
                   ? ["大魔王アークマ"]
                   : [];
     const preferred = active.filter((member) => preferredNames.includes(member.name));
-    if (preferred.length > 0 && Math.random() < 0.7) {
+    const preferredRoll = profile === "arkmaz" ? 0.2 : 0.7;
+    if (preferred.length > 0 && Math.random() < preferredRoll) {
       return preferred[Math.floor(Math.random() * preferred.length)];
     }
 
@@ -1004,7 +988,7 @@ class CPUController {
 
   chooseDevilTriangleFinal(state) {
     if (!state.finalChoice) {
-      state.finalChoice = Math.random() < 0.6 ? "arkma" : "mini";
+      state.finalChoice = Math.random() < 0.4 ? "arkma" : "mini";
     }
     return state.finalChoice;
   }
@@ -1026,6 +1010,15 @@ class CPUController {
     if (state.miniIds.includes(plan.devilTriangleTargetId)) {
       state.nextMiniIndex = (state.miniIds.indexOf(plan.devilTriangleTargetId) + 1) % state.miniIds.length;
       state.passesRemaining = Math.max(0, state.passesRemaining - 1);
+      if (state.passesRemaining <= 0 && this.chooseDevilTriangleFinal(state) !== "arkma") {
+        state.readyForMiniShotId = plan.devilTriangleTargetId;
+        const miniFinisher = this.team.find((member) => member.id === state.readyForMiniShotId);
+        if (miniFinisher) {
+          miniFinisher.cpuPreferredPassTargetId = null;
+          miniFinisher.passChainBlockTimer = Math.max(miniFinisher.passChainBlockTimer || 0, 1.4);
+        }
+        this.throwTimer = Math.min(this.throwTimer, 0.06);
+      }
     }
   }
 
