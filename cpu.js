@@ -16,7 +16,7 @@ const CPU_CLOSE_SHOT_DEFENSE = {
 const CPU_CATCH_TUNING = {
   globalScale: 0.75,
   specialScale: 0.5,
-  counterScale: 2.3333333333,
+  counterScale: 3.0333333333,
   delayMin: 0.02,
   delayMax: 0.07
 };
@@ -1729,9 +1729,10 @@ class CPUController {
         }
       }
 
-      const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30;
+      const victoryCatchScale = member.getVictoryMarchCatchScale?.() ?? 1;
+      const catchDistance = ((member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30) * victoryCatchScale;
       const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
-      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1) * this.getCatchRollScale();
+      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1) * this.getCatchRollScale() * victoryCatchScale;
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive);
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {

@@ -17,7 +17,9 @@ const DEFAULT_PLAYER_STATS = {
   power: 5,
   speed: 5,
   jump: 5,
-  technique: 5
+  technique: 5,
+  defense: 6,
+  pass: 6
 };
 
 // ゼンマイギアーズの低HP時強化。数値調整はここへまとめる。
@@ -31,6 +33,12 @@ const ROBOT_OVERDRIVE_CONFIG = {
   dodgeChanceScale: 1.12,
   closeDodgeBonus: 0.08,
   strongShotCatchScale: 0.35
+};
+const VICTORY_MARCH_CONFIG = {
+  attackScale: 1.18,
+  shotSpeedScale: 1.12,
+  moveSpeedScale: 1.16,
+  catchScale: 1.18
 };
 
 const CHARACTER_TYPES = {
@@ -237,6 +245,7 @@ class Player {
     this.specialShotType = options.specialShotType || null;
     this.slowTimer = 0;
     this.slowScale = 1;
+    this.victoryMarchTimer = 0;
     this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -303,7 +312,9 @@ class Player {
       power: this.clampStat(stats.power ?? DEFAULT_PLAYER_STATS.power),
       speed: this.clampStat(stats.speed ?? DEFAULT_PLAYER_STATS.speed),
       jump: this.clampStat(stats.jump ?? DEFAULT_PLAYER_STATS.jump),
-      technique: this.clampStat(stats.technique ?? DEFAULT_PLAYER_STATS.technique)
+      technique: this.clampStat(stats.technique ?? DEFAULT_PLAYER_STATS.technique),
+      defense: this.clampStat(stats.defense ?? DEFAULT_PLAYER_STATS.defense),
+      pass: this.clampStat(stats.pass ?? DEFAULT_PLAYER_STATS.pass)
     };
   }
 
@@ -315,6 +326,14 @@ class Player {
     return 1 + (this.stats[name] - 5) * step;
   }
 
+  getDefenseDamageScale() {
+    return Math.max(0.35, Math.min(1.75, 1 - (this.stats.defense - 6) * 0.05));
+  }
+
+  getPassSpeedScale() {
+    return Math.max(0.65, Math.min(1.75, 1 + (this.stats.pass - 6) * 0.05));
+  }
+
   update(delta, controls, area, config) {
     const airborneBeforeMove = this.jumpZ > 0 || this.jumpVelocity > 0;
     const startedInsideArea = this.isInsideArea(area);
@@ -324,6 +343,7 @@ class Player {
     this.catchTimer = Math.max(0, this.catchTimer - delta);
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
     this.slowTimer = Math.max(0, this.slowTimer - delta);
+    this.victoryMarchTimer = Math.max(0, this.victoryMarchTimer - delta);
     this.shieldAlertTimer = Math.max(0, this.shieldAlertTimer - delta);
     this.shieldGuardTimer = Math.max(0, this.shieldGuardTimer - delta);
     this.witchWarpTimer = Math.max(0, this.witchWarpTimer - delta);
@@ -434,7 +454,8 @@ class Player {
     const vampireDashScale = this.isVampireStyle() && this.isDashing ? 1.35 : 1;
     const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) * vampireDashScale : 1;
     const overdriveScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.moveSpeedScale : 1;
-    const speed = this.speed * overdriveScale * dashMultiplier * duckSlow * turnSlow * this.slowScale;
+    const victoryMoveScale = this.hasVictoryMarchBuff() ? VICTORY_MARCH_CONFIG.moveSpeedScale : 1;
+    const speed = this.speed * overdriveScale * victoryMoveScale * dashMultiplier * duckSlow * turnSlow * this.slowScale;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
     this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
@@ -519,6 +540,26 @@ class Player {
   applySlow(scale, duration) {
     this.slowScale = Math.min(this.slowScale || 1, scale);
     this.slowTimer = Math.max(this.slowTimer || 0, duration);
+  }
+
+  applyVictoryMarch(duration) {
+    this.victoryMarchTimer = Math.max(this.victoryMarchTimer || 0, duration);
+  }
+
+  hasVictoryMarchBuff() {
+    return this.victoryMarchTimer > 0;
+  }
+
+  getVictoryMarchAttackScale() {
+    return this.hasVictoryMarchBuff() ? VICTORY_MARCH_CONFIG.attackScale : 1;
+  }
+
+  getVictoryMarchShotSpeedScale() {
+    return this.hasVictoryMarchBuff() ? VICTORY_MARCH_CONFIG.shotSpeedScale : 1;
+  }
+
+  getVictoryMarchCatchScale() {
+    return this.hasVictoryMarchBuff() ? VICTORY_MARCH_CONFIG.catchScale : 1;
   }
 
   startCounterOpportunity(sourceDamage, target, config, chainCount = 0) {
@@ -876,6 +917,9 @@ class Player {
     }
 
     this.drawModelCharacter(context, scale, drawY, motionTime, config);
+    if (this.hasVictoryMarchBuff()) {
+      this.drawVictoryMarchAura(context, scale, drawY, motionTime);
+    }
 
     if (this.hasBall) {
       this.drawHeldBall(context, scale);
@@ -1260,6 +1304,28 @@ class Player {
     return this.uniformEmblem === "robot" || this.uniformEmblem === "robotCaptain";
   }
 
+  drawVictoryMarchAura(context, scale, drawY, motionTime) {
+    const pulse = 0.5 + Math.sin(motionTime / 130 + this.x * 0.02) * 0.5;
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale, scale);
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.24 + pulse * 0.16;
+    context.strokeStyle = "#ffd83d";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, -62, 38 + pulse * 8, 58 + pulse * 10, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.globalAlpha = 0.52;
+    context.fillStyle = "#fff4a8";
+    context.font = "bold 18px Meiryo, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("♪", -24, -96 + Math.sin(motionTime / 180) * 8);
+    context.fillText("♫", 28, -78 + Math.cos(motionTime / 160) * 8);
+    context.restore();
+  }
+
   isBravesStyle() {
     return String(this.uniformEmblem || "").startsWith("braves-");
   }
@@ -1289,14 +1355,7 @@ class Player {
   }
 
   getIncomingDamageAmount(amount) {
-    let damage = amount * (this.isDemonStyle() || this.isLavaGolemStyle() ? 0.7 : 1);
-    if (this.isVampireStyle()) {
-      damage = Math.max(0, damage - 15);
-    }
-    if (this.isShieldDevilStyle()) {
-      damage *= 0.65;
-    }
-    return damage;
+    return amount * this.getDefenseDamageScale();
   }
 
   getIncomingKnockbackScale() {
@@ -1337,15 +1396,19 @@ class Player {
   }
 
   getCharacterVisualScale() {
+    if (this.isBravesStyle()) {
+      if (this.uniformEmblem === "braves-hero") return 1.1;
+      if (this.uniformEmblem === "braves-paladin") return 1.15;
+      if (this.uniformEmblem === "braves-warrior") return 1.2;
+      if (this.uniformEmblem === "braves-mage") return 0.9;
+    }
     return this.isDemonStyle()
       ? 1.6
       : this.isLavaGolemStyle()
         ? 1.92
         : this.isAlienStyle() && (this.isCaptain || this.uniformEmblem === "galactakoCaptain")
           ? 1.16
-          : this.isBravesStyle() && (this.uniformEmblem === "braves-warrior" || this.uniformEmblem === "braves-knight")
-            ? 1.08
-            : 1;
+          : 1;
   }
 
   drawBravesCharacter(context, scale, drawY, motionTime) {
@@ -1360,16 +1423,22 @@ class Player {
     const suit = this.uniformColor || "#2f73e8";
     const pants = this.pantsColor || suit;
     const trim = this.trimColor || "#f7f9ff";
-    const hair = this.hairColor || "#f0c14b";
+    const hair = job === "hero"
+      ? "#8b4a2b"
+      : job === "mage"
+        ? "#111318"
+        : job === "cleric"
+          ? this.hairColor || "#7a4a2a"
+          : this.hairColor || "#f0c14b";
     const eye = this.eyeColor || "#263241";
     const palettes = {
-      hero: { edge: "#49627a", body: suit, pants: "#eef4ff", accent: "#e23934", symbol: "#ffd83d", equip: "#d7e5f1" },
+      hero: { edge: "#49627a", body: suit, pants: "#243a68", accent: "#d83232", symbol: "#ffd83d", equip: "#d7e5f1" },
       warrior: { edge: "#6b402c", body: "#aa5632", pants: "#4f3729", accent: "#d2a04a", symbol: "#c7ccd1", equip: "#8f9aa2" },
       swordwoman: { edge: "#6b7890", body: "#eef3fb", pants: "#27375f", accent: "#9f3e79", symbol: "#dce6ef", equip: "#dce6ef" },
       knight: { edge: "#5f7488", body: "#c9d2da", pants: "#8996a4", accent: "#2f73d9", symbol: "#2f73d9", equip: "#dce6ef" },
       paladin: { edge: "#72899a", body: "#f8fbff", pants: "#dcefff", accent: "#d7a331", symbol: "#ffd83d", equip: "#eef8ff" },
       mage: { edge: "#31224a", body: suit, pants, accent: trim, symbol: "#d8b6ff", equip: "#8a5a2c" },
-      cleric: { edge: "#6b8b79", body: "#fbfbf1", pants: "#dff1e2", accent: "#74bc85", symbol: "#74bc85", equip: "#8a5a2c" },
+      cleric: { edge: "#6f95aa", body: "#fffdf3", pants: "#d7ecf8", accent: "#98d9f2", symbol: "#f2c94c", equip: "#9a6a35" },
       archer: { edge: "#3f5a37", body: "#4f8f45", pants: "#7a5334", accent: "#d8c08d", symbol: "#7a5334", equip: "#7a5334" },
       martialArtist: { edge: "#7a4a22", body: "#f7f3e7", pants: "#f7f3e7", accent: "#d92d2d", symbol: "#17191d", equip: "#d92d2d" },
       bard: { edge: "#5e3342", body: "#7d2240", pants: "#253b2d", accent: "#e9d9a5", symbol: "#b87333", equip: "#b87333" }
@@ -1377,8 +1446,8 @@ class Player {
     const palette = palettes[job] || palettes.hero;
     const big = job === "warrior" || job === "knight";
     const small = job === "mage" || job === "cleric" || job === "bard";
-    const bodyW = big ? 31 : job === "mage" ? 14 : job === "cleric" ? 19 : small ? 25 : 28;
-    const bodyH = big ? 60 : job === "cleric" ? 72 : small ? 54 : 57;
+    const bodyW = big ? 31 : job === "mage" ? 14 : job === "cleric" ? 17 : small ? 25 : 28;
+    const bodyH = big ? 60 : job === "cleric" ? 60 : small ? 54 : 57;
     const headR = job === "swordwoman" ? 24 : job === "mage" ? 26 : small ? 22 : 23;
     const torsoY = -55 + rootY;
     const shoulderY = -75 + rootY;
@@ -1405,14 +1474,16 @@ class Player {
       context.stroke();
     };
 
-    const drawCape = (color, widthScale = 1) => {
+    const drawCape = (color, widthScale = 1, heightScale = 1) => {
+      const bottomY = 12 * heightScale + rootY;
+      const middleY = -49 + rootY;
       context.fillStyle = color;
       softStroke(2.5);
       context.beginPath();
       context.moveTo(-22, -73 + rootY);
-      context.quadraticCurveTo(-43 * widthScale, -49 + rootY, -32 * widthScale, 12 + rootY);
-      context.quadraticCurveTo(0, 25 + rootY, 32 * widthScale, 12 + rootY);
-      context.quadraticCurveTo(43 * widthScale, -49 + rootY, 22, -73 + rootY);
+      context.quadraticCurveTo(-43 * widthScale, middleY, -32 * widthScale, bottomY);
+      context.quadraticCurveTo(0, bottomY + 13 * heightScale, 32 * widthScale, bottomY);
+      context.quadraticCurveTo(43 * widthScale, middleY, 22, -73 + rootY);
       context.quadraticCurveTo(0, -65 + rootY, -22, -73 + rootY);
       context.fill();
       context.stroke();
@@ -1452,6 +1523,20 @@ class Player {
           context.lineTo(x + Math.cos(a) * r2, y + Math.sin(a) * r2);
         }
         context.stroke();
+      } else if (mark === "wing") {
+        context.fillStyle = palette.accent;
+        softStroke(1.8, palette.accent);
+        context.beginPath();
+        context.moveTo(x, y + 5);
+        context.quadraticCurveTo(x - w * 0.48, y - h * 0.42, x - w * 0.76, y - h * 0.08);
+        context.quadraticCurveTo(x - w * 0.42, y - h * 0.08, x - w * 0.16, y + h * 0.2);
+        context.quadraticCurveTo(x - w * 0.08, y + h * 0.06, x, y + 5);
+        context.moveTo(x, y + 5);
+        context.quadraticCurveTo(x + w * 0.48, y - h * 0.42, x + w * 0.76, y - h * 0.08);
+        context.quadraticCurveTo(x + w * 0.42, y - h * 0.08, x + w * 0.16, y + h * 0.2);
+        context.quadraticCurveTo(x + w * 0.08, y + h * 0.06, x, y + 5);
+        context.fill();
+        context.stroke();
       } else {
         context.moveTo(x, y - h * 0.55);
         context.lineTo(x, y + h * 0.55);
@@ -1461,7 +1546,7 @@ class Player {
       }
     };
 
-    const drawSimpleSword = (x, y, length, angle, color = "#dce6ef") => {
+    const drawSimpleSword = (x, y, length, angle, color = "#dce6ef", glowColor = null, handleColor = "#8a5a2c", bladeScale = 1) => {
       context.save();
       context.translate(x, y);
       context.rotate(angle);
@@ -1469,18 +1554,42 @@ class Player {
       softStroke(2.2);
       context.beginPath();
       context.moveTo(0, -length);
-      context.lineTo(6, -9);
+      context.lineTo(6 * bladeScale, -9);
       context.lineTo(0, -1);
-      context.lineTo(-6, -9);
+      context.lineTo(-6 * bladeScale, -9);
       context.closePath();
       context.fill();
       context.stroke();
-      softStroke(4, "#8a5a2c");
+      if (glowColor) {
+        softStroke(2.4, glowColor);
+        context.beginPath();
+        context.moveTo(0, -length + 9);
+        context.lineTo(0, -12);
+        context.stroke();
+      }
+      softStroke(4, handleColor);
       context.beginPath();
       context.moveTo(0, -4);
       context.lineTo(0, 16);
       context.stroke();
       context.restore();
+    };
+
+    const drawSmallStar = (x, y, outerR, innerR, fill, stroke = palette.edge, angleOffset = -Math.PI / 2) => {
+      context.fillStyle = fill;
+      softStroke(1.8, stroke);
+      context.beginPath();
+      for (let i = 0; i < 10; i += 1) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const a = angleOffset + i * Math.PI / 5;
+        const px = x + Math.cos(a) * r;
+        const py = y + Math.sin(a) * r;
+        if (i === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.fill();
+      context.stroke();
     };
 
     const drawSpear = (x, y, length, angle = -0.12) => {
@@ -1509,22 +1618,26 @@ class Player {
       context.save();
       context.translate(x, y);
       context.rotate(angle);
-      softStroke(4, "#7a4c2c");
+      softStroke(5, "#7a4c2c");
       context.beginPath();
-      context.moveTo(0, -35);
-      context.lineTo(0, 23);
+      context.moveTo(0, -48);
+      context.lineTo(0, 28);
       context.stroke();
       context.fillStyle = palette.equip;
-      softStroke(2.4);
+      softStroke(2.8);
       context.beginPath();
-      context.moveTo(0, -37);
-      context.quadraticCurveTo(24, -35, 21, -14);
-      context.quadraticCurveTo(8, -20, 0, -14);
-      context.quadraticCurveTo(-8, -20, -21, -14);
-      context.quadraticCurveTo(-24, -35, 0, -37);
+      context.moveTo(0, -54);
+      context.quadraticCurveTo(33, -52, 32, -20);
+      context.quadraticCurveTo(14, -28, 0, -19);
+      context.quadraticCurveTo(-14, -28, -32, -20);
+      context.quadraticCurveTo(-33, -52, 0, -54);
       context.closePath();
       context.fill();
       context.stroke();
+      context.fillStyle = "rgba(255,255,255,0.34)";
+      context.beginPath();
+      context.ellipse(14, -39, 8, 4, -0.35, 0, Math.PI * 2);
+      context.fill();
       context.restore();
     };
 
@@ -1539,18 +1652,58 @@ class Player {
     }
     if (crouch) context.scale(1.05, 0.86);
 
-    if (job === "hero") drawCape("#e23934", 0.92);
+    if (job === "hero") drawCape("#d83232", 0.76, 0.72);
     if (job === "paladin") drawCape("#dff4ff", 0.82);
 
-    if (job === "archer") {
-      softStroke(4.5, palette.equip);
+    if (job === "cleric") {
+      context.fillStyle = "#bfefff";
+      softStroke(2.4, palette.edge);
       context.beginPath();
-      context.arc(29, -56 + rootY, 36, -1.25, 1.25);
+      context.moveTo(-22, -73 + rootY);
+      context.quadraticCurveTo(-36, -53 + rootY, -30, -12 + rootY);
+      context.quadraticCurveTo(-15, -1 + rootY, 0, 2 + rootY);
+      context.quadraticCurveTo(15, -1 + rootY, 30, -12 + rootY);
+      context.quadraticCurveTo(36, -53 + rootY, 22, -73 + rootY);
+      context.quadraticCurveTo(0, -65 + rootY, -22, -73 + rootY);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(255,255,255,0.36)";
+      context.beginPath();
+      context.ellipse(-11, -42 + rootY, 6, 23, -0.18, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    if (job === "archer") {
+      context.fillStyle = "#6f4a2e";
+      softStroke(2.2, "#3f5a37");
+      context.beginPath();
+      context.ellipse(23, -52 + rootY, 8, 31, -0.24, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      softStroke(2.2, "#f1dfb5");
+      for (let arrow = 0; arrow < 3; arrow += 1) {
+        const ax = 14 + arrow * 5;
+        context.beginPath();
+        context.moveTo(ax, -90 + rootY);
+        context.lineTo(ax + 8, -47 + rootY);
+        context.stroke();
+        context.fillStyle = arrow % 2 === 0 ? "#e9d9a5" : "#f7f2d7";
+        context.beginPath();
+        context.moveTo(ax - 3, -90 + rootY);
+        context.lineTo(ax + 2, -99 + rootY);
+        context.lineTo(ax + 5, -89 + rootY);
+        context.closePath();
+        context.fill();
+      }
+      softStroke(5.2, palette.equip);
+      context.beginPath();
+      context.arc(34, -55 + rootY, 44, -1.28, 1.28);
       context.stroke();
       softStroke(1.8, "#f1dfb5");
       context.beginPath();
-      context.moveTo(39, -88 + rootY);
-      context.lineTo(39, -24 + rootY);
+      context.moveTo(47, -96 + rootY);
+      context.lineTo(47, -16 + rootY);
       context.stroke();
     }
 
@@ -1564,8 +1717,60 @@ class Player {
       { x: 14 + stride * 6, y: -1 + rootY },
       { x: 14 + stride * 9, y: 22 + rootY }
     ];
-    drawLimb(backLeg, pants, big ? 8 : 7);
-    drawLimb(frontLeg, pants, big ? 8 : 7);
+    const legWidthScale = job === "hero" || job === "paladin" ? 1.3 : 1.15;
+    const legWidth = (big ? 8 : 7) * legWidthScale;
+    drawLimb(backLeg, pants, legWidth);
+    drawLimb(frontLeg, pants, legWidth);
+
+    if (job === "warrior") {
+      context.fillStyle = "#8f9aa2";
+      softStroke(2.1, palette.edge);
+      context.beginPath();
+      context.ellipse(-13 - stride * 6, -2 + rootY, 8, 6, -0.2, 0, Math.PI * 2);
+      context.ellipse(13 + stride * 6, -2 + rootY, 8, 6, 0.2, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#7a4c2c";
+      context.beginPath();
+      context.ellipse(-14 - stride * 9, 22 + rootY, 10, 5, 0, 0, Math.PI * 2);
+      context.ellipse(14 + stride * 9, 22 + rootY, 10, 5, 0, 0, Math.PI * 2);
+      context.fill();
+    } else if (job === "martialArtist") {
+      context.fillStyle = "#f7f3e7";
+      softStroke(2.1, palette.edge);
+      context.beginPath();
+      context.moveTo(-18 - stride * 5, -23 + rootY);
+      context.lineTo(-28 - stride * 6, 16 + rootY);
+      context.quadraticCurveTo(-17 - stride * 8, 22 + rootY, -8 - stride * 8, 15 + rootY);
+      context.lineTo(-10, -22 + rootY);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(18 + stride * 5, -23 + rootY);
+      context.lineTo(28 + stride * 6, 16 + rootY);
+      context.quadraticCurveTo(17 + stride * 8, 22 + rootY, 8 + stride * 8, 15 + rootY);
+      context.lineTo(10, -22 + rootY);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      softStroke(3.2, "#d8d1bd");
+      context.beginPath();
+      context.moveTo(-24 - stride * 9, 17 + rootY);
+      context.lineTo(-5 - stride * 9, 17 + rootY);
+      context.moveTo(5 + stride * 9, 17 + rootY);
+      context.lineTo(24 + stride * 9, 17 + rootY);
+      context.stroke();
+    }
+    if (job === "hero") {
+      context.fillStyle = "#7a4c2c";
+      softStroke(2.1, "#5a3520");
+      context.beginPath();
+      context.ellipse(-14 - stride * 9, 22 + rootY, 9, 5, 0, 0, Math.PI * 2);
+      context.ellipse(14 + stride * 9, 22 + rootY, 9, 5, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
 
     context.fillStyle = palette.body;
     softStroke(2.6);
@@ -1578,10 +1783,17 @@ class Player {
       context.closePath();
     } else if (job === "cleric") {
       context.beginPath();
-      context.moveTo(-bodyW, -72 + rootY);
-      context.quadraticCurveTo(0, -80 + rootY, bodyW, -72 + rootY);
-      context.lineTo(bodyW + 7, 18 + rootY);
-      context.quadraticCurveTo(0, 27 + rootY, -bodyW - 7, 18 + rootY);
+      context.moveTo(-bodyW, -70 + rootY);
+      context.quadraticCurveTo(0, -78 + rootY, bodyW, -70 + rootY);
+      context.lineTo(bodyW + 4, 9 + rootY);
+      context.quadraticCurveTo(0, 18 + rootY, -bodyW - 4, 9 + rootY);
+      context.closePath();
+    } else if (job === "hero") {
+      context.beginPath();
+      context.moveTo(-bodyW * 0.78, -76 + rootY);
+      context.quadraticCurveTo(0, -82 + rootY, bodyW * 0.78, -76 + rootY);
+      context.lineTo(bodyW * 1.04, -36 + rootY);
+      context.quadraticCurveTo(0, -22 + rootY, -bodyW * 1.04, -36 + rootY);
       context.closePath();
     } else {
       context.beginPath();
@@ -1605,18 +1817,58 @@ class Player {
       this.roundRect(context, -11, -76 + rootY, 22, 43, 5);
       context.fill();
     } else if (job === "paladin") {
+      context.fillStyle = "#eef8ff";
+      softStroke(2.4, palette.edge);
+      context.beginPath();
+      context.ellipse(0, torsoY - 5, bodyW * 0.86, bodyH * 0.5, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(120,160,190,0.22)";
+      context.beginPath();
+      context.ellipse(0, torsoY + 12, bodyW * 0.78, 10, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = palette.accent;
+      softStroke(2, palette.accent);
+      context.beginPath();
+      context.moveTo(-18, -73 + rootY);
+      context.lineTo(18, -73 + rootY);
+      context.moveTo(-21, -47 + rootY);
+      context.lineTo(21, -47 + rootY);
+      context.stroke();
       context.fillStyle = palette.symbol;
       context.beginPath();
       context.arc(0, -60 + rootY, 9, 0, Math.PI * 2);
       context.fill();
-    } else if (job === "cleric") {
-      softStroke(4, palette.symbol);
+    } else if (job === "hero") {
+      context.fillStyle = palette.symbol;
+      softStroke(1.7, "#f7e5a2");
       context.beginPath();
-      context.moveTo(0, -70 + rootY);
-      context.lineTo(0, -42 + rootY);
-      context.moveTo(-10, -56 + rootY);
-      context.lineTo(10, -56 + rootY);
+      context.moveTo(0, -58 + rootY);
+      context.quadraticCurveTo(-11, -70 + rootY, -18, -60 + rootY);
+      context.quadraticCurveTo(-9, -60 + rootY, -2, -50 + rootY);
+      context.quadraticCurveTo(0, -54 + rootY, 0, -58 + rootY);
+      context.moveTo(0, -58 + rootY);
+      context.quadraticCurveTo(11, -70 + rootY, 18, -60 + rootY);
+      context.quadraticCurveTo(9, -60 + rootY, 2, -50 + rootY);
+      context.quadraticCurveTo(0, -54 + rootY, 0, -58 + rootY);
+      context.fill();
       context.stroke();
+    } else if (job === "cleric") {
+      context.fillStyle = "#d9f3ff";
+      softStroke(2, palette.edge);
+      context.beginPath();
+      context.moveTo(-18, -69 + rootY);
+      context.quadraticCurveTo(0, -77 + rootY, 18, -69 + rootY);
+      context.lineTo(13, -48 + rootY);
+      context.quadraticCurveTo(0, -40 + rootY, -13, -48 + rootY);
+      context.closePath();
+      context.fill();
+      softStroke(2.2, palette.symbol);
+      context.beginPath();
+      context.moveTo(0, -47 + rootY);
+      context.lineTo(0, -37 + rootY);
+      context.stroke();
+      drawSmallStar(0, -57 + rootY, 8, 3.5, palette.symbol, "#d5a427");
     } else if (job === "martialArtist") {
       context.fillStyle = palette.symbol;
       context.fillRect(-bodyW, -40 + rootY, bodyW * 2, 8);
@@ -1642,10 +1894,15 @@ class Player {
       context.ellipse(22, shoulderY + 3, 8, 6, 0.25, 0, Math.PI * 2);
       context.fill();
     } else if (job === "archer") {
-      softStroke(4, "#7a5334");
+      softStroke(7, "#7a5334");
       context.beginPath();
       context.moveTo(-20, -78 + rootY);
       context.lineTo(21, -22 + rootY);
+      context.stroke();
+      softStroke(2.3, "#d8c08d");
+      context.beginPath();
+      context.moveTo(-18, -75 + rootY);
+      context.lineTo(19, -25 + rootY);
       context.stroke();
       context.fillStyle = palette.accent;
       context.beginPath();
@@ -1654,17 +1911,38 @@ class Player {
       context.lineTo(-17, -70 + rootY);
       context.closePath();
       context.fill();
+      context.fillStyle = "#f7f2d7";
+      context.beginPath();
+      context.moveTo(-26, -73 + rootY);
+      context.quadraticCurveTo(-37, -79 + rootY, -31, -88 + rootY);
+      context.quadraticCurveTo(-20, -82 + rootY, -26, -73 + rootY);
+      context.fill();
     } else if (job === "warrior") {
+      context.fillStyle = "#b6bec6";
+      softStroke(2.3);
+      context.beginPath();
+      context.moveTo(-16, -75 + rootY);
+      context.lineTo(16, -75 + rootY);
+      context.lineTo(20, -43 + rootY);
+      context.quadraticCurveTo(0, -33 + rootY, -20, -43 + rootY);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(255,255,255,0.32)";
+      context.beginPath();
+      context.ellipse(-5, -62 + rootY, 11, 17, -0.25, 0, Math.PI * 2);
+      context.fill();
       context.fillStyle = palette.accent;
       softStroke(2.2);
       context.beginPath();
-      context.ellipse(-24, shoulderY + 3, 14, 10, -0.25, 0, Math.PI * 2);
+      context.ellipse(-27, shoulderY + 1, 18, 12, -0.25, 0, Math.PI * 2);
+      context.ellipse(22, shoulderY + 4, 10, 7, 0.25, 0, Math.PI * 2);
       context.fill();
       context.stroke();
-      softStroke(4, "#6b402c");
+      softStroke(7, "#6b402c");
       context.beginPath();
-      context.moveTo(-18, -33 + rootY);
-      context.lineTo(18, -33 + rootY);
+      context.moveTo(-25, -31 + rootY);
+      context.lineTo(25, -31 + rootY);
       context.stroke();
       softStroke(4, "#d2a04a");
       context.beginPath();
@@ -1672,20 +1950,26 @@ class Player {
       context.arc(32, -28 + rootY, 6, 0, Math.PI * 2);
       context.stroke();
     } else if (job === "martialArtist") {
-      softStroke(4, palette.symbol);
+      softStroke(4, "#17191d");
       context.beginPath();
-      context.moveTo(-18, -36 + rootY);
-      context.lineTo(18, -36 + rootY);
+      context.moveTo(-24, -36 + rootY);
+      context.lineTo(24, -36 + rootY);
       context.stroke();
-      softStroke(2.2, "#d8d1bd");
+      softStroke(3, "#d8d1bd");
       context.beginPath();
-      context.moveTo(0, -80 + rootY);
-      context.lineTo(0, -17 + rootY);
+      context.moveTo(-18, -76 + rootY);
+      context.lineTo(8, -38 + rootY);
+      context.lineTo(-6, -15 + rootY);
+      context.moveTo(18, -76 + rootY);
+      context.lineTo(-8, -38 + rootY);
+      context.lineTo(6, -15 + rootY);
       context.stroke();
     }
 
     const relaxedCasterArms = job === "mage" || job === "cleric";
-    const backArm = relaxedCasterArms
+    const throwWindup = this.state === "throwing" && this.throwPhase === "windup";
+    const throwRelease = this.state === "throwing" && this.throwPhase === "release";
+    let backArm = relaxedCasterArms
       ? [
         { x: -bodyW + 4, y: shoulderY },
         { x: -23 - stride * 2, y: -50 + rootY },
@@ -1696,7 +1980,7 @@ class Player {
         { x: -34 - stride * 5, y: -52 + rootY },
         { x: -36 - stride * 7, y: -25 + rootY }
       ];
-    const frontArm = relaxedCasterArms
+    let frontArm = relaxedCasterArms
       ? [
         { x: bodyW - 4, y: shoulderY },
         { x: 23 + stride * 2, y: -50 + rootY },
@@ -1707,18 +1991,92 @@ class Player {
         { x: 34 + stride * 5, y: -52 + rootY },
         { x: 36 + stride * 7, y: -25 + rootY }
       ];
+    if (throwWindup) {
+      const shootWindup = this.throwKind === "shoot";
+      backArm = [
+        { x: -bodyW + 3, y: shoulderY },
+        { x: shootWindup ? -47 : -36, y: shootWindup ? -105 + rootY : -86 + rootY },
+        { x: shootWindup ? -63 : -48, y: shootWindup ? -126 + rootY : -98 + rootY }
+      ];
+      frontArm = [
+        { x: bodyW - 3, y: shoulderY },
+        { x: 27, y: -61 + rootY },
+        { x: 20, y: -42 + rootY }
+      ];
+    } else if (throwRelease) {
+      backArm = [
+        { x: -bodyW + 3, y: shoulderY },
+        { x: -20, y: -56 + rootY },
+        { x: -15, y: -32 + rootY }
+      ];
+      frontArm = [
+        { x: bodyW - 3, y: shoulderY },
+        { x: 48, y: -57 + rootY },
+        { x: 68, y: -42 + rootY }
+      ];
+    }
+    if (job === "paladin") {
+      context.fillStyle = "#eef8ff";
+      softStroke(2.3, palette.edge);
+      context.beginPath();
+      context.ellipse(-24, shoulderY + 2, 14, 10, -0.25, 0, Math.PI * 2);
+      context.ellipse(24, shoulderY + 2, 14, 10, 0.25, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.beginPath();
+      context.ellipse(-24, shoulderY + 2, 8, 4, -0.25, 0, Math.PI * 2);
+      context.ellipse(24, shoulderY + 2, 8, 4, 0.25, 0, Math.PI * 2);
+      context.fill();
+    }
+
     const armColor = job === "knight" || job === "paladin" ? palette.body : skin;
     drawLimb(backArm, armColor, big ? 7 : 6);
     drawLimb(frontArm, armColor, big ? 7 : 6);
 
+    if (throwWindup || throwRelease) {
+      context.save();
+      context.globalAlpha = throwWindup ? 0.34 : 0.42;
+      context.strokeStyle = throwWindup ? "rgba(255,216,61,0.72)" : "rgba(143,252,255,0.72)";
+      context.lineWidth = throwWindup ? 4 : 5;
+      context.lineCap = "round";
+      context.beginPath();
+      if (throwWindup) {
+        context.arc(-33, -88 + rootY, 34, Math.PI * 0.95, Math.PI * 1.62);
+      } else {
+        context.moveTo(22, -58 + rootY);
+        context.lineTo(78, -40 + rootY);
+      }
+      context.stroke();
+      context.restore();
+    }
+
+    if (job === "martialArtist") {
+      softStroke(5, "#17191d");
+      context.beginPath();
+      context.moveTo(-34 - stride * 7, -28 + rootY);
+      context.lineTo(-38 - stride * 7, -23 + rootY);
+      context.moveTo(34 + stride * 7, -28 + rootY);
+      context.lineTo(38 + stride * 7, -23 + rootY);
+      context.stroke();
+    }
+
     if (job === "hero") {
-      drawShield(-31, -48 + rootY, 14, 21, "#eef4ff", "star");
-      drawSimpleSword(34, -25 + rootY, 61, 0.34, "#dce6ef");
+      drawShield(-33, -47 + rootY, 19, 27, "#f8fbff", "wing");
+      if (throwWindup) {
+        drawSimpleSword(18, -92 + rootY, 72, -0.06, "#e7f8ff", "#8ffcff", "#d7a331", 1.32);
+      } else {
+        drawSimpleSword(36, -24 + rootY, 66, 0.28, "#dce6ef", "#8ffcff", "#d7a331", 1.28);
+      }
     } else if (job === "paladin") {
       drawSpear(36, -30 + rootY, 82, -0.09);
       drawShield(-31, -47 + rootY, 19, 31, "#f8fbff", "sun");
     } else if (job === "warrior") {
-      drawHandAxe(35, -32 + rootY, 0.18);
+      if (throwWindup) {
+        drawSimpleSword(16, -54 + rootY, 94, -0.82, "#9aa3aa", "#ff6244", "#7a4c2c", 3.1);
+      } else {
+        drawHandAxe(39, -34 + rootY, 0.16);
+      }
     } else if (job === "bard") {
       context.fillStyle = palette.symbol;
       softStroke(2.5);
@@ -1746,10 +2104,18 @@ class Player {
       context.moveTo(staffX, -84 + rootY);
       context.lineTo(staffX, -14 + rootY);
       context.stroke();
-      softStroke(3, palette.accent);
-      context.beginPath();
-      context.arc(staffX, -90 + rootY, job === "mage" ? 7 : 10, 0, Math.PI * 2);
-      context.stroke();
+      if (job === "cleric") {
+        context.fillStyle = "rgba(152,217,242,0.42)";
+        context.beginPath();
+        context.arc(staffX, -92 + rootY, 17, 0, Math.PI * 2);
+        context.fill();
+        drawSmallStar(staffX, -92 + rootY, 12, 5, palette.symbol, "#d5a427");
+      } else {
+        softStroke(3, palette.accent);
+        context.beginPath();
+        context.arc(staffX, -90 + rootY, 7, 0, Math.PI * 2);
+        context.stroke();
+      }
     }
 
     context.fillStyle = skin;
@@ -1762,8 +2128,8 @@ class Player {
     if (job === "mage") {
       context.fillStyle = hair;
       context.beginPath();
-      context.ellipse(-24, headY + 9, 8, 31, -0.14, 0, Math.PI * 2);
-      context.ellipse(24, headY + 9, 7, 31, 0.14, 0, Math.PI * 2);
+      context.ellipse(-24, headY + 9, 3.92, 31, -0.14, 0, Math.PI * 2);
+      context.ellipse(24, headY + 9, 3.43, 31, 0.14, 0, Math.PI * 2);
       context.fill();
       context.beginPath();
       context.fillStyle = hair;
@@ -1787,26 +2153,63 @@ class Player {
       context.fill();
       context.stroke();
     } else if (job === "cleric") {
-      context.fillStyle = "#fbfbf1";
+      context.fillStyle = hair;
+      context.beginPath();
+      context.ellipse(-18, headY + 4, 8, 21, -0.12, 0, Math.PI * 2);
+      context.ellipse(18, headY + 4, 8, 21, 0.12, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = skin;
       softStroke(2.4);
       context.beginPath();
-      context.arc(0, headY - 1, headR + 4, Math.PI * 0.88, Math.PI * 2.12);
-      context.lineTo(17, headY + 19);
-      context.quadraticCurveTo(0, headY + 27, -17, headY + 19);
+      context.arc(0, headY, headR - 1, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#d9f3ff";
+      softStroke(2.2, palette.edge);
+      context.beginPath();
+      context.moveTo(-22, headY - 14);
+      context.quadraticCurveTo(0, headY - 30, 22, headY - 14);
+      context.quadraticCurveTo(13, headY - 3, 0, headY - 2);
+      context.quadraticCurveTo(-13, headY - 3, -22, headY - 14);
       context.closePath();
       context.fill();
       context.stroke();
-      context.fillStyle = skin;
-      context.beginPath();
-      context.arc(0, headY + 1, headR - 5, 0, Math.PI * 2);
-      context.fill();
       context.fillStyle = hair;
       context.beginPath();
-      context.arc(0, headY - 7, headR - 6, Math.PI, Math.PI * 2);
-      context.quadraticCurveTo(-7, headY - 4, -14, headY + 2);
-      context.quadraticCurveTo(0, headY - 4, 14, headY + 2);
-      context.quadraticCurveTo(7, headY - 4, 0, headY - 7);
+      context.arc(0, headY - 9, headR - 1, Math.PI, Math.PI * 2);
+      context.quadraticCurveTo(12, headY - 9, 17, headY - 2);
+      context.quadraticCurveTo(10, headY - 6, 5, headY);
+      context.quadraticCurveTo(2, headY - 7, -3, headY - 1);
+      context.quadraticCurveTo(-8, headY - 7, -17, headY - 2);
+      context.quadraticCurveTo(-13, headY - 9, 0, headY - 9);
       context.closePath();
+      context.fill();
+      context.fillStyle = "#f2c94c";
+      context.beginPath();
+      context.arc(0, headY - 21, 3.2, 0, Math.PI * 2);
+      context.fill();
+    } else if (job === "paladin") {
+      context.fillStyle = "#eef8ff";
+      softStroke(2.5, palette.edge);
+      context.beginPath();
+      context.arc(0, headY - 3, headR + 5, Math.PI * 0.96, Math.PI * 2.04);
+      context.lineTo(20, headY + 6);
+      context.lineTo(-20, headY + 6);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(255,255,255,0.36)";
+      context.beginPath();
+      context.ellipse(-7, headY - 12, 11, 7, -0.35, 0, Math.PI * 2);
+      context.fill();
+      softStroke(3, palette.accent);
+      context.beginPath();
+      context.moveTo(-15, headY - 4);
+      context.lineTo(15, headY - 4);
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.beginPath();
+      context.ellipse(0, headY - 29, 6, 13, 0, 0, Math.PI * 2);
       context.fill();
     } else if (job === "knight") {
       context.fillStyle = "#dce6ef";
@@ -1853,12 +2256,27 @@ class Player {
       }
     }
 
+    if (job === "hero") {
+      softStroke(3, "#d7a331");
+      context.beginPath();
+      context.arc(0, headY - 12, headR - 3, Math.PI * 1.05, Math.PI * 1.95);
+      context.stroke();
+      context.fillStyle = "#ffd83d";
+      context.beginPath();
+      context.arc(0, headY - 17, 3.5, 0, Math.PI * 2);
+      context.fill();
+    }
+
     if (job === "martialArtist") {
       softStroke(4, palette.accent);
       context.beginPath();
       context.moveTo(-22, headY - 13);
       context.lineTo(22, headY - 13);
-      context.lineTo(36, headY - 22);
+      context.lineTo(43, headY - 24);
+      context.moveTo(16, headY - 13);
+      context.quadraticCurveTo(38, headY - 5, 53, headY - 16);
+      context.moveTo(14, headY - 10);
+      context.quadraticCurveTo(37, headY + 2, 50, headY - 6);
       context.stroke();
     } else if (job === "bard") {
       context.fillStyle = palette.body;
@@ -1873,7 +2291,7 @@ class Player {
       context.fill();
     }
 
-    const cuteFace = job === "swordwoman" || job === "mage";
+    const cuteFace = job === "swordwoman" || job === "mage" || job === "cleric";
     context.fillStyle = eye;
     context.beginPath();
     context.arc(-7, headY, cuteFace ? 3.5 : 2.8, 0, Math.PI * 2);
@@ -1911,7 +2329,8 @@ class Player {
   getEffectiveThrowPower() {
     return this.throwPower *
       (this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.powerScale : 1) *
-      (this.isLavaGolemStyle() ? 1.18 * this.getLavaGolemPowerScale() : 1);
+      (this.isLavaGolemStyle() ? 1.18 * this.getLavaGolemPowerScale() : 1) *
+      this.getVictoryMarchAttackScale();
   }
 
   getAlienFloatOffset(motionTime = performance.now()) {
