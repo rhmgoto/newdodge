@@ -1377,7 +1377,7 @@ class Player {
     const palette = palettes[job] || palettes.hero;
     const big = job === "warrior" || job === "knight";
     const small = job === "mage" || job === "cleric" || job === "bard";
-    const bodyW = big ? 31 : job === "mage" ? 16 : job === "cleric" ? 19 : small ? 25 : 28;
+    const bodyW = big ? 31 : job === "mage" ? 14 : job === "cleric" ? 19 : small ? 25 : 28;
     const bodyH = big ? 60 : job === "cleric" ? 72 : small ? 54 : 57;
     const headR = job === "swordwoman" ? 24 : job === "mage" ? 26 : small ? 22 : 23;
     const torsoY = -55 + rootY;
@@ -1684,16 +1684,29 @@ class Player {
       context.stroke();
     }
 
-    const backArm = [
-      { x: -bodyW + 3, y: shoulderY },
-      { x: -34 - stride * 5, y: -52 + rootY },
-      { x: -36 - stride * 7, y: -25 + rootY }
-    ];
-    const frontArm = [
-      { x: bodyW - 3, y: shoulderY },
-      { x: 34 + stride * 5, y: -52 + rootY },
-      { x: 36 + stride * 7, y: -25 + rootY }
-    ];
+    const relaxedCasterArms = job === "mage" || job === "cleric";
+    const backArm = relaxedCasterArms
+      ? [
+        { x: -bodyW + 4, y: shoulderY },
+        { x: -23 - stride * 2, y: -50 + rootY },
+        { x: -25 - stride * 3, y: -19 + rootY }
+      ]
+      : [
+        { x: -bodyW + 3, y: shoulderY },
+        { x: -34 - stride * 5, y: -52 + rootY },
+        { x: -36 - stride * 7, y: -25 + rootY }
+      ];
+    const frontArm = relaxedCasterArms
+      ? [
+        { x: bodyW - 4, y: shoulderY },
+        { x: 23 + stride * 2, y: -50 + rootY },
+        { x: 25 + stride * 3, y: -19 + rootY }
+      ]
+      : [
+        { x: bodyW - 3, y: shoulderY },
+        { x: 34 + stride * 5, y: -52 + rootY },
+        { x: 36 + stride * 7, y: -25 + rootY }
+      ];
     const armColor = job === "knight" || job === "paladin" ? palette.body : skin;
     drawLimb(backArm, armColor, big ? 7 : 6);
     drawLimb(frontArm, armColor, big ? 7 : 6);
@@ -1727,7 +1740,7 @@ class Player {
     } else if (job === "swordwoman") {
       drawSimpleSword(35, -20 + rootY, 58, 0.55, palette.equip);
     } else if (job === "mage" || job === "cleric") {
-      const staffX = job === "mage" ? 37 : -37;
+      const staffX = job === "mage" ? 30 : -30;
       softStroke(4, palette.equip);
       context.beginPath();
       context.moveTo(staffX, -84 + rootY);
@@ -1749,14 +1762,15 @@ class Player {
     if (job === "mage") {
       context.fillStyle = hair;
       context.beginPath();
-      context.ellipse(-15, headY + 8, 12, 34, -0.12, 0, Math.PI * 2);
-      context.ellipse(16, headY + 8, 10, 34, 0.12, 0, Math.PI * 2);
+      context.ellipse(-24, headY + 9, 8, 31, -0.14, 0, Math.PI * 2);
+      context.ellipse(24, headY + 9, 7, 31, 0.14, 0, Math.PI * 2);
       context.fill();
       context.beginPath();
       context.fillStyle = hair;
       context.arc(0, headY - 8, headR - 1, Math.PI, Math.PI * 2);
-      context.lineTo(22, headY - 2);
-      context.quadraticCurveTo(2, headY - 15, -22, headY - 2);
+      context.lineTo(19, headY - 4);
+      context.quadraticCurveTo(5, headY - 14, 0, headY - 6);
+      context.quadraticCurveTo(-6, headY - 14, -19, headY - 4);
       context.closePath();
       context.fill();
       context.fillStyle = palette.body;
