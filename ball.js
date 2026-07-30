@@ -15,6 +15,7 @@ const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
+const SHINING_PASS_SPEED_SCALE = 2.05;
 const HELLFIRE_SPEED_SCALE = 1.38;
 const ARCANA_SPHERE_CONFIG = {
   initialSpeedScale: 1.1,
@@ -51,6 +52,7 @@ class Ball {
     this.specialShotType = null;
     this.demonShot = false;
     this.counterShot = false;
+    this.galeCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -59,6 +61,7 @@ class Ball {
     this.witchWarpFlight = -1;
     this.witchWarpCheckedIds = new Set();
     this.devilTrianglePass = false;
+    this.shiningPass = false;
     this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -385,6 +388,7 @@ class Ball {
     this.specialShotType = null;
     this.demonShot = false;
     this.counterShot = false;
+    this.galeCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -452,9 +456,13 @@ class Ball {
     this.witchWarpFlight = -1;
     this.witchWarpCheckedIds?.clear();
     this.devilTrianglePass = false;
+    this.shiningPass = false;
     if (kind === "pass" && actor.cpuDevilTrianglePass) {
       this.devilTrianglePass = true;
       actor.cpuDevilTrianglePass = false;
+    }
+    if (kind === "pass" && actor.role === "out" && actor.uniformEmblem === "braves-archer") {
+      this.shiningPass = true;
     }
     this.aerialShot = kind === "shoot" && actor.jumpZ > 20;
     this.quickShot = false;
@@ -1461,11 +1469,12 @@ class Ball {
     const miniDevilOutfieldPass = miniDevilPass && actor.role === "out";
     const arkmazFastPass = miniDevilOutfieldPass || shieldDevilPass;
     const passStatScale = actor.getPassSpeedScale?.() ?? 1;
-    const speedBoost = (outfieldPass ? 1.18 : 1) * (this.devilTrianglePass ? 1.3 : 1) * passStatScale;
+    const shiningPassBoost = this.shiningPass ? SHINING_PASS_SPEED_SCALE : 1;
+    const speedBoost = (outfieldPass ? 1.18 : 1) * (this.devilTrianglePass ? 1.3 : 1) * passStatScale * shiningPassBoost;
     this.passStartZ = this.z;
-    this.passArcHeight = ((outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150) * ((miniDevilPass || shieldDevilPass) ? 0.72 : 1);
-    const minDuration = arkmazFastPass ? 0.28 : miniDevilPass ? 0.42 : 0.77;
-    const maxDuration = arkmazFastPass ? 0.78 : miniDevilPass ? 1.16 : 1.84;
+    this.passArcHeight = ((outfieldPass ? 580 : 460) + Math.max(0, passMultiplier - 1) * 150) * ((miniDevilPass || shieldDevilPass || this.shiningPass) ? 0.72 : 1);
+    const minDuration = this.shiningPass ? 0.2 : arkmazFastPass ? 0.28 : miniDevilPass ? 0.42 : 0.77;
+    const maxDuration = this.shiningPass ? 0.62 : arkmazFastPass ? 0.78 : miniDevilPass ? 1.16 : 1.84;
     this.passDuration = Math.max(minDuration, Math.min(maxDuration, distance / Math.max(1, this.config.passSpeed * PASS_SPEED_SCALE * speedBoost * (0.88 + passMultiplier * 0.2))));
     this.vx = (catchPoint.x - this.x) / this.passDuration + actor.vx * this.config.moveBonus * 0.08;
     this.vy = (catchPoint.y - this.y) / this.passDuration + actor.vy * this.config.moveBonus * 0.08;
@@ -1485,7 +1494,7 @@ class Ball {
     const shieldDevilPass = this.thrower?.isShieldDevilStyle?.() || this.thrower?.uniformEmblem === "shieldDevil";
     const miniDevilOutfieldPass = miniDevilPass && this.thrower?.role === "out";
     const arkmazFastPass = miniDevilOutfieldPass || shieldDevilPass;
-    const follow = Math.min(1, delta * (arkmazFastPass ? 14.25 : miniDevilPass ? 9.5 : 5.5));
+    const follow = Math.min(1, delta * (this.shiningPass ? 16 : arkmazFastPass ? 14.25 : miniDevilPass ? 9.5 : 5.5));
     this.vx += (desiredVx - this.vx) * follow;
     this.vy += (desiredVy - this.vy) * follow;
     this.vz = desiredVz;
@@ -1729,6 +1738,9 @@ class Ball {
     const devilClawShot = this.specialShotType === "devilClaw";
     if (this.isFlying && (miniDevilPass || devilClawShot)) {
       this.drawMiniDevilPassEffects(context, drawY);
+    }
+    if (this.isFlying && this.shiningPass) {
+      this.drawShiningPassEffects(context, drawY);
     }
     const shotEffect = this.kind === "shoot" && this.isFlying ? Math.max(0, this.shotMultiplier - 0.92) : 0;
     context.save();
@@ -2038,14 +2050,14 @@ class Ball {
       context.globalCompositeOperation = "lighter";
       context.lineCap = "round";
       context.globalAlpha = 0.48;
-      context.strokeStyle = "#1655d8";
+      context.strokeStyle = this.galeCounter ? "#0a8f7f" : "#1655d8";
       context.lineWidth = 28 + counterPower * 4;
       context.beginPath();
       context.moveTo(this.x + tailX * 18, drawY + tailY * 18);
       context.lineTo(this.x + tailX * (166 + counterPower * 18), drawY + tailY * (166 + counterPower * 18));
       context.stroke();
       context.globalAlpha = 0.76;
-      context.strokeStyle = "#67dfff";
+      context.strokeStyle = this.galeCounter ? "#7dffd8" : "#67dfff";
       context.lineWidth = 17 + counterPower * 2;
       context.beginPath();
       context.moveTo(this.x + tailX * 14, drawY + tailY * 14);
@@ -2059,12 +2071,12 @@ class Ball {
       context.lineTo(this.x + tailX * (118 + counterPower * 10), drawY + tailY * (118 + counterPower * 10));
       context.stroke();
       context.globalAlpha = 0.88;
-      context.strokeStyle = "#ffd83d";
+      context.strokeStyle = this.galeCounter ? "#dffcff" : "#ffd83d";
       context.lineWidth = 5;
       context.beginPath();
       for (let index = 0; index <= 12; index += 1) {
         const distance = 12 + index * 13;
-        const wave = Math.sin(this.spin * 0.75 + index * 0.9) * (15 + counterPower * 2);
+        const wave = Math.sin(this.spin * (this.galeCounter ? 1.35 : 0.75) + index * 0.9) * (this.galeCounter ? 24 + counterPower * 4 : 15 + counterPower * 2);
         const px = this.x + tailX * distance + sideX * wave;
         const py = drawY + tailY * distance + sideY * wave;
         if (index === 0) context.moveTo(px, py);
@@ -2076,13 +2088,13 @@ class Ball {
         const ringX = this.x + tailX * distance;
         const ringY = drawY + tailY * distance;
         context.globalAlpha = 0.48 - index * 0.08;
-        context.strokeStyle = index % 2 === 0 ? "#ffffff" : "#8ffcff";
+        context.strokeStyle = this.galeCounter ? (index % 2 === 0 ? "#ffffff" : "#7dffd8") : (index % 2 === 0 ? "#ffffff" : "#8ffcff");
         context.lineWidth = 4;
         context.beginPath();
         context.ellipse(ringX, ringY, 10 + index * 5, 30 + index * 7, Math.atan2(this.vy, this.vx), 0, Math.PI * 2);
         context.stroke();
       }
-      context.fillStyle = "#dffcff";
+      context.fillStyle = this.galeCounter ? "#d7fff0" : "#dffcff";
       for (let index = 0; index < 9; index += 1) {
         const distance = 28 + index * 17;
         const scatter = Math.sin(this.spin + index * 2.13) * 26;
@@ -2098,11 +2110,30 @@ class Ball {
         context.fill();
       }
       context.globalAlpha = 0.7;
-      context.strokeStyle = "#bdf8ff";
+      context.strokeStyle = this.galeCounter ? "#b8ffe8" : "#bdf8ff";
       context.lineWidth = 6 + counterPower;
       context.beginPath();
       context.arc(this.x, drawY, (this.radius + 14 + counterPower * 3) * pulse, 0, Math.PI * 2);
       context.stroke();
+      if (this.galeCounter) {
+        context.globalAlpha = 0.58;
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 5;
+        for (let index = 0; index < 4; index += 1) {
+          const offset = (index - 1.5) * 18;
+          context.beginPath();
+          context.moveTo(this.x + sideX * offset, drawY + sideY * offset);
+          context.bezierCurveTo(
+            this.x + tailX * 42 + sideX * (offset + 36),
+            drawY + tailY * 42 + sideY * (offset + 36),
+            this.x + tailX * 92 + sideX * (offset - 38),
+            drawY + tailY * 92 + sideY * (offset - 38),
+            this.x + tailX * 168 + sideX * offset,
+            drawY + tailY * 168 + sideY * offset
+          );
+          context.stroke();
+        }
+      }
       context.restore();
     }
 
@@ -3636,6 +3667,80 @@ class Ball {
     context.beginPath();
     context.arc(this.x, drawY, this.radius * 1.65 * scale, 0, Math.PI * 2);
     context.fill();
+    context.restore();
+  }
+
+  drawShiningPassEffects(context, drawY) {
+    const speed = Math.hypot(this.vx, this.vy) || 1;
+    const tailX = -this.vx / speed;
+    const tailY = -this.vy / speed;
+    const headX = -tailX;
+    const headY = -tailY;
+    const sideX = -tailY;
+    const sideY = tailX;
+    const time = performance.now();
+    const pulse = 0.72 + Math.sin(time / 48) * 0.18;
+
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    context.globalAlpha = 0.42;
+    context.strokeStyle = "#fff4a8";
+    context.lineWidth = 22;
+    context.beginPath();
+    context.moveTo(this.x, drawY);
+    context.lineTo(this.x + tailX * 220, drawY + tailY * 220);
+    context.stroke();
+
+    context.globalAlpha = 0.82;
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.moveTo(this.x + tailX * 10, drawY + tailY * 10);
+    context.lineTo(this.x + tailX * 178, drawY + tailY * 178);
+    context.stroke();
+
+    context.globalAlpha = 0.9;
+    context.strokeStyle = "#ffd83d";
+    context.lineWidth = 5;
+    for (let index = -1; index <= 1; index += 1) {
+      const side = index * 17;
+      context.beginPath();
+      context.moveTo(this.x + sideX * side, drawY + sideY * side);
+      context.lineTo(this.x + tailX * 142 + sideX * (side * 0.4), drawY + tailY * 142 + sideY * (side * 0.4));
+      context.stroke();
+    }
+
+    context.globalAlpha = 0.96;
+    context.fillStyle = "#fff4a8";
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(this.x + headX * (this.radius * 2.8), drawY + headY * (this.radius * 2.8));
+    context.lineTo(this.x + tailX * this.radius * 0.35 + sideX * this.radius * 1.25, drawY + tailY * this.radius * 0.35 + sideY * this.radius * 1.25);
+    context.lineTo(this.x + tailX * this.radius * 0.35 - sideX * this.radius * 1.25, drawY + tailY * this.radius * 0.35 - sideY * this.radius * 1.25);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.globalAlpha = 0.55 + pulse * 0.2;
+    context.strokeStyle = "#fff4a8";
+    context.lineWidth = 3;
+    for (let index = 0; index < 10; index += 1) {
+      const distance = 30 + index * 18;
+      const spread = Math.sin(time / 36 + index) * 22;
+      context.beginPath();
+      context.arc(
+        this.x + tailX * distance + sideX * spread,
+        drawY + tailY * distance + sideY * spread,
+        2.5 + (index % 3),
+        0,
+        Math.PI * 2
+      );
+      context.stroke();
+    }
     context.restore();
   }
 

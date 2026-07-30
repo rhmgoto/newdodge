@@ -57,6 +57,7 @@ class CPUController {
     this.tacticSerial = 0;
     this.specialAttackState = null;
     this.catchDelayPlans = new Map();
+    this.paladinCoverRolls = new Map();
   }
 
   update(delta) {
@@ -148,6 +149,10 @@ class CPUController {
       }
 
       if (this.controlArkmaGuard(command, member)) {
+        continue;
+      }
+
+      if (this.controlBravesPaladinGuard(command, member)) {
         continue;
       }
 
@@ -1302,6 +1307,111 @@ class CPUController {
     return true;
   }
 
+  controlBravesPaladinGuard(command, member) {
+    if (!this.isBravesPaladin(member)) return false;
+    if (member.role !== "inner" || member.hasBall || member.defeated || member.hp <= 0) return false;
+
+    if (
+      this.ball.isFlying &&
+      this.ball.kind === "shoot" &&
+      this.ball.thrower?.team === this.opponentName &&
+      this.ball.target &&
+      this.ball.target.team === this.teamName &&
+      this.ball.target !== member &&
+      this.ball.target.role === "inner" &&
+      !this.ball.target.defeated
+    ) {
+      const targetHpRate = this.ball.target.hp / Math.max(1, this.ball.target.maxHp || this.ball.target.hp);
+      if (targetHpRate > 0.3 || !this.shouldPaladinCoverLowHpTarget(member, this.ball.target)) return false;
+      const area = this.config.areas?.[member.zone];
+      const ballSpeed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+      const leadTime = Math.min(0.2, Math.max(0.05, Math.hypot(this.ball.x - this.ball.target.x, this.ball.y - this.ball.target.y) / ballSpeed * 0.4));
+      const intercept = {
+        x: this.ball.x + this.ball.vx * leadTime,
+        y: this.ball.y + this.ball.vy * leadTime
+      };
+      const towardTarget = this.normalizedVector(this.ball.target.x - intercept.x, this.ball.target.y - intercept.y);
+      const guardPoint = this.clampPointToArea({
+        x: intercept.x + towardTarget.x * 46,
+        y: intercept.y + towardTarget.y * 34
+      }, area, member.radius);
+      member.shieldAlertTimer = Math.max(member.shieldAlertTimer || 0, 0.45);
+      this.moveToward(command, member, guardPoint.x, guardPoint.y);
+      command.dash = true;
+      if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 300) {
+        command.catch = true;
+      }
+      return true;
+    }
+
+    const holder = this.ball.owner && this.ball.owner.team === this.opponentName ? this.ball.owner : null;
+    if (!holder) return false;
+
+    const target = this.getBravesPaladinProtectTarget(member, holder);
+    if (!target) return false;
+
+    const area = this.config.areas?.[member.zone];
+    const holderToTarget = this.normalizedVector(target.x - holder.x, target.y - holder.y);
+    const frontDistance = Math.min(155, Math.max(84, Math.hypot(target.x - holder.x, target.y - holder.y) * 0.34));
+    const sideWave = Math.sin(Date.now() / 520 + member.x * 0.03) * 18;
+    const side = { x: -holderToTarget.y, y: holderToTarget.x };
+    const guardPoint = this.clampPointToArea({
+      x: target.x - holderToTarget.x * frontDistance + side.x * sideWave,
+      y: target.y - holderToTarget.y * frontDistance + side.y * sideWave
+    }, area, member.radius);
+
+    member.shieldAlertTimer = Math.max(member.shieldAlertTimer || 0, 0.28);
+    this.moveToward(command, member, guardPoint.x, guardPoint.y);
+    const distance = Math.hypot(member.x - guardPoint.x, member.y - guardPoint.y);
+    const holderDistance = Math.hypot(member.x - holder.x, member.y - holder.y);
+    command.dash = distance > 90 || holderDistance < 520;
+    return true;
+  }
+
+  isBravesPaladin(member) {
+    return member?.cpuProfile === "bravesPaladin" || member?.uniformEmblem === "braves-paladin";
+  }
+
+  shouldPaladinCoverLowHpTarget(member, target) {
+    const serial = this.ball.flightSerial || 0;
+    const key = `${serial}:${member.id}:${target.id}`;
+    if (!this.paladinCoverRolls.has(key)) {
+      this.paladinCoverRolls.set(key, Math.random() < 0.5);
+      if (this.paladinCoverRolls.size > 40) {
+        const firstKey = this.paladinCoverRolls.keys().next().value;
+        this.paladinCoverRolls.delete(firstKey);
+      }
+    }
+    return this.paladinCoverRolls.get(key);
+  }
+
+  getBravesPaladinProtectTarget(member, holder) {
+    let best = null;
+    let bestScore = -Infinity;
+    for (const ally of this.team) {
+      if (ally === member || ally.defeated || ally.hp <= 0 || ally.role !== "inner") continue;
+      const hpRate = ally.hp / Math.max(1, ally.maxHp || ally.hp);
+      const holderDistance = Math.hypot(ally.x - holder.x, ally.y - holder.y);
+      const memberDistance = Math.hypot(member.x - ally.x, member.y - ally.y);
+      const line = this.normalizedVector(ally.x - holder.x, ally.y - holder.y);
+      const toPaladin = { x: member.x - holder.x, y: member.y - holder.y };
+      const projection = toPaladin.x * line.x + toPaladin.y * line.y;
+      const alreadyBetween = projection > 0 && projection < holderDistance ? 35 : 0;
+      let score = 0;
+      score += ally.captain ? 95 : 0;
+      score += (1 - hpRate) * 90;
+      score += Math.max(0, 560 - holderDistance) * 0.13;
+      score += Math.max(0, 520 - memberDistance) * 0.05;
+      score += alreadyBetween;
+      if (this.ball.target === ally) score += 140;
+      if (score > bestScore) {
+        bestScore = score;
+        best = ally;
+      }
+    }
+    return best;
+  }
+
   getAttackLineX(holder) {
     const area = this.config.areas ? this.config.areas[holder.zone] : null;
     const margin = Math.max(holder.radius || 36, 54);
@@ -1728,6 +1838,9 @@ class CPUController {
           profileCatchScale *= ROBOT_OVERDRIVE_CONFIG.strongShotCatchScale;
         }
       }
+      if (specialShot && this.isBravesMartialArtist(member)) {
+        profileCatchScale *= 1.3;
+      }
 
       const victoryCatchScale = member.getVictoryMarchCatchScale?.() ?? 1;
       const catchDistance = ((member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30) * victoryCatchScale;
@@ -1765,6 +1878,10 @@ class CPUController {
     if (this.ball.specialShotType === "meteorCrash") scale *= 0.45;
     if (this.ball.counterShot) scale *= CPU_CATCH_TUNING.counterScale;
     return scale;
+  }
+
+  isBravesMartialArtist(member) {
+    return member?.uniformEmblem === "braves-martialArtist";
   }
 
   scheduleDelayedCatch(member) {

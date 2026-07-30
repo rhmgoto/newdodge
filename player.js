@@ -35,10 +35,10 @@ const ROBOT_OVERDRIVE_CONFIG = {
   strongShotCatchScale: 0.35
 };
 const VICTORY_MARCH_CONFIG = {
-  attackScale: 1.18,
-  shotSpeedScale: 1.12,
-  moveSpeedScale: 1.16,
-  catchScale: 1.18
+  attackScale: 1.2,
+  shotSpeedScale: 1.2,
+  moveSpeedScale: 1.18,
+  catchScale: 1.2
 };
 
 const CHARACTER_TYPES = {
@@ -1310,19 +1310,32 @@ class Player {
     context.translate(this.x, drawY);
     context.scale(scale, scale);
     context.globalCompositeOperation = "lighter";
-    context.globalAlpha = 0.24 + pulse * 0.16;
-    context.strokeStyle = "#ffd83d";
-    context.lineWidth = 4;
+    context.globalAlpha = 0.26 + pulse * 0.2;
+    context.fillStyle = "rgba(255, 216, 61, 0.18)";
     context.beginPath();
-    context.ellipse(0, -62, 38 + pulse * 8, 58 + pulse * 10, 0, 0, Math.PI * 2);
+    context.ellipse(0, -55, 44 + pulse * 10, 66 + pulse * 12, 0, 0, Math.PI * 2);
+    context.fill();
+    context.globalAlpha = 0.36 + pulse * 0.22;
+    context.strokeStyle = "#ffd83d";
+    context.lineWidth = 6;
+    context.beginPath();
+    context.ellipse(0, -62, 40 + pulse * 10, 62 + pulse * 13, 0, 0, Math.PI * 2);
     context.stroke();
-    context.globalAlpha = 0.52;
+    context.globalAlpha = 0.68;
     context.fillStyle = "#fff4a8";
-    context.font = "bold 18px Meiryo, sans-serif";
+    context.font = "bold 20px Meiryo, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText("♪", -24, -96 + Math.sin(motionTime / 180) * 8);
-    context.fillText("♫", 28, -78 + Math.cos(motionTime / 160) * 8);
+    context.fillText("♪", -26, -96 + Math.sin(motionTime / 180) * 8);
+    context.fillText("♫", 30, -78 + Math.cos(motionTime / 160) * 8);
+    context.globalAlpha = 0.52;
+    context.fillStyle = "#ffffff";
+    for (let index = 0; index < 6; index += 1) {
+      const angle = motionTime / 420 + index * Math.PI * 2 / 6;
+      context.beginPath();
+      context.arc(Math.cos(angle) * (34 + pulse * 8), -60 + Math.sin(angle) * (48 + pulse * 8), 3, 0, Math.PI * 2);
+      context.fill();
+    }
     context.restore();
   }
 
