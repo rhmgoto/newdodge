@@ -934,6 +934,11 @@ class Player {
       return;
     }
 
+    if (this.isBravesStyle()) {
+      this.drawBravesCharacter(context, scale, drawY, motionTime);
+      return;
+    }
+
     const teamColors = PLAYER_MODEL[this.team] || PLAYER_MODEL.left;
     const colors = {
       ...teamColors,
@@ -1255,6 +1260,10 @@ class Player {
     return this.uniformEmblem === "robot" || this.uniformEmblem === "robotCaptain";
   }
 
+  isBravesStyle() {
+    return String(this.uniformEmblem || "").startsWith("braves-");
+  }
+
   isAlienStyle() {
     return this.characterType === "alien" || this.uniformEmblem === "galactako";
   }
@@ -1334,7 +1343,546 @@ class Player {
         ? 1.92
         : this.isAlienStyle() && (this.isCaptain || this.uniformEmblem === "galactakoCaptain")
           ? 1.16
-          : 1;
+          : this.isBravesStyle() && (this.uniformEmblem === "braves-warrior" || this.uniformEmblem === "braves-knight")
+            ? 1.08
+            : 1;
+  }
+
+  drawBravesCharacter(context, scale, drawY, motionTime) {
+    const job = String(this.uniformEmblem || "braves-hero").replace("braves-", "");
+    const moving = Math.hypot(this.vx, this.vy) > 15;
+    const crouch = this.dodgeType === "duck" && this.dodgeTimer > 0;
+    const damaged = this.state === "damaged";
+    const down = this.state === "down" || this.defeated;
+    const stride = moving ? Math.sin(motionTime / (this.isDashing ? 72 : 116) + this.x * 0.018) : 0;
+    const rootY = Math.abs(stride) * 2.8 + (crouch ? 16 : 0);
+    const skin = this.faceColor || "#ffd1ad";
+    const suit = this.uniformColor || "#2f73e8";
+    const pants = this.pantsColor || suit;
+    const trim = this.trimColor || "#f7f9ff";
+    const hair = this.hairColor || "#f0c14b";
+    const eye = this.eyeColor || "#263241";
+    const palettes = {
+      hero: { edge: "#49627a", body: suit, pants: "#eef4ff", accent: "#e23934", symbol: "#ffd83d", equip: "#d7e5f1" },
+      warrior: { edge: "#6b402c", body: "#aa5632", pants: "#4f3729", accent: "#d2a04a", symbol: "#c7ccd1", equip: "#8f9aa2" },
+      swordwoman: { edge: "#6b7890", body: "#eef3fb", pants: "#27375f", accent: "#9f3e79", symbol: "#dce6ef", equip: "#dce6ef" },
+      knight: { edge: "#5f7488", body: "#c9d2da", pants: "#8996a4", accent: "#2f73d9", symbol: "#2f73d9", equip: "#dce6ef" },
+      paladin: { edge: "#72899a", body: "#f8fbff", pants: "#dcefff", accent: "#d7a331", symbol: "#ffd83d", equip: "#eef8ff" },
+      mage: { edge: "#31224a", body: suit, pants, accent: trim, symbol: "#d8b6ff", equip: "#8a5a2c" },
+      cleric: { edge: "#6b8b79", body: "#fbfbf1", pants: "#dff1e2", accent: "#74bc85", symbol: "#74bc85", equip: "#8a5a2c" },
+      archer: { edge: "#3f5a37", body: "#4f8f45", pants: "#7a5334", accent: "#d8c08d", symbol: "#7a5334", equip: "#7a5334" },
+      martialArtist: { edge: "#7a4a22", body: "#f7f3e7", pants: "#f7f3e7", accent: "#d92d2d", symbol: "#17191d", equip: "#d92d2d" },
+      bard: { edge: "#5e3342", body: "#7d2240", pants: "#253b2d", accent: "#e9d9a5", symbol: "#b87333", equip: "#b87333" }
+    };
+    const palette = palettes[job] || palettes.hero;
+    const big = job === "warrior" || job === "knight";
+    const small = job === "mage" || job === "cleric" || job === "bard";
+    const bodyW = big ? 31 : job === "mage" ? 16 : job === "cleric" ? 19 : small ? 25 : 28;
+    const bodyH = big ? 60 : job === "cleric" ? 72 : small ? 54 : 57;
+    const headR = job === "swordwoman" ? 24 : job === "mage" ? 26 : small ? 22 : 23;
+    const torsoY = -55 + rootY;
+    const shoulderY = -75 + rootY;
+    const hipY = -25 + rootY;
+    const headY = -97 + rootY;
+
+    const softStroke = (width = 2.5, color = palette.edge) => {
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+    };
+
+    const drawLimb = (points, color, width) => {
+      softStroke(width + 3, palette.edge);
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) context.lineTo(points[i].x, points[i].y);
+      context.stroke();
+      softStroke(width, color);
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) context.lineTo(points[i].x, points[i].y);
+      context.stroke();
+    };
+
+    const drawCape = (color, widthScale = 1) => {
+      context.fillStyle = color;
+      softStroke(2.5);
+      context.beginPath();
+      context.moveTo(-22, -73 + rootY);
+      context.quadraticCurveTo(-43 * widthScale, -49 + rootY, -32 * widthScale, 12 + rootY);
+      context.quadraticCurveTo(0, 25 + rootY, 32 * widthScale, 12 + rootY);
+      context.quadraticCurveTo(43 * widthScale, -49 + rootY, 22, -73 + rootY);
+      context.quadraticCurveTo(0, -65 + rootY, -22, -73 + rootY);
+      context.fill();
+      context.stroke();
+    };
+
+    const drawShield = (x, y, w, h, color, mark = "cross") => {
+      context.fillStyle = color;
+      softStroke(2.7);
+      context.beginPath();
+      context.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      softStroke(3, palette.accent);
+      context.beginPath();
+      if (mark === "star") {
+        context.moveTo(x, y - 11);
+        for (let i = 1; i < 10; i += 1) {
+          const r = i % 2 ? 4.5 : 11;
+          const a = -Math.PI / 2 + i * Math.PI / 5;
+          context.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        context.closePath();
+        context.fillStyle = palette.accent;
+        context.fill();
+      } else if (mark === "sun") {
+        context.fillStyle = palette.accent;
+        context.beginPath();
+        context.arc(x, y, Math.min(w, h) * 0.42, 0, Math.PI * 2);
+        context.fill();
+        softStroke(2, palette.accent);
+        context.beginPath();
+        for (let i = 0; i < 8; i += 1) {
+          const a = i * Math.PI / 4;
+          const r1 = Math.min(w, h) * 0.58;
+          const r2 = Math.min(w, h) * 0.82;
+          context.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1);
+          context.lineTo(x + Math.cos(a) * r2, y + Math.sin(a) * r2);
+        }
+        context.stroke();
+      } else {
+        context.moveTo(x, y - h * 0.55);
+        context.lineTo(x, y + h * 0.55);
+        context.moveTo(x - w * 0.55, y);
+        context.lineTo(x + w * 0.55, y);
+        context.stroke();
+      }
+    };
+
+    const drawSimpleSword = (x, y, length, angle, color = "#dce6ef") => {
+      context.save();
+      context.translate(x, y);
+      context.rotate(angle);
+      context.fillStyle = color;
+      softStroke(2.2);
+      context.beginPath();
+      context.moveTo(0, -length);
+      context.lineTo(6, -9);
+      context.lineTo(0, -1);
+      context.lineTo(-6, -9);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      softStroke(4, "#8a5a2c");
+      context.beginPath();
+      context.moveTo(0, -4);
+      context.lineTo(0, 16);
+      context.stroke();
+      context.restore();
+    };
+
+    const drawSpear = (x, y, length, angle = -0.12) => {
+      context.save();
+      context.translate(x, y);
+      context.rotate(angle);
+      softStroke(4.4, "#8a5a2c");
+      context.beginPath();
+      context.moveTo(0, -length);
+      context.lineTo(0, 28);
+      context.stroke();
+      context.fillStyle = "#dce6ef";
+      softStroke(2.2, palette.edge);
+      context.beginPath();
+      context.moveTo(0, -length - 26);
+      context.lineTo(10, -length + 2);
+      context.lineTo(0, -length + 13);
+      context.lineTo(-10, -length + 2);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.restore();
+    };
+
+    const drawHandAxe = (x, y, angle = -0.18) => {
+      context.save();
+      context.translate(x, y);
+      context.rotate(angle);
+      softStroke(4, "#7a4c2c");
+      context.beginPath();
+      context.moveTo(0, -35);
+      context.lineTo(0, 23);
+      context.stroke();
+      context.fillStyle = palette.equip;
+      softStroke(2.4);
+      context.beginPath();
+      context.moveTo(0, -37);
+      context.quadraticCurveTo(24, -35, 21, -14);
+      context.quadraticCurveTo(8, -20, 0, -14);
+      context.quadraticCurveTo(-8, -20, -21, -14);
+      context.quadraticCurveTo(-24, -35, 0, -37);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.restore();
+    };
+
+    context.save();
+    context.translate(this.x, drawY);
+    context.scale(scale * (this.visualDirection === "left" || this.visualDirection === "right" ? this.facing : 1), scale);
+    if (down) {
+      context.rotate(-0.9);
+      context.scale(1.1, 0.8);
+    } else if (damaged) {
+      context.rotate(-0.12);
+    }
+    if (crouch) context.scale(1.05, 0.86);
+
+    if (job === "hero") drawCape("#e23934", 0.92);
+    if (job === "paladin") drawCape("#dff4ff", 0.82);
+
+    if (job === "archer") {
+      softStroke(4.5, palette.equip);
+      context.beginPath();
+      context.arc(29, -56 + rootY, 36, -1.25, 1.25);
+      context.stroke();
+      softStroke(1.8, "#f1dfb5");
+      context.beginPath();
+      context.moveTo(39, -88 + rootY);
+      context.lineTo(39, -24 + rootY);
+      context.stroke();
+    }
+
+    const backLeg = [
+      { x: -10, y: hipY },
+      { x: -14 - stride * 6, y: -1 + rootY },
+      { x: -14 - stride * 9, y: 22 + rootY }
+    ];
+    const frontLeg = [
+      { x: 10, y: hipY },
+      { x: 14 + stride * 6, y: -1 + rootY },
+      { x: 14 + stride * 9, y: 22 + rootY }
+    ];
+    drawLimb(backLeg, pants, big ? 8 : 7);
+    drawLimb(frontLeg, pants, big ? 8 : 7);
+
+    context.fillStyle = palette.body;
+    softStroke(2.6);
+    if (job === "mage") {
+      context.beginPath();
+      context.moveTo(-bodyW, -71 + rootY);
+      context.quadraticCurveTo(0, -78 + rootY, bodyW, -71 + rootY);
+      context.lineTo(bodyW + 5, -7 + rootY);
+      context.quadraticCurveTo(0, 2 + rootY, -bodyW - 5, -7 + rootY);
+      context.closePath();
+    } else if (job === "cleric") {
+      context.beginPath();
+      context.moveTo(-bodyW, -72 + rootY);
+      context.quadraticCurveTo(0, -80 + rootY, bodyW, -72 + rootY);
+      context.lineTo(bodyW + 7, 18 + rootY);
+      context.quadraticCurveTo(0, 27 + rootY, -bodyW - 7, 18 + rootY);
+      context.closePath();
+    } else {
+      context.beginPath();
+      context.ellipse(0, torsoY, bodyW, bodyH * 0.58, 0, 0, Math.PI * 2);
+    }
+    context.fill();
+    context.stroke();
+
+    const shine = context.createLinearGradient(-bodyW, torsoY - 30, bodyW, torsoY + 8);
+    shine.addColorStop(0, "rgba(255,255,255,0.42)");
+    shine.addColorStop(0.42, "rgba(255,255,255,0.08)");
+    shine.addColorStop(1, "rgba(0,0,0,0.08)");
+    context.fillStyle = shine;
+    context.beginPath();
+    context.ellipse(-4, torsoY - 4, bodyW * 0.78, bodyH * 0.42, -0.15, 0, Math.PI * 2);
+    context.fill();
+
+    if (job === "knight") {
+      drawShield(-32, -48 + rootY, 17, 30, "#dce6ef", "cross");
+      context.fillStyle = palette.accent;
+      this.roundRect(context, -11, -76 + rootY, 22, 43, 5);
+      context.fill();
+    } else if (job === "paladin") {
+      context.fillStyle = palette.symbol;
+      context.beginPath();
+      context.arc(0, -60 + rootY, 9, 0, Math.PI * 2);
+      context.fill();
+    } else if (job === "cleric") {
+      softStroke(4, palette.symbol);
+      context.beginPath();
+      context.moveTo(0, -70 + rootY);
+      context.lineTo(0, -42 + rootY);
+      context.moveTo(-10, -56 + rootY);
+      context.lineTo(10, -56 + rootY);
+      context.stroke();
+    } else if (job === "martialArtist") {
+      context.fillStyle = palette.symbol;
+      context.fillRect(-bodyW, -40 + rootY, bodyW * 2, 8);
+    } else if (job === "mage") {
+      context.fillStyle = palette.symbol;
+      context.beginPath();
+      context.arc(0, -51 + rootY, 5, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    if (job === "swordwoman") {
+      context.fillStyle = "rgba(216,230,239,0.92)";
+      softStroke(1.8, "#6b7890");
+      context.beginPath();
+      context.ellipse(0, torsoY - 4, 16, 26, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.fillRect(-4, torsoY - 28, 8, 50);
+      context.fillStyle = "#dce6ef";
+      context.beginPath();
+      context.ellipse(-22, shoulderY + 3, 8, 6, -0.25, 0, Math.PI * 2);
+      context.ellipse(22, shoulderY + 3, 8, 6, 0.25, 0, Math.PI * 2);
+      context.fill();
+    } else if (job === "archer") {
+      softStroke(4, "#7a5334");
+      context.beginPath();
+      context.moveTo(-20, -78 + rootY);
+      context.lineTo(21, -22 + rootY);
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.beginPath();
+      context.moveTo(-24, -76 + rootY);
+      context.lineTo(-14, -84 + rootY);
+      context.lineTo(-17, -70 + rootY);
+      context.closePath();
+      context.fill();
+    } else if (job === "warrior") {
+      context.fillStyle = palette.accent;
+      softStroke(2.2);
+      context.beginPath();
+      context.ellipse(-24, shoulderY + 3, 14, 10, -0.25, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      softStroke(4, "#6b402c");
+      context.beginPath();
+      context.moveTo(-18, -33 + rootY);
+      context.lineTo(18, -33 + rootY);
+      context.stroke();
+      softStroke(4, "#d2a04a");
+      context.beginPath();
+      context.arc(-32, -28 + rootY, 6, 0, Math.PI * 2);
+      context.arc(32, -28 + rootY, 6, 0, Math.PI * 2);
+      context.stroke();
+    } else if (job === "martialArtist") {
+      softStroke(4, palette.symbol);
+      context.beginPath();
+      context.moveTo(-18, -36 + rootY);
+      context.lineTo(18, -36 + rootY);
+      context.stroke();
+      softStroke(2.2, "#d8d1bd");
+      context.beginPath();
+      context.moveTo(0, -80 + rootY);
+      context.lineTo(0, -17 + rootY);
+      context.stroke();
+    }
+
+    const backArm = [
+      { x: -bodyW + 3, y: shoulderY },
+      { x: -34 - stride * 5, y: -52 + rootY },
+      { x: -36 - stride * 7, y: -25 + rootY }
+    ];
+    const frontArm = [
+      { x: bodyW - 3, y: shoulderY },
+      { x: 34 + stride * 5, y: -52 + rootY },
+      { x: 36 + stride * 7, y: -25 + rootY }
+    ];
+    const armColor = job === "knight" || job === "paladin" ? palette.body : skin;
+    drawLimb(backArm, armColor, big ? 7 : 6);
+    drawLimb(frontArm, armColor, big ? 7 : 6);
+
+    if (job === "hero") {
+      drawShield(-31, -48 + rootY, 14, 21, "#eef4ff", "star");
+      drawSimpleSword(34, -25 + rootY, 61, 0.34, "#dce6ef");
+    } else if (job === "paladin") {
+      drawSpear(36, -30 + rootY, 82, -0.09);
+      drawShield(-31, -47 + rootY, 19, 31, "#f8fbff", "sun");
+    } else if (job === "warrior") {
+      drawHandAxe(35, -32 + rootY, 0.18);
+    } else if (job === "bard") {
+      context.fillStyle = palette.symbol;
+      softStroke(2.5);
+      context.beginPath();
+      context.ellipse(24, -39 + rootY, 20, 29, -0.28, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#f7e5b5";
+      context.beginPath();
+      context.arc(24, -39 + rootY, 8, 0, Math.PI * 2);
+      context.fill();
+      softStroke(2, palette.accent);
+      context.beginPath();
+      context.moveTo(18, -63 + rootY);
+      context.lineTo(31, -17 + rootY);
+      context.moveTo(27, -64 + rootY);
+      context.lineTo(36, -20 + rootY);
+      context.stroke();
+    } else if (job === "swordwoman") {
+      drawSimpleSword(35, -20 + rootY, 58, 0.55, palette.equip);
+    } else if (job === "mage" || job === "cleric") {
+      const staffX = job === "mage" ? 37 : -37;
+      softStroke(4, palette.equip);
+      context.beginPath();
+      context.moveTo(staffX, -84 + rootY);
+      context.lineTo(staffX, -14 + rootY);
+      context.stroke();
+      softStroke(3, palette.accent);
+      context.beginPath();
+      context.arc(staffX, -90 + rootY, job === "mage" ? 7 : 10, 0, Math.PI * 2);
+      context.stroke();
+    }
+
+    context.fillStyle = skin;
+    softStroke(2.4);
+    context.beginPath();
+    context.arc(0, headY, headR, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    if (job === "mage") {
+      context.fillStyle = hair;
+      context.beginPath();
+      context.ellipse(-15, headY + 8, 12, 34, -0.12, 0, Math.PI * 2);
+      context.ellipse(16, headY + 8, 10, 34, 0.12, 0, Math.PI * 2);
+      context.fill();
+      context.beginPath();
+      context.fillStyle = hair;
+      context.arc(0, headY - 8, headR - 1, Math.PI, Math.PI * 2);
+      context.lineTo(22, headY - 2);
+      context.quadraticCurveTo(2, headY - 15, -22, headY - 2);
+      context.closePath();
+      context.fill();
+      context.fillStyle = palette.body;
+      softStroke(2.5);
+      context.beginPath();
+      context.ellipse(0, headY - 21, 35, 9, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(-23, headY - 23);
+      context.quadraticCurveTo(0, headY - 76, 28, headY - 28);
+      context.quadraticCurveTo(15, headY - 18, -23, headY - 23);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    } else if (job === "cleric") {
+      context.fillStyle = "#fbfbf1";
+      softStroke(2.4);
+      context.beginPath();
+      context.arc(0, headY - 1, headR + 4, Math.PI * 0.88, Math.PI * 2.12);
+      context.lineTo(17, headY + 19);
+      context.quadraticCurveTo(0, headY + 27, -17, headY + 19);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = skin;
+      context.beginPath();
+      context.arc(0, headY + 1, headR - 5, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = hair;
+      context.beginPath();
+      context.arc(0, headY - 7, headR - 6, Math.PI, Math.PI * 2);
+      context.quadraticCurveTo(-7, headY - 4, -14, headY + 2);
+      context.quadraticCurveTo(0, headY - 4, 14, headY + 2);
+      context.quadraticCurveTo(7, headY - 4, 0, headY - 7);
+      context.closePath();
+      context.fill();
+    } else if (job === "knight") {
+      context.fillStyle = "#dce6ef";
+      softStroke(2.5);
+      context.beginPath();
+      context.arc(0, headY - 5, headR + 4, Math.PI, Math.PI * 2);
+      context.lineTo(18, headY + 4);
+      context.lineTo(-18, headY + 4);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.beginPath();
+      context.ellipse(0, headY - 31, 7, 13, 0, 0, Math.PI * 2);
+      context.fill();
+    } else if (job === "archer") {
+      context.fillStyle = palette.body;
+      softStroke(2.4);
+      context.beginPath();
+      context.moveTo(-24, headY - 12);
+      context.quadraticCurveTo(0, headY - 39, 24, headY - 12);
+      context.lineTo(15, headY + 5);
+      context.quadraticCurveTo(0, headY - 3, -15, headY + 5);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    } else {
+      context.fillStyle = hair;
+      context.beginPath();
+      context.arc(0, headY - 7, headR, Math.PI, Math.PI * 2);
+      context.quadraticCurveTo(10, headY - 9, 16, headY - 2);
+      context.quadraticCurveTo(6, headY - 7, 0, headY - 2);
+      context.quadraticCurveTo(-7, headY - 8, -16, headY - 2);
+      context.quadraticCurveTo(-10, headY - 9, -headR, headY - 6);
+      context.closePath();
+      context.fill();
+      if (job === "swordwoman") {
+        context.beginPath();
+        context.ellipse(-15, headY + 6, 7, 25, 0.05, 0, Math.PI * 2);
+        context.fill();
+        context.beginPath();
+        context.ellipse(26, headY - 12, 11, 30, -0.25, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+
+    if (job === "martialArtist") {
+      softStroke(4, palette.accent);
+      context.beginPath();
+      context.moveTo(-22, headY - 13);
+      context.lineTo(22, headY - 13);
+      context.lineTo(36, headY - 22);
+      context.stroke();
+    } else if (job === "bard") {
+      context.fillStyle = palette.body;
+      softStroke(2.4);
+      context.beginPath();
+      context.ellipse(0, headY - 25, 25, 7, -0.1, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = palette.accent;
+      context.beginPath();
+      context.ellipse(23, headY - 31, 11, 4, -0.55, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    const cuteFace = job === "swordwoman" || job === "mage";
+    context.fillStyle = eye;
+    context.beginPath();
+    context.arc(-7, headY, cuteFace ? 3.5 : 2.8, 0, Math.PI * 2);
+    context.arc(7, headY, cuteFace ? 3.5 : 2.8, 0, Math.PI * 2);
+    context.fill();
+    if (cuteFace) {
+      context.fillStyle = "rgba(255,255,255,0.85)";
+      context.beginPath();
+      context.arc(-8, headY - 1, 1.1, 0, Math.PI * 2);
+      context.arc(6, headY - 1, 1.1, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "rgba(255,136,150,0.32)";
+      context.beginPath();
+      context.ellipse(-14, headY + 7, 4.8, 2.6, 0, 0, Math.PI * 2);
+      context.ellipse(14, headY + 7, 4.8, 2.6, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+    softStroke(cuteFace ? 1.7 : 1.8, "rgba(70,82,92,0.65)");
+    context.beginPath();
+    context.arc(0, headY + 9, cuteFace ? 6 : 7, 0.15, Math.PI - 0.15);
+    context.stroke();
+
+    context.restore();
   }
 
   isRobotOverdrive() {

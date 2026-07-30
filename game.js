@@ -5,6 +5,150 @@ const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
+const BRAVES_JOB_ORDER = ["warrior", "paladin", "mage", "cleric", "archer", "martialArtist", "bard"];
+const BRAVES_DEFAULT_SELECTION = ["hero", "warrior", "mage", "paladin", "cleric", "archer", "martialArtist", "bard"];
+const BRAVES_JOB_DEFINITIONS = {
+  hero: {
+    label: "勇者",
+    characterType: "normal",
+    maxHp: 180,
+    maxStamina: 130,
+    stats: { power: 10, speed: 10, jump: 10, technique: 10 },
+    specialShotType: "kiai",
+    uniformColor: "#2f73e8",
+    pantsColor: "#f7f9ff",
+    trimColor: "#e3352f",
+    hairColor: "#f0c14b",
+    faceColor: "#ffd9b0",
+    eyeColor: "#2c6ee8"
+  },
+  warrior: {
+    label: "戦士",
+    characterType: "power",
+    maxHp: 210,
+    maxStamina: 115,
+    stats: { power: 13, speed: 7, jump: 7, technique: 7 },
+    specialShotType: "kiai",
+    uniformColor: "#8f3b25",
+    pantsColor: "#3a2a22",
+    trimColor: "#5b6874",
+    hairColor: "#5b2c18",
+    faceColor: "#f0b887",
+    eyeColor: "#263241"
+  },
+  swordwoman: {
+    label: "女剣士",
+    characterType: "speed",
+    maxHp: 150,
+    maxStamina: 135,
+    stats: { power: 8, speed: 13, jump: 12, technique: 12 },
+    specialShotType: "kiai",
+    uniformColor: "#e7edf8",
+    pantsColor: "#24325b",
+    trimColor: "#a63f7a",
+    hairColor: "#17191d",
+    faceColor: "#ffd1ad",
+    eyeColor: "#485d7c"
+  },
+  knight: {
+    label: "騎士",
+    characterType: "power",
+    maxHp: 220,
+    maxStamina: 120,
+    stats: { power: 10, speed: 6, jump: 6, technique: 9 },
+    specialShotType: "kiai",
+    uniformColor: "#c9d2da",
+    pantsColor: "#8b99a6",
+    trimColor: "#2f73d9",
+    hairColor: "#d8a24a",
+    faceColor: "#ffd1ad",
+    eyeColor: "#2f73d9"
+  },
+  paladin: {
+    label: "聖騎士",
+    characterType: "normal",
+    maxHp: 190,
+    maxStamina: 140,
+    stats: { power: 11, speed: 9, jump: 9, technique: 11 },
+    specialShotType: "kiai",
+    uniformColor: "#f8fbff",
+    pantsColor: "#dbefff",
+    trimColor: "#d7a331",
+    hairColor: "#f1d66c",
+    faceColor: "#ffd8b0",
+    eyeColor: "#4aa8ff"
+  },
+  mage: {
+    label: "魔法使い",
+    characterType: "mage",
+    maxHp: 130,
+    maxStamina: 150,
+    stats: { power: 12, speed: 8, jump: 8, technique: 13 },
+    specialShotType: "kiai",
+    uniformColor: "#4b1f78",
+    pantsColor: "#321052",
+    trimColor: "#d8b6ff",
+    hairColor: "#f0c14b",
+    faceColor: "#ffd1ad",
+    eyeColor: "#2f73d9"
+  },
+  cleric: {
+    label: "僧侶",
+    characterType: "normal",
+    maxHp: 145,
+    maxStamina: 150,
+    stats: { power: 7, speed: 9, jump: 8, technique: 13 },
+    specialShotType: "kiai",
+    uniformColor: "#fbfbf1",
+    pantsColor: "#dff1e2",
+    trimColor: "#74bc85",
+    hairColor: "#f2c86b",
+    faceColor: "#ffd7b7",
+    eyeColor: "#5aa36a"
+  },
+  archer: {
+    label: "弓使い",
+    characterType: "speed",
+    maxHp: 145,
+    maxStamina: 135,
+    stats: { power: 8, speed: 12, jump: 11, technique: 13 },
+    specialShotType: "kiai",
+    uniformColor: "#4f8f45",
+    pantsColor: "#7a5334",
+    trimColor: "#d8c08d",
+    hairColor: "#b87436",
+    faceColor: "#ffd0a3",
+    eyeColor: "#466238"
+  },
+  martialArtist: {
+    label: "武闘家",
+    characterType: "jump",
+    maxHp: 165,
+    maxStamina: 135,
+    stats: { power: 10, speed: 12, jump: 13, technique: 9 },
+    specialShotType: "kiai",
+    uniformColor: "#f7f3e7",
+    pantsColor: "#f7f3e7",
+    trimColor: "#17191d",
+    hairColor: "#17191d",
+    faceColor: "#f5c090",
+    eyeColor: "#263241"
+  },
+  bard: {
+    label: "吟遊詩人",
+    characterType: "speed",
+    maxHp: 140,
+    maxStamina: 145,
+    stats: { power: 7, speed: 11, jump: 10, technique: 14 },
+    specialShotType: "kiai",
+    uniformColor: "#7d2240",
+    pantsColor: "#253b2d",
+    trimColor: "#e9d9a5",
+    hairColor: "#d99a36",
+    faceColor: "#ffd0a4",
+    eyeColor: "#365c46"
+  }
+};
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
 const SHOT_WINDUP_TIME = 0.38 * 1.3;
@@ -189,6 +333,10 @@ class DodgeballGame {
       left: this.createDefaultTeamSelection(),
       right: this.createDefaultTeamSelection()
     };
+    this.bravesSelections = {
+      left: this.createDefaultBravesSelection(),
+      right: this.createDefaultBravesSelection()
+    };
     this.selectedTeamIndices = { left: 0, right: 1 };
     this.teamSelectionConfirmed = { left: false, right: false };
     this.teamRosterConfirmed = { left: false, right: false };
@@ -235,6 +383,10 @@ class DodgeballGame {
 
   createDefaultTeamSelection() {
     return Array(TEAM_SELECTION_COUNT).fill("normal");
+  }
+
+  createDefaultBravesSelection() {
+    return [...BRAVES_DEFAULT_SELECTION];
   }
 
   setupMatch() {
@@ -384,7 +536,8 @@ class DodgeballGame {
   createTeam(team) {
     const isLeft = team === "left";
     const teamDefinition = this.getTeamDefinitionForSide(team);
-    const cpuTeam = teamDefinition?.isCustom ? null : teamDefinition;
+    const bravesTeam = this.isBravesTeam(teamDefinition);
+    const cpuTeam = teamDefinition?.isCustom || bravesTeam ? null : teamDefinition;
     const color = teamDefinition?.uniformColor || (isLeft ? "#3087f2" : "#f05a45");
     const pantsColor = teamDefinition?.pantsColor || color;
     const trim = teamDefinition?.trimColor || (isLeft ? "#f6fbff" : "#fff0cf");
@@ -416,7 +569,9 @@ class DodgeballGame {
       { x: innerArea.x + innerArea.w * (isLeft ? 0.68 : 0.32), y: innerArea.y + innerArea.h * 0.62 }
     ];
 
-    const getCpuPlayer = (slot) => cpuTeam?.players?.[slot] || null;
+    const getCpuPlayer = (slot) => bravesTeam
+      ? this.getBravesPlayerDefinition(team, slot)
+      : cpuTeam?.players?.[slot] || null;
     const roster = innerPositions.map((position, index) => {
       const cpuPlayer = getCpuPlayer(index);
       return makePlayer({
@@ -879,6 +1034,26 @@ class DodgeballGame {
             cpuProfile: "arkmaz"
           })
         ]
+      },
+      {
+        id: "braves",
+        name: "ブレーブス",
+        description: "魔王チームに立ち向かう明るい正統派ファンタジーチーム",
+        isBraves: true,
+        characterType: "normal",
+        innerNames: ["勇者", "職業枠1", "職業枠2", "職業枠3", "職業枠4"],
+        outNames: ["職業枠5", "職業枠6", "職業枠7"],
+        uniformColor: "#2f73e8",
+        pantsColor: "#f7f9ff",
+        trimColor: "#e3352f",
+        hairColor: "#f0c14b",
+        faceColor: "#ffd9b0",
+        eyeColor: "#2c6ee8",
+        maxHp: 160,
+        maxStamina: 130,
+        stats: { power: 9, speed: 9, jump: 9, technique: 9 },
+        cpuProfile: "balanced",
+        players: this.createBravesPlayerDefinitions()
       }
     ];
   }
@@ -924,6 +1099,77 @@ class DodgeballGame {
 
   getSelectableTeams() {
     return [...this.getCustomTeamDefinitions(), ...this.getCpuOpponentTeams()];
+  }
+
+  isBravesTeam(team) {
+    return team?.id === "braves" || team?.isBraves;
+  }
+
+  isEditableRosterTeam(team) {
+    return Boolean(team?.isCustom || this.isBravesTeam(team));
+  }
+
+  getBravesSelectionForSide(side) {
+    if (!this.bravesSelections?.[side]) {
+      if (!this.bravesSelections) this.bravesSelections = {};
+      this.bravesSelections[side] = this.createDefaultBravesSelection();
+    }
+    this.bravesSelections[side][0] = "hero";
+    for (let i = 1; i < TEAM_SELECTION_COUNT; i += 1) {
+      if (this.bravesSelections[side][i] === "swordwoman") {
+        this.bravesSelections[side][i] = "mage";
+      }
+      if (this.bravesSelections[side][i] === "knight") {
+        this.bravesSelections[side][i] = "paladin";
+      }
+      if (!BRAVES_JOB_ORDER.includes(this.bravesSelections[side][i])) {
+        this.bravesSelections[side][i] = BRAVES_JOB_ORDER[(i - 1) % BRAVES_JOB_ORDER.length];
+      }
+    }
+    return this.bravesSelections[side];
+  }
+
+  getBravesJobDefinition(jobId) {
+    return BRAVES_JOB_DEFINITIONS[jobId] || BRAVES_JOB_DEFINITIONS.warrior;
+  }
+
+  createBravesPlayerDefinitions(selection = this.createDefaultBravesSelection()) {
+    const normalizedSelection = [...selection];
+    normalizedSelection[0] = "hero";
+    while (normalizedSelection.length < TEAM_SELECTION_COUNT) {
+      normalizedSelection.push(BRAVES_JOB_ORDER[(normalizedSelection.length - 1) % BRAVES_JOB_ORDER.length]);
+    }
+    for (let i = 1; i < TEAM_SELECTION_COUNT; i += 1) {
+      if (normalizedSelection[i] === "swordwoman") normalizedSelection[i] = "mage";
+      if (normalizedSelection[i] === "knight") normalizedSelection[i] = "paladin";
+      if (!BRAVES_JOB_ORDER.includes(normalizedSelection[i])) {
+        normalizedSelection[i] = BRAVES_JOB_ORDER[(i - 1) % BRAVES_JOB_ORDER.length];
+      }
+    }
+    return normalizedSelection.slice(0, TEAM_SELECTION_COUNT).map((jobId, slot) => {
+      const job = this.getBravesJobDefinition(jobId);
+      return {
+        name: job.label,
+        position: slot < 5 ? "inner" : "out",
+        characterType: job.characterType,
+        maxHp: job.maxHp,
+        maxStamina: job.maxStamina,
+        stats: job.stats,
+        specialShotType: job.specialShotType,
+        uniformEmblem: `braves-${jobId}`,
+        uniformColor: job.uniformColor,
+        pantsColor: job.pantsColor,
+        trimColor: job.trimColor,
+        hairColor: job.hairColor,
+        faceColor: job.faceColor,
+        eyeColor: job.eyeColor,
+        captain: jobId === "hero"
+      };
+    });
+  }
+
+  getBravesPlayerDefinition(side, slot) {
+    return this.createBravesPlayerDefinitions(this.getBravesSelectionForSide(side))[slot];
   }
 
   getSelectedCpuOpponentTeam() {
@@ -1117,17 +1363,21 @@ class DodgeballGame {
     this.teamSelectionSide = moved.side;
     this.teamSelectionSlot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(this.teamSelectionSide);
-    if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT && selectedTeam?.isCustom) {
-      this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT && this.isEditableRosterTeam(selectedTeam)) {
+      if (this.isBravesTeam(selectedTeam)) {
+        this.changeSelectedBravesJob(this.teamSelectionSide, this.teamSelectionSlot, 1);
+      } else {
+        this.changeSelectedCharacterType(this.teamSelectionSide, this.teamSelectionSlot, 1);
+      }
     }
-    if (this.input.wasPressed("button2") && this.teamSelectionSlot === CUSTOM_TEAM_CONFIRM_SLOT && selectedTeam?.isCustom) {
+    if (this.input.wasPressed("button2") && this.teamSelectionSlot === CUSTOM_TEAM_CONFIRM_SLOT && this.isEditableRosterTeam(selectedTeam)) {
       this.confirmTeamRoster(this.teamSelectionSide);
       return;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
       if (!this.teamSelectionConfirmed[this.teamSelectionSide]) {
         this.teamSelectionConfirmed[this.teamSelectionSide] = true;
-        if (selectedTeam?.isCustom) {
+        if (this.isEditableRosterTeam(selectedTeam)) {
           this.teamSelectionSlot = 0;
         } else if (this.teamSelectionSide === "left") {
           this.teamRosterConfirmed[this.teamSelectionSide] = true;
@@ -1136,7 +1386,7 @@ class DodgeballGame {
           this.teamRosterConfirmed[this.teamSelectionSide] = true;
           this.teamSelectionSlot = START_SLOT;
         }
-      } else if (selectedTeam?.isCustom) {
+      } else if (this.isEditableRosterTeam(selectedTeam)) {
         this.teamSelectionSlot = 0;
       } else if (this.teamSelectionSide === "left") {
         this.teamSelectionSide = "right";
@@ -1246,24 +1496,28 @@ class DodgeballGame {
     const slot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(side);
 
-    if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT && selectedTeam?.isCustom) {
-      this.changeSelectedCharacterType(side, slot, 1);
+    if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT && this.isEditableRosterTeam(selectedTeam)) {
+      if (this.isBravesTeam(selectedTeam)) {
+        this.changeSelectedBravesJob(side, slot, 1);
+      } else {
+        this.changeSelectedCharacterType(side, slot, 1);
+      }
     }
-    if (this.input.wasPressed("button2", playerIndex) && slot === CUSTOM_TEAM_CONFIRM_SLOT && selectedTeam?.isCustom) {
+    if (this.input.wasPressed("button2", playerIndex) && slot === CUSTOM_TEAM_CONFIRM_SLOT && this.isEditableRosterTeam(selectedTeam)) {
       this.confirmTeamRoster(side);
       return;
     }
     if (this.input.wasPressed("button2", playerIndex) && slot === CPU_OPPONENT_SLOT) {
       if (!this.teamSelectionConfirmed[side]) {
         this.teamSelectionConfirmed[side] = true;
-        if (selectedTeam?.isCustom) {
+        if (this.isEditableRosterTeam(selectedTeam)) {
           this.teamSelectionSlots[side] = 0;
         } else {
           this.teamRosterConfirmed[side] = true;
           this.teamSelectionSlots[side] = START_SLOT;
         }
       } else {
-        this.teamSelectionSlots[side] = selectedTeam?.isCustom ? 0 : START_SLOT;
+        this.teamSelectionSlots[side] = this.isEditableRosterTeam(selectedTeam) ? 0 : START_SLOT;
       }
     }
     if (this.input.wasPressed("button2", playerIndex) && slot === START_SLOT) {
@@ -1317,7 +1571,7 @@ class DodgeballGame {
       return { side: nextSide, slot: nextSlot };
     }
 
-    const selectColumns = this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+    const selectColumns = this.isEditableRosterTeam(this.getSelectedTeamForSide(nextSide)) && this.teamSelectionConfirmed?.[nextSide]
       ? 4
       : TEAM_SELECT_COLUMNS;
     const row = Math.floor(nextSlot / selectColumns);
@@ -1335,7 +1589,7 @@ class DodgeballGame {
       if (col < selectColumns - 1 && nextSlot + 1 < TEAM_SELECTION_COUNT) {
         nextSlot += 1;
       } else {
-        nextSlot = this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+        nextSlot = this.isEditableRosterTeam(this.getSelectedTeamForSide(nextSide)) && this.teamSelectionConfirmed?.[nextSide]
           ? CUSTOM_TEAM_CONFIRM_SLOT
           : CPU_OPPONENT_SLOT;
       }
@@ -1344,7 +1598,7 @@ class DodgeballGame {
     if (down) {
       nextSlot = row < lastRow
         ? Math.min(nextSlot + selectColumns, TEAM_SELECTION_COUNT - 1)
-        : this.getSelectedTeamForSide(nextSide)?.isCustom && this.teamSelectionConfirmed?.[nextSide]
+        : this.isEditableRosterTeam(this.getSelectedTeamForSide(nextSide)) && this.teamSelectionConfirmed?.[nextSide]
           ? CUSTOM_TEAM_CONFIRM_SLOT
           : CPU_OPPONENT_SLOT;
     }
@@ -1374,6 +1628,16 @@ class DodgeballGame {
       selections[slot] = nextType;
       return;
     }
+  }
+
+  changeSelectedBravesJob(side, slot, direction) {
+    if (slot <= 0 || slot >= TEAM_SELECTION_COUNT) return;
+    const selections = this.getBravesSelectionForSide(side);
+    const currentJob = selections[slot] || BRAVES_JOB_ORDER[(slot - 1) % BRAVES_JOB_ORDER.length];
+    let index = BRAVES_JOB_ORDER.indexOf(currentJob);
+    if (index < 0) index = 0;
+    index = (index + direction + BRAVES_JOB_ORDER.length) % BRAVES_JOB_ORDER.length;
+    selections[slot] = BRAVES_JOB_ORDER[index];
   }
 
   canUseCharacterType(side, slot, type) {
@@ -5317,7 +5581,7 @@ class DodgeballGame {
 
   drawPlayableTeamSelectSide(side, x, title, color) {
     const team = this.getSelectedTeamForSide(side);
-    const editable = Boolean(team?.isCustom && this.teamSelectionConfirmed?.[side]);
+    const editable = Boolean(this.isEditableRosterTeam(team) && this.teamSelectionConfirmed?.[side]);
     this.drawTeamPlayerCards(side, team, x, 264, color, editable);
     this.drawTeamChoicePanel(side, x, 122, 590, title, color, this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT));
   }
@@ -5336,7 +5600,7 @@ class DodgeballGame {
     context.textAlign = "left";
     context.fillStyle = color;
     context.font = "bold 18px Meiryo, sans-serif";
-    context.fillText(editable ? "自由編成メンバー" : team?.name || "", x, y - 12);
+    context.fillText(editable ? (this.isBravesTeam(team) ? "職業選択メンバー" : "自由編成メンバー") : team?.name || "", x, y - 12);
 
     for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
       const row = Math.floor(i / 4);
@@ -5347,19 +5611,20 @@ class DodgeballGame {
         context.fillStyle = "#dff8ff";
         context.fillRect(x - 8, y - 36, 600, 34);
       }
-      const player = editable ? null : team?.players?.[i];
-      const type = editable
+      const bravesPlayer = this.isBravesTeam(team) ? this.getBravesPlayerDefinition(side, i) : null;
+      const player = editable && team?.isCustom ? null : bravesPlayer || team?.players?.[i];
+      const type = editable && team?.isCustom
         ? this.teamSelections[side][i]
         : player?.characterType || team?.characterType || "normal";
       const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-      const stats = editable ? definition.stats : player?.stats || team?.stats || definition.stats;
-      const maxHp = editable ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
+      const stats = editable && team?.isCustom ? definition.stats : player?.stats || team?.stats || definition.stats;
+      const maxHp = editable && team?.isCustom ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
       const roleLabel = editable
-        ? (i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
+        ? (this.isBravesTeam(team) && i === 0 ? "内野 固定" : i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
         : (player?.position === "out" ? "外野" : "内野");
-      const title = editable ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
+      const title = editable && team?.isCustom ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
-      const previewStyle = editable ? null : {
+      const previewStyle = editable && team?.isCustom ? null : {
         ...team,
         ...player,
         uniformEmblem: player?.uniformEmblem || team?.uniformEmblem
@@ -5399,7 +5664,11 @@ class DodgeballGame {
         cardY + 147
       );
       context.font = "10px Meiryo, sans-serif";
-      context.fillText(this.getSpecialShotLabel(player?.specialShotType), cardX + 61, cardY + 163);
+      context.fillText(
+        this.isBravesTeam(team) && editable && i === 0 ? "固定勇者" : this.getSpecialShotLabel(player?.specialShotType),
+        cardX + 61,
+        cardY + 163
+      );
       context.textAlign = "left";
     }
 
@@ -5465,6 +5734,7 @@ class DodgeballGame {
       style?.uniformEmblem === "witch" ||
       style?.uniformEmblem === "shieldDevil" ||
       style?.uniformEmblem === "miniDevil" ||
+      String(style?.uniformEmblem || "").startsWith("braves-") ||
       type === "demon" ||
       type === "lavaGolem" ||
       type === "vampire" ||
