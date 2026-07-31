@@ -293,6 +293,8 @@ const QUICK_SHOT_CONFIG = {
 };
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.18, areaScale: 1 },
+  heroStraight: { duration: 0.165, areaScale: 0.94 },
+  melodyShot: { duration: 0.158, areaScale: 0.92 },
   kiai: { duration: 0.11, areaScale: 0.9 },
   braveSlash: { duration: 0.09, areaScale: 0.82 },
   gigaBreak: { duration: 0.075, areaScale: 0.72 },
@@ -347,6 +349,48 @@ const METEOR_CRASH_CONFIG = {
   lavaTouchDamage: 5,
   lavaSlowScale: 0.68,
   lavaSlowDuration: 0.55
+};
+const MOON_BARRIER_CONFIG = {
+  chance: 0.3,
+  staminaCost: 25,
+  cooldown: 3,
+  timer: 0.58,
+  knockbackScale: 0.34
+};
+const BLESSING_SHOT_CONFIG = {
+  healRatio: 0.25,
+  minHeal: 4
+};
+const GUARDIAN_SHIELD_CONFIG = {
+  range: 220,
+  normalChance: 0.4,
+  specialChance: 0.25,
+  counterChance: 0.3,
+  normalStaminaCost: 18,
+  specialStaminaCost: 28,
+  guardTimer: 0.74
+};
+const BARD_RHYTHM_STEP_CONFIG = {
+  range: 245,
+  duration: 4.2,
+  cooldownMin: 7,
+  cooldownMax: 11,
+  minNearbyAllies: 1
+};
+const AUDIO_CONFIG = {
+  bgmVolume: 0.38,
+  sfxVolume: 0.72,
+  damageCooldown: 0.12,
+  catchCooldown: 0.08,
+  paths: {
+    koutei: "music/koutei.mp3",
+    akuma: "music/akuma.mp3",
+    pass: "music/pass.mp3",
+    shoot: "music/shoot.mp3",
+    special: "music/special.mp3",
+    catch: "music/catch.mp3",
+    damage: "music/damage.mp3"
+  }
 };
 const BLOOD_DRAIN_CONFIG = {
   damageScale: 1.015,
@@ -510,6 +554,8 @@ class DodgeballGame {
     this.effects = [];
     this.hellfireZones = [];
     this.meteorLavaZones = [];
+    this.audio = this.createAudioState();
+    this.installAudioUnlockHandlers();
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
@@ -534,6 +580,123 @@ class DodgeballGame {
 
   createDefaultBravesSelection() {
     return [...BRAVES_DEFAULT_SELECTION];
+  }
+
+  createAudioState() {
+    const supported = typeof Audio !== "undefined";
+    const bgm = {};
+    const sfxPools = {};
+    if (supported) {
+      for (const key of ["koutei", "akuma"]) {
+        const audio = new Audio(AUDIO_CONFIG.paths[key]);
+        audio.loop = true;
+        audio.volume = AUDIO_CONFIG.bgmVolume;
+        audio.preload = "auto";
+        bgm[key] = audio;
+      }
+      for (const key of ["pass", "shoot", "special", "catch", "damage"]) {
+        sfxPools[key] = Array.from({ length: key === "damage" ? 4 : 3 }, () => {
+          const audio = new Audio(AUDIO_CONFIG.paths[key]);
+          audio.volume = AUDIO_CONFIG.sfxVolume;
+          audio.preload = "auto";
+          return audio;
+        });
+      }
+    }
+    return {
+      supported,
+      bgm,
+      currentBgm: null,
+      sfxPools,
+      sfxIndex: {},
+      cooldowns: {},
+      unlocked: false
+    };
+  }
+
+  unlockAudio() {
+    if (!this.audio?.supported || this.audio.unlocked) return;
+    this.audio.unlocked = true;
+    for (const audio of [...Object.values(this.audio.bgm), ...Object.values(this.audio.sfxPools).flat()]) {
+      audio.load?.();
+    }
+    if (this.state === "playing") this.startMatchBgm();
+  }
+
+  installAudioUnlockHandlers() {
+    if (!this.audio?.supported || typeof window === "undefined") return;
+    const unlock = () => this.unlockAudio();
+    window.addEventListener("pointerdown", unlock, { passive: true });
+    window.addEventListener("keydown", unlock, { passive: true });
+    window.addEventListener("gamepadconnected", unlock, { passive: true });
+  }
+
+  stopBgm() {
+    if (!this.audio?.supported) return;
+    for (const audio of Object.values(this.audio.bgm)) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    this.audio.currentBgm = null;
+  }
+
+  startMatchBgm() {
+    if (!this.audio?.supported || !this.audio.unlocked) return;
+    const key = this.isArkmazMatch() ? "akuma" : "koutei";
+    if (this.audio.currentBgm === key && !this.audio.bgm[key].paused) return;
+    for (const [name, audio] of Object.entries(this.audio.bgm)) {
+      if (name === key) continue;
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    const bgm = this.audio.bgm[key];
+    if (!bgm) return;
+    bgm.volume = AUDIO_CONFIG.bgmVolume;
+    bgm.currentTime = bgm.currentTime || 0;
+    const playPromise = bgm.play();
+    if (playPromise?.catch) playPromise.catch(() => {});
+    this.audio.currentBgm = key;
+  }
+
+  playSound(key, options = {}) {
+    if (!this.audio?.supported || !this.audio.unlocked) return;
+    const now = performance.now() / 1000;
+    const cooldown = options.cooldown || 0;
+    if (cooldown > 0 && now < (this.audio.cooldowns[key] || 0)) return;
+    if (cooldown > 0) this.audio.cooldowns[key] = now + cooldown;
+    const pool = this.audio.sfxPools[key];
+    if (!pool?.length) return;
+    const index = this.audio.sfxIndex[key] || 0;
+    const audio = pool[index % pool.length];
+    this.audio.sfxIndex[key] = index + 1;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = options.volume ?? AUDIO_CONFIG.sfxVolume;
+    const playPromise = audio.play();
+    if (playPromise?.catch) playPromise.catch(() => {});
+  }
+
+  playThrowSound(kind, specialType = null, counter = false) {
+    if (kind === "pass") {
+      this.playSound("pass");
+    } else if (kind === "shoot") {
+      this.playSound(specialType || counter ? "special" : "shoot");
+    }
+  }
+
+  enterPlayingState() {
+    this.state = "playing";
+    this.startMatchBgm();
+  }
+
+  enterModeSelectState() {
+    this.state = "modeSelect";
+    this.stopBgm();
+  }
+
+  isArkmazMatch() {
+    return [this.getTeamDefinitionForSide("left"), this.getTeamDefinitionForSide("right")]
+      .some((team) => team?.id === "arkmaz" || team?.name === "アークマーズ");
   }
 
   setupMatch() {
@@ -1463,7 +1626,7 @@ class DodgeballGame {
 
     if (this.state === "gameOver") {
       if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
-        this.state = "modeSelect";
+        this.enterModeSelectState();
       }
       return;
     }
@@ -1488,7 +1651,7 @@ class DodgeballGame {
       if (this.pauseMenuIndex === 0) {
         this.state = "playing";
       } else {
-        this.state = "modeSelect";
+        this.enterModeSelectState();
         this.pauseMenuIndex = 0;
       }
     }
@@ -1533,7 +1696,7 @@ class DodgeballGame {
     }
 
     if (this.input.wasPressed("pause")) {
-      this.state = "modeSelect";
+      this.enterModeSelectState();
     }
   }
 
@@ -1574,7 +1737,7 @@ class DodgeballGame {
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
       if (this.canStartSelectedMatch()) {
         this.setupMatch();
-        this.state = "playing";
+        this.enterPlayingState();
       }
     }
     if (this.input.wasPressed("button1")) {
@@ -1599,7 +1762,7 @@ class DodgeballGame {
         this.teamSelectionConfirmed[this.teamSelectionSide] = false;
         return;
       }
-      this.state = "modeSelect";
+      this.enterModeSelectState();
     }
   }
 
@@ -1626,14 +1789,14 @@ class DodgeballGame {
         this.watchSelectionSlot += 1;
       } else {
         this.setupMatch();
-        this.state = "playing";
+        this.enterPlayingState();
       }
     }
     if (this.input.wasPressed("button1")) {
       if (this.watchSelectionSlot > 0) {
         this.watchSelectionSlot -= 1;
       } else {
-        this.state = "modeSelect";
+        this.enterModeSelectState();
       }
     }
   }
@@ -1696,7 +1859,7 @@ class DodgeballGame {
     if (this.input.wasPressed("button2", playerIndex) && slot === START_SLOT) {
       if (this.canStartSelectedMatch()) {
         this.setupMatch();
-        this.state = "playing";
+        this.enterPlayingState();
       }
     }
     if (this.input.wasPressed("button1", playerIndex)) {
@@ -1712,7 +1875,7 @@ class DodgeballGame {
         this.teamSelectionConfirmed[side] = false;
         return;
       }
-      this.state = "modeSelect";
+      this.enterModeSelectState();
     }
   }
 
@@ -1925,6 +2088,7 @@ class DodgeballGame {
     this.handleCpuButtons(delta);
     this.updateChargingThrow(delta);
     this.updatePendingThrow(delta);
+    this.updateRhythmStep(delta);
     this.updatePlayers(delta);
     this.resolvePlayerCollisions();
     this.autoPickupLooseBall();
@@ -2978,10 +3142,13 @@ class DodgeballGame {
     if (this.isSupportSpecialShot(specialType)) {
       this.consumeSpirit(actor.team);
       this.applySupportSpecial(actor, specialType);
+      this.playSound("special");
       if (kind === "shoot") this.showShotMultiplier(multiplier, actor, specialType);
       return true;
     }
+    this.updateHeroBondIntensityFor(actor);
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
+      this.playThrowSound(kind, specialType, false);
       if (kind === "shoot") this.showShotMultiplier(multiplier, actor, specialType);
       if (kind === "pass" && this.isShiningPassActor(actor)) {
         this.spawnEffect(actor.x + actor.facing * 46, actor.y - actor.jumpZ - 66, "#fff4a8", "shiningPassBow", 1.05);
@@ -3110,10 +3277,13 @@ class DodgeballGame {
     if (this.isSupportSpecialShot(specialType)) {
       this.consumeSpirit(pending.actor.team);
       this.applySupportSpecial(pending.actor, specialType);
+      this.playSound("special");
       if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
       return;
     }
+    this.updateHeroBondIntensityFor(pending.actor);
     if (this.ball.launch(pending.actor, launchTarget, pending.kind, pending.aim, launchMultiplier, specialType)) {
+      this.playThrowSound(pending.kind, specialType, Boolean(pending.counter));
       if (pending.devilTrianglePass) {
         this.ball.devilTrianglePass = true;
       }
@@ -3699,6 +3869,7 @@ class DodgeballGame {
       target.passChainBlockTimer = 1.4;
       target.startCatch(0.34);
       this.ball.pickUp(target);
+      this.playSound("catch", { cooldown: AUDIO_CONFIG.catchCooldown });
       this.addSpirit(passingTeam, GAME_CONFIG.battle.spiritPassGain);
       target.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
       this.setControlledMember(target.team, target);
@@ -3769,6 +3940,7 @@ class DodgeballGame {
       const ironVerticalDirection = caughtIronShot ? (this.ball.vy >= 0 ? 1 : -1) : 0;
       const counterChainCount = caughtEnemyShot && this.ball.counterShot ? (this.ball.counterChainCount || 0) + 1 : 0;
       this.ball.pickUp(catcher);
+      this.playSound("catch", { cooldown: AUDIO_CONFIG.catchCooldown });
       if (caughtFriendlyPass) {
         this.addSpirit(throwingTeam, GAME_CONFIG.battle.spiritPassGain);
         catcher.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
@@ -3842,7 +4014,71 @@ class DodgeballGame {
     }
   }
 
+  isHeroPlayer(player) {
+    return Boolean(player && player.uniformEmblem === "braves-hero");
+  }
+
+  isBardPlayer(player) {
+    return Boolean(player && player.uniformEmblem === "braves-bard");
+  }
+
+  isHeroRoyalStraightBall(ball = this.ball) {
+    return Boolean(
+      ball?.isFlying &&
+      ball.kind === "shoot" &&
+      !ball.specialShotType &&
+      !ball.counterShot &&
+      this.isHeroPlayer(ball.thrower)
+    );
+  }
+
+  isBardMelodyShotBall(ball = this.ball) {
+    return Boolean(
+      ball?.isFlying &&
+      ball.kind === "shoot" &&
+      !ball.specialShotType &&
+      !ball.counterShot &&
+      this.isBardPlayer(ball.thrower)
+    );
+  }
+
+  getHeroBondIntensity(hero) {
+    if (!this.isHeroPlayer(hero)) return 0;
+    const team = hero.team === "left" ? this.leftTeam : this.rightTeam;
+    const allies = team.filter(member => member && member !== hero);
+    if (!allies.length) return 0;
+
+    const totalMaxHp = allies.reduce((sum, member) => sum + Math.max(1, member.maxHp || member.hp || 1), 0);
+    if (totalMaxHp <= 0) return 0;
+
+    const missingHp = allies.reduce((sum, member) => {
+      const maxHp = Math.max(1, member.maxHp || member.hp || 1);
+      if (member.defeated || member.hp <= 0) return sum + maxHp;
+      return sum + Math.max(0, maxHp - member.hp);
+    }, 0);
+    return Math.max(0, Math.min(1, missingHp / totalMaxHp));
+  }
+
+  updateHeroBondIntensityFor(actor) {
+    if (!actor) return;
+    actor.heroBondIntensity = this.getHeroBondIntensity(actor);
+  }
+
   getCatchDifficulty(catcher) {
+    const enemyHeroStraight = (
+      this.isHeroRoyalStraightBall(this.ball) &&
+      this.ball.thrower &&
+      this.ball.thrower.team !== catcher.team
+    );
+    if (enemyHeroStraight) return CATCH_DIFFICULTY.heroStraight;
+
+    const enemyMelodyShot = (
+      this.isBardMelodyShotBall(this.ball) &&
+      this.ball.thrower &&
+      this.ball.thrower.team !== catcher.team
+    );
+    if (enemyMelodyShot) return CATCH_DIFFICULTY.melodyShot;
+
     const enemySpecial = (
       this.ball?.isFlying &&
       this.ball.kind === "shoot" &&
@@ -3988,7 +4224,7 @@ class DodgeballGame {
       w: box.w + inflateX * 2,
       h: box.h + inflateY * 2
     };
-    if (!isEnemyShot || !this.ball.specialShotType) return area;
+    if (!isEnemyShot || (!this.ball.specialShotType && !this.isHeroRoyalStraightBall(this.ball) && !this.isBardMelodyShotBall(this.ball))) return area;
 
     const scale = this.getCatchDifficulty(catcher).areaScale * (catcher.getVictoryMarchCatchScale?.() ?? 1) * this.getMartialArtistSpecialCatchScale(catcher);
     const centerX = area.x + area.w * 0.5;
@@ -4075,6 +4311,84 @@ class DodgeballGame {
     this.spawnEffect(protector.x, protector.y - 82, "#fff7a0", "shieldImpact", 0.78);
     this.completeShieldDevilThrownGuard(protector, target, direction);
     return "shielded";
+  }
+
+  isLeonhardtPlayer(player) {
+    return Boolean(player && player.uniformEmblem === "braves-paladin" && player.specialShotType === "holyLance");
+  }
+
+  completeGuardianShieldGuard(protector, target, direction, ballY) {
+    protector.shieldAlertTimer = Math.max(protector.shieldAlertTimer || 0, 0.68);
+    protector.shieldGuardTimer = Math.max(protector.shieldGuardTimer || 0, GUARDIAN_SHIELD_CONFIG.guardTimer);
+    protector.facing = -direction;
+    protector.visualDirection = direction >= 0 ? "left" : "right";
+    this.ball.hitPlayerIds?.add(target.id);
+    this.ball.hitPlayerIds?.add(protector.id);
+    this.ball.drop();
+    this.ball.x = protector.x - direction * Math.min(78, Math.max(42, this.ball.radius * 1.45));
+    this.ball.y = protector.y + (Math.random() - 0.5) * 42;
+    this.ball.z = Math.max(14, Math.min(54, protector.jumpZ * 0.2 + 18));
+    this.ball.vx = -direction * (150 + Math.random() * 70);
+    this.ball.vy = (Math.random() - 0.5) * 105;
+    this.ball.vz = 95 + Math.random() * 55;
+    this.addSpirit(protector.team, GAME_CONFIG.battle.spiritCatchGain * 0.65);
+    this.startScreenShake(12, 0.14);
+    this.spawnEffect(protector.x - direction * 34, protector.y - protector.jumpZ - 72, "#fff4a8", "shieldImpact", 1.08);
+    this.spawnEffect(this.ball.x, ballY, "#ffffff", "shieldImpact", 0.72);
+    if (protector !== target) {
+      this.spawnEffect(target.x, target.y - target.jumpZ - 76, "#fff4a8", "shieldImpact", 0.48);
+    }
+    this.spawnCatchResultLabel(protector, "GUARD", "#fff4a8");
+  }
+
+  resolveGuardianShieldGuard(target, targets, ballY) {
+    if (!target || target.defeated || target.role !== "inner") return false;
+    const flightSerial = this.ball.flightSerial || 0;
+    if (this.ball.guardianShieldFlight !== flightSerial) {
+      this.ball.guardianShieldFlight = flightSerial;
+      this.ball.guardianShieldProtectorId = null;
+      const special = Boolean(this.ball.specialShotType);
+      const chance = this.ball.counterShot
+        ? GUARDIAN_SHIELD_CONFIG.counterChance
+        : special
+          ? GUARDIAN_SHIELD_CONFIG.specialChance
+          : GUARDIAN_SHIELD_CONFIG.normalChance;
+      const staminaCost = special ? GUARDIAN_SHIELD_CONFIG.specialStaminaCost : GUARDIAN_SHIELD_CONFIG.normalStaminaCost;
+      const candidates = targets
+        .filter((member) => (
+          this.isLeonhardtPlayer(member) &&
+          !member.defeated &&
+          member.hp > 0 &&
+          member.role === "inner" &&
+          member.stamina >= staminaCost &&
+          !this.ball.hitPlayerIds?.has(member.id) &&
+          (member === target || Math.hypot(member.x - target.x, member.y - target.y) <= GUARDIAN_SHIELD_CONFIG.range)
+        ))
+        .sort((a, b) => (
+          (a === target ? -10000 : Math.hypot(a.x - target.x, a.y - target.y)) -
+          (b === target ? -10000 : Math.hypot(b.x - target.x, b.y - target.y))
+        ));
+      if (candidates.length > 0 && Math.random() < chance) {
+        this.ball.guardianShieldProtectorId = candidates[0].id;
+      }
+    }
+    const protector = targets.find((member) => member.id === this.ball.guardianShieldProtectorId && !member.defeated && member.hp > 0);
+    if (!protector) return false;
+
+    const special = Boolean(this.ball.specialShotType);
+    const staminaCost = special ? GUARDIAN_SHIELD_CONFIG.specialStaminaCost : GUARDIAN_SHIELD_CONFIG.normalStaminaCost;
+    if (protector.stamina < staminaCost) return false;
+    protector.drainStamina?.(staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay * 0.55);
+    const direction = this.ball.vx >= 0 ? 1 : -1;
+    if (protector !== target) {
+      protector.x = target.x - direction * 72;
+      protector.y = target.y + Math.max(-54, Math.min(54, this.ball.y - target.y));
+      protector.jumpZ = 0;
+      protector.jumpVelocity = 0;
+      protector.clampToArea(this.getMoveArea(protector, false));
+    }
+    this.completeGuardianShieldGuard(protector, target, direction, ballY);
+    return true;
   }
 
   getRandomPointInArea(area, padding = 40) {
@@ -4169,6 +4483,33 @@ class DodgeballGame {
     return false;
   }
 
+  isLunaPlayer(player) {
+    return Boolean(player && player.uniformEmblem === "braves-mage" && player.specialShotType === "lunaticMirage");
+  }
+
+  tryMoonBarrier(target, ballY, damage, direction) {
+    if (!this.isLunaPlayer(target)) return false;
+    if (target.moonBarrierCooldownTimer > 0 || target.stamina < MOON_BARRIER_CONFIG.staminaCost) return false;
+    if (Math.random() >= MOON_BARRIER_CONFIG.chance) return false;
+    target.drainStamina?.(MOON_BARRIER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay * 0.65);
+    target.moonBarrierTimer = MOON_BARRIER_CONFIG.timer;
+    target.moonBarrierCooldownTimer = MOON_BARRIER_CONFIG.cooldown;
+    const hpBefore = target.hp;
+    const reducedDamage = damage * 0.5;
+    const damaged = target.takeDamage(reducedDamage, direction, GAME_CONFIG.battle, MOON_BARRIER_CONFIG.knockbackScale);
+    this.ball.hitPlayerIds?.add(target.id);
+    if (damaged) {
+      this.addSpiritForDamage(target.team, hpBefore, target.hp);
+      this.spawnDamageNumber(target, reducedDamage);
+    }
+    this.spawnEffect(target.x, target.y - target.jumpZ - 66, "#b98cff", "moonBarrier", 1.1);
+    this.spawnEffect(this.ball.x, ballY, "#f8f1ff", "moonBarrierImpact", Math.max(0.8, Math.min(1.45, reducedDamage / 24)));
+    this.spawnCatchResultLabel(target, "BARRIER", "#d8b6ff");
+    this.startScreenShake(6, 0.08);
+    this.spillHitBallInDefenderCourt(target, direction, Math.max(8, reducedDamage));
+    return true;
+  }
+
   handleHits() {
     if (!this.ball.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower || this.ball.hasBounced) return;
     if (this.ball.specialShotType === "clockStop" && this.ball.clockStopPhase === "hold") return;
@@ -4195,6 +4536,7 @@ class DodgeballGame {
         }
         return;
       }
+      if (this.resolveGuardianShieldGuard(originalTarget, targets, ballY)) return;
       const guardedTarget = this.resolveArkmaShieldDevilGuard(originalTarget, targets, ballY);
       if (guardedTarget === "caught") return;
       if (guardedTarget === "shielded") return;
@@ -4247,13 +4589,18 @@ class DodgeballGame {
       if (specialType === "arcanaSphere" && arcanaCharge >= 0.92) {
         knockbackScale *= ARCANA_SPHERE_DAMAGE_CONFIG.maxKnockbackScale;
       }
+      if (!shieldGuardBlock && this.tryMoonBarrier(target, ballY, damage, direction)) return;
       const hpBefore = target.hp;
       const wasDodging = target.dodgeTimer > 0;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
+        const actualDamage = Math.max(0, hpBefore - target.hp);
         this.addSpiritForDamage(target.team, hpBefore, target.hp);
         this.addSpiritForShotHit(this.ball);
         this.ball.hitPlayerIds?.add(target.id);
+        if (!specialType && !demonShot && !this.ball.counterShot) {
+          this.applyBlessingShot(this.ball.thrower, actualDamage);
+        }
         if (specialType === "lightning") {
           if (target.hp > 0) {
             target.stun(0.55 + Math.max(0, (this.ball.shotMultiplier || 1) - 1.5) * 0.25);
@@ -4355,6 +4702,16 @@ class DodgeballGame {
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : demonShot ? "maouImpact" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
         );
+        if (!specialType && !demonShot && !this.ball.counterShot && this.isBravesMartialArtist(this.ball.thrower)) {
+          this.spawnEffect(this.ball.x, ballY, "#ffffff", "qigongShotImpact", 0.9);
+          target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.18;
+        }
+        if (!specialType && !demonShot && !this.ball.counterShot && this.isHeroRoyalStraightBall(this.ball)) {
+          this.spawnEffect(this.ball.x, ballY, "#8ffcff", "heroStraightImpact", 0.75 + (this.ball.heroBondIntensity || 0) * 0.45);
+        }
+        if (!specialType && !demonShot && !this.ball.counterShot && this.isBardMelodyShotBall(this.ball)) {
+          this.spawnEffect(this.ball.x, ballY, "#ffd83d", "melodyShotImpact", 0.9);
+        }
         if (this.ball.counterShot) {
           this.startScreenShake(10 + (this.ball.counterIntensity || 1) * 3, 0.14);
         }
@@ -4527,7 +4884,7 @@ class DodgeballGame {
     } else if (specialType === "hundredRush") {
       damage = baseDamage * 2.18;
     } else if (specialType === "lunaticMirage") {
-      damage = baseDamage * (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32));
+      damage = baseDamage * (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32)) * 1.15;
     } else if (specialType === "lightning" || specialType === "triple") {
       damage = baseDamage * 2;
     } else if (specialType === "boomerang") {
@@ -4589,6 +4946,7 @@ class DodgeballGame {
     const receiver = throwerTeam ? this.findNearestOutfielder(throwerTeam, this.ball.x, this.ball.y) : null;
     if (receiver) {
       this.ball.pickUp(receiver);
+      this.playSound("catch", { cooldown: AUDIO_CONFIG.catchCooldown });
       receiver.throwLockTimer = Math.max(receiver.throwLockTimer, 0.2);
       this.setControlledMember(receiver.team, receiver);
       this.spawnEffect(receiver.x, receiver.y - 58, "#ffb347", "catch");
@@ -4622,6 +4980,7 @@ class DodgeballGame {
       : null;
     if (receiver) {
       this.ball.pickUp(receiver);
+      this.playSound("catch", { cooldown: AUDIO_CONFIG.catchCooldown });
       receiver.throwLockTimer = Math.max(receiver.throwLockTimer, 0.2);
       this.setControlledMember(receiver.team, receiver);
       this.spawnEffect(receiver.x, receiver.y - 58, "#55dfff", "catch");
@@ -4711,6 +5070,35 @@ class DodgeballGame {
     this.spawnCatchResultLabel(actor, "MARCH!", "#ffd83d");
   }
 
+  updateRhythmStep(delta) {
+    for (const bard of this.players) {
+      if (!this.isBardPlayer(bard) || bard.defeated || bard.hp <= 0 || bard.downTimer > 0) continue;
+      if (bard.rhythmStepCooldownTimer > 0 || bard.rhythmStepTimer > 0) continue;
+      const team = bard.team === "left" ? this.leftTeam : this.rightTeam;
+      const allies = team.filter((member) => (
+        member &&
+        member !== bard &&
+        !member.defeated &&
+        member.hp > 0 &&
+        member.downTimer <= 0 &&
+        Math.hypot(member.x - bard.x, member.y - bard.y) <= BARD_RHYTHM_STEP_CONFIG.range
+      ));
+      if (allies.length < BARD_RHYTHM_STEP_CONFIG.minNearbyAllies) {
+        bard.rhythmStepCooldownTimer = 1.6;
+        continue;
+      }
+
+      bard.applyRhythmStep?.(BARD_RHYTHM_STEP_CONFIG.duration);
+      for (const member of allies) {
+        member.applyRhythmStep?.(BARD_RHYTHM_STEP_CONFIG.duration);
+        this.spawnEffect(member.x, member.y - member.jumpZ - 82, "#ffd83d", "rhythmStepBuff", 0.82);
+        this.spawnEffect(member.x + (Math.random() - 0.5) * 34, member.y - member.jumpZ - 112, "#8b1e4d", "musicNote", 0.55);
+      }
+      this.spawnEffect(bard.x, bard.y - bard.jumpZ - 92, "#ffd83d", "rhythmStepCast", 1);
+      bard.rhythmStepCooldownTimer = BARD_RHYTHM_STEP_CONFIG.cooldownMin + Math.random() * (BARD_RHYTHM_STEP_CONFIG.cooldownMax - BARD_RHYTHM_STEP_CONFIG.cooldownMin);
+    }
+  }
+
   applyGrandHeal(actor) {
     if (!actor) return;
     const team = actor.team === "left" ? this.leftTeam : this.rightTeam;
@@ -4767,6 +5155,47 @@ class DodgeballGame {
       this.spawnEffect(player.x, player.y - player.jumpZ - 88, color, "heal");
     }
     return healed;
+  }
+
+  isSophiaPlayer(player) {
+    return Boolean(player && player.uniformEmblem === "braves-cleric" && player.specialShotType === "grandHeal");
+  }
+
+  findLowestHpRatioAlly(teamName) {
+    const team = teamName === "left" ? this.leftTeam : this.rightTeam;
+    let best = null;
+    let bestRatio = Infinity;
+    for (const member of team) {
+      if (!member || member.defeated || member.hp <= 0 || member.hp >= member.maxHp) continue;
+      const ratio = member.hp / Math.max(1, member.maxHp);
+      if (ratio < bestRatio) {
+        best = member;
+        bestRatio = ratio;
+      }
+    }
+    return best;
+  }
+
+  applyBlessingShot(attacker, actualDamage) {
+    if (!this.isSophiaPlayer(attacker) || !actualDamage || actualDamage <= 0) return;
+    const target = this.findLowestHpRatioAlly(attacker.team);
+    if (!target) return;
+    const healAmount = Math.max(BLESSING_SHOT_CONFIG.minHeal, actualDamage * BLESSING_SHOT_CONFIG.healRatio);
+    const healed = this.healPlayer(target, healAmount, "#bdf8ff");
+    if (healed <= 0) return;
+    this.effects.push({
+      type: "blessingRibbon",
+      fromX: attacker.x,
+      fromY: attacker.y - attacker.jumpZ - 80,
+      target,
+      x: target.x,
+      y: target.y - target.jumpZ - 82,
+      color: "#fff4a8",
+      life: 0.72,
+      maxLife: 0.72
+    });
+    this.spawnEffect(target.x, target.y - target.jumpZ - 8, "#fff4a8", "blessingStar", 0.85);
+    this.spawnCatchResultLabel(target, `+${Math.round(healed)}`, "#bdf8ff");
   }
 
   isVampirePlayer(player) {
@@ -5062,6 +5491,7 @@ class DodgeballGame {
         return;
       }
       this.state = "gameOver";
+      this.stopBgm();
       this.message = "YOU WIN";
     } else if (!leftAlive) {
       if (!this.isEliminationAnimationFinished(this.leftTeam)) {
@@ -5069,6 +5499,7 @@ class DodgeballGame {
         return;
       }
       this.state = "gameOver";
+      this.stopBgm();
       this.message = "YOU LOSE";
     } else if (this.ball.owner) {
       this.message = this.ball.owner.team === "left" ? "MY TEAM BALL" : "ENEMY BALL";
@@ -5383,13 +5814,21 @@ class DodgeballGame {
       : type === "fireballBurn" ? 0.5
       : type === "victoryMarchBuff" ? 0.9
       : type === "musicNote" ? 1
+      : type === "rhythmStepBuff" ? 0.74
+      : type === "rhythmStepCast" ? 0.82
       : type === "grandHealCast" ? 1
       : type === "grandHealCircle" ? 0.82
       : type === "grandHealFeather" ? 1.05
+      : type === "blessingStar" ? 0.72
       : type === "braveSlashLaunch" ? 0.46
       : type === "gigaBreakLaunch" ? 0.58
       : type === "gigaBreakCatchBrace" ? 0.72
+      : type === "moonBarrier" ? 0.58
+      : type === "moonBarrierImpact" ? 0.5
       : type === "lunaticMirageLaunch" ? 0.62
+      : type === "heroStraightImpact" ? 0.46
+      : type === "melodyShotImpact" ? 0.48
+      : type === "qigongShotImpact" ? 0.42
       : type === "shiningPassBow" ? 0.46
       : type === "galeCounterLaunch" ? 0.58
       : type === "galeCounterImpact" ? 0.62
@@ -5461,6 +5900,7 @@ class DodgeballGame {
   }
 
   spawnDamageNumber(target, amount) {
+    this.playSound("damage", { cooldown: AUDIO_CONFIG.damageCooldown });
     const displayAmount = target.getIncomingDamageAmount?.(amount) ?? amount;
     this.effects.push({
       x: target.x + target.facing * -34,
@@ -8188,6 +8628,38 @@ class DodgeballGame {
           }
         }
 
+        const batCount = Math.max(2, Math.round(3 + intensity * 3));
+        context.globalCompositeOperation = "source-over";
+        for (let bat = 0; bat < batCount; bat += 1) {
+          const seed = bat * 1.31;
+          const t = (flow * 0.72 + bat / batCount + 0.12) % 1;
+          const lane = ((bat % 5) - 2) / 2;
+          const arc = Math.sin(t * Math.PI) * (44 + bat * 5) * intensity;
+          const wingWave = Math.sin(progress * 12 + seed) * 6;
+          const px = fromX + dx * t + sideX * (arc * lane + Math.sin(progress * 6 + seed) * 16);
+          const py = fromY + dy * t + sideY * (arc * lane) - Math.sin(t * Math.PI) * (24 + bat * 3);
+          const size = (0.68 + (bat % 3) * 0.12) * intensity;
+          context.save();
+          context.translate(px, py);
+          context.rotate(Math.atan2(dy, dx) + Math.sin(progress * 4 + seed) * 0.35);
+          context.scale(size, size);
+          context.globalAlpha = Math.max(0, (1 - progress * 0.72) * 0.84);
+          context.fillStyle = "#160014";
+          context.strokeStyle = bat % 2 === 0 ? "#ff5a75" : "#8b1e4d";
+          context.lineWidth = 1.8;
+          context.beginPath();
+          context.moveTo(0, 0);
+          context.quadraticCurveTo(-12, -9 - wingWave, -28, 2);
+          context.quadraticCurveTo(-14, 8, 0, 3);
+          context.quadraticCurveTo(14, 8, 28, 2);
+          context.quadraticCurveTo(12, -9 + wingWave, 0, 0);
+          context.closePath();
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+        context.globalCompositeOperation = "lighter";
+
         context.globalAlpha = Math.max(0, (1 - progress) * 0.34);
         context.fillStyle = effect.color;
         context.beginPath();
@@ -9072,26 +9544,176 @@ class DodgeballGame {
         continue;
       }
       if (effect.type === "hundredRushImpact") {
-        const radius = 36 + progress * 134;
+        const radius = 40 + progress * 156;
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(255,255,255,0.14)";
+        context.beginPath();
+        context.ellipse(0, 22, radius * 0.95, radius * 0.32, 0, 0, Math.PI * 2);
+        context.fill();
         context.strokeStyle = "#ffffff";
-        context.lineWidth = 15 - progress * 7;
+        context.lineWidth = 16 - progress * 7;
         context.beginPath();
         context.arc(0, 0, radius, 0, Math.PI * 2);
         context.stroke();
         context.strokeStyle = "#cfd7ff";
-        context.lineWidth = 6;
-        for (let index = 0; index < 18; index += 1) {
-          const angle = index * Math.PI * 2 / 18;
+        context.lineWidth = 7;
+        context.lineCap = "round";
+        for (let index = 0; index < 20; index += 1) {
+          const angle = index * Math.PI * 2 / 20;
           const inner = radius * 0.28;
-          const outer = radius * (0.82 + (index % 3) * 0.12);
+          const outer = radius * (0.9 + (index % 4) * 0.12);
           context.beginPath();
           context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
           context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
           context.stroke();
+        }
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 9 - progress * 4;
+        for (let fist = -1; fist <= 1; fist += 1) {
+          context.beginPath();
+          context.moveTo(-radius * 0.9, fist * 22);
+          context.quadraticCurveTo(-radius * 0.15, fist * 8, radius * 0.9, -fist * 14);
+          context.stroke();
+        }
+        context.globalCompositeOperation = "source-over";
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.56;
+        context.fillStyle = "rgba(92,70,46,0.5)";
+        for (let dust = 0; dust < 10; dust += 1) {
+          const x = -radius * 0.45 + dust * radius * 0.1;
+          context.beginPath();
+          context.ellipse(x, 38 + Math.sin(dust) * 5, 18 + progress * 14, 7 + progress * 4, 0, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "qigongShotImpact") {
+        const radius = 26 + progress * 86;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.88;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 8 - progress * 4;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#cfd7ff";
+        context.lineWidth = 4;
+        for (let index = 0; index < 10; index += 1) {
+          const angle = index * Math.PI * 2 / 10;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * radius * 0.35, Math.sin(angle) * radius * 0.35);
+          context.lineTo(Math.cos(angle) * radius * 1.08, Math.sin(angle) * radius * 1.08);
+          context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "heroStraightImpact") {
+        const intensity = effect.intensity || 1;
+        const radius = (22 + progress * 74) * intensity;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.82;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#8ffcff";
+        context.lineWidth = 5 - progress * 2;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.72, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#fff4a8";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.ellipse(0, 0, radius * 1.06, radius * 0.34, -0.42, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = "#ffffff";
+        for (let index = 0; index < 8; index += 1) {
+          const angle = index * Math.PI * 2 / 8;
+          const inner = radius * 0.22;
+          const outer = radius * (0.82 + (index % 2) * 0.16);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "melodyShotImpact") {
+        const radius = (24 + progress * 88) * (effect.intensity || 1);
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.82;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#ffd83d";
+        context.lineWidth = 5 - progress * 2;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.58, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#8b1e4d";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.9, 0, Math.PI * 2);
+        context.stroke();
+        context.font = `bold ${28 + progress * 8}px Meiryo, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        for (let index = 0; index < 6; index += 1) {
+          const angle = index * Math.PI * 2 / 6 + progress * 1.2;
+          const x = Math.cos(angle) * radius * 0.62;
+          const y = Math.sin(angle) * radius * 0.36;
+          context.fillStyle = index % 2 === 0 ? "#ffd83d" : "#8b1e4d";
+          context.strokeStyle = "#ffffff";
+          const text = index % 2 === 0 ? "♪" : "♫";
+          context.strokeText(text, x, y);
+          context.fillText(text, x, y);
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "moonBarrier" || effect.type === "moonBarrierImpact") {
+        const impact = effect.type === "moonBarrierImpact";
+        const radius = (impact ? 36 + progress * 104 : 70 + Math.sin(progress * Math.PI) * 12) * (effect.intensity || 1);
+        context.save();
+        context.globalAlpha = impact ? Math.max(0, 1 - progress) : Math.max(0, 1 - progress * 0.82);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        const bubble = context.createRadialGradient(-radius * 0.24, -radius * 0.34, 4, 0, 0, radius);
+        bubble.addColorStop(0, impact ? "rgba(255,255,255,0.92)" : "rgba(248,241,255,0.78)");
+        bubble.addColorStop(0.38, "rgba(158,231,255,0.28)");
+        bubble.addColorStop(0.72, "rgba(185,140,255,0.2)");
+        bubble.addColorStop(1, "rgba(107,92,255,0)");
+        context.fillStyle = bubble;
+        context.beginPath();
+        context.ellipse(0, 12, radius * 0.82, radius, 0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = impact ? "#ffffff" : "#d8b6ff";
+        context.lineWidth = impact ? 7 - progress * 3 : 5;
+        context.beginPath();
+        context.ellipse(0, 12, radius * (0.82 + progress * 0.18), radius * (1 + progress * 0.22), 0, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#9ee7ff";
+        context.lineWidth = 3;
+        for (let ring = 0; ring < 2; ring += 1) {
+          context.save();
+          context.rotate(performance.now() / 520 + ring * Math.PI / 2);
+          context.scale(1, 0.36);
+          context.beginPath();
+          context.arc(0, 0, radius * (0.72 + ring * 0.22), Math.PI * 0.12, Math.PI * 1.88);
+          context.stroke();
+          context.restore();
+        }
+        context.fillStyle = "#f8f1ff";
+        for (let i = 0; i < 12; i += 1) {
+          const angle = performance.now() / 310 + i * Math.PI * 2 / 12;
+          const dist = radius * (0.42 + (i % 4) * 0.13);
+          context.beginPath();
+          context.arc(Math.cos(angle) * dist, 12 + Math.sin(angle) * dist * 0.92, 2 + i % 2, 0, Math.PI * 2);
+          context.fill();
         }
         context.restore();
         continue;
@@ -9103,30 +9725,45 @@ class DodgeballGame {
         context.globalAlpha = Math.max(0, 1 - progress) * 0.86;
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(52, 38, 118, 0.28)";
+        context.beginPath();
+        context.arc(0, 0, radius * 0.82, 0, Math.PI * 2);
+        context.fill();
         context.strokeStyle = "#b98cff";
-        context.lineWidth = 5 - progress * 2;
-        for (let ring = 0; ring < 3; ring += 1) {
+        context.lineWidth = 6 - progress * 2.4;
+        for (let ring = 0; ring < 4; ring += 1) {
           context.save();
-          context.rotate(time / 520 + ring * Math.PI / 3);
+          context.rotate(time / 460 + ring * Math.PI / 4);
           context.scale(1, 0.44);
           context.beginPath();
-          context.arc(0, 0, radius + ring * 14, Math.PI * 0.15, Math.PI * 1.85);
+          context.arc(0, 0, radius + ring * 13, Math.PI * 0.15, Math.PI * 1.86);
           context.stroke();
           context.restore();
         }
+        context.fillStyle = "#f8f1ff";
+        context.beginPath();
+        context.arc(-radius * 0.08, -radius * 0.12, radius * 0.44, -Math.PI * 0.72, Math.PI * 0.72);
+        context.quadraticCurveTo(radius * 0.16, -radius * 0.12, -radius * 0.08, -radius * 0.46);
+        context.closePath();
+        context.fill();
+        context.strokeStyle = "#9ee7ff";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(-radius * 0.08, -radius * 0.12, radius * 0.52, -Math.PI * 0.68, Math.PI * 0.68);
+        context.stroke();
         context.fillStyle = "#f1dcff";
-        for (let index = 0; index < 14; index += 1) {
-          const angle = time / 260 + index * Math.PI * 2 / 14;
-          const dist = radius * (0.35 + (index % 4) * 0.18);
+        for (let index = 0; index < 22; index += 1) {
+          const angle = time / 230 + index * Math.PI * 2 / 22;
+          const dist = radius * (0.28 + (index % 5) * 0.14);
           context.beginPath();
-          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, 2 + index % 2, 0, Math.PI * 2);
+          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, 2 + index % 3, 0, Math.PI * 2);
           context.fill();
         }
         context.restore();
         continue;
       }
       if (effect.type === "lunaticMirageImpact") {
-        const radius = 34 + progress * 138;
+        const radius = 38 + progress * 166;
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
@@ -9140,6 +9777,18 @@ class DodgeballGame {
         context.beginPath();
         context.arc(0, 0, radius * 0.72, 0, Math.PI * 2);
         context.stroke();
+        context.lineCap = "round";
+        for (let slash = -1; slash <= 1; slash += 1) {
+          context.save();
+          context.rotate(-0.78 + slash * 0.34);
+          context.strokeStyle = slash === 0 ? "#ffffff" : "#9ee7ff";
+          context.lineWidth = slash === 0 ? 12 - progress * 5 : 7 - progress * 3;
+          context.beginPath();
+          context.moveTo(-radius * (0.72 + progress * 0.18), slash * 18);
+          context.quadraticCurveTo(0, -radius * 0.16 + slash * 8, radius * (0.86 + progress * 0.22), slash * -18);
+          context.stroke();
+          context.restore();
+        }
         context.strokeStyle = "#b98cff";
         context.lineWidth = 5;
         for (let ring = 0; ring < 3; ring += 1) {
@@ -9174,18 +9823,26 @@ class DodgeballGame {
         context.restore();
         continue;
       }
-      if (effect.type === "victoryMarchBuff" || effect.type === "musicNote") {
+      if (effect.type === "victoryMarchBuff" || effect.type === "musicNote" || effect.type === "rhythmStepBuff" || effect.type === "rhythmStepCast") {
         context.save();
-        context.globalAlpha = Math.max(0, 1 - progress) * (effect.type === "musicNote" ? 0.95 : 0.68);
-        context.translate(effect.x, effect.y - progress * 22);
+        const rhythmStep = effect.type === "rhythmStepBuff" || effect.type === "rhythmStepCast";
+        context.globalAlpha = Math.max(0, 1 - progress) * (effect.type === "musicNote" ? 0.95 : rhythmStep ? 0.74 : 0.68);
+        context.translate(effect.x, effect.y - progress * (rhythmStep ? 14 : 22));
         context.globalCompositeOperation = "lighter";
         context.fillStyle = effect.color || "#ffd83d";
         context.strokeStyle = "#ffffff";
         context.lineWidth = 3;
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.font = `bold ${effect.type === "musicNote" ? 30 : 42}px Meiryo, sans-serif`;
-        const text = effect.type === "musicNote" ? (Math.floor(progress * 10) % 2 ? "♪" : "♫") : "♪";
+        if (rhythmStep) {
+          context.strokeStyle = effect.type === "rhythmStepCast" ? "#fff4a8" : "#8b1e4d";
+          context.lineWidth = effect.type === "rhythmStepCast" ? 5 : 3;
+          context.beginPath();
+          context.ellipse(0, 18, 34 + progress * 42, 12 + progress * 8, 0, 0, Math.PI * 2);
+          context.stroke();
+        }
+        context.font = `bold ${effect.type === "musicNote" ? 30 : rhythmStep ? 32 : 42}px Meiryo, sans-serif`;
+        const text = effect.type === "musicNote" ? (Math.floor(progress * 10) % 2 ? "♪" : "♫") : rhythmStep ? "♫" : "♪";
         context.strokeText(text, 0, 0);
         context.fillText(text, 0, 0);
         context.restore();
@@ -9324,6 +9981,74 @@ class DodgeballGame {
           context.textBaseline = "middle";
           context.fillText("✦", 0, effect.type === "grandHealCircle" ? 16 : 0);
         }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "blessingRibbon") {
+        const target = effect.target;
+        const toX = target && !target.defeated ? target.x : effect.x;
+        const toY = target && !target.defeated ? target.y - target.jumpZ - 82 : effect.y;
+        const fromX = effect.fromX;
+        const fromY = effect.fromY;
+        const controlX = (fromX + toX) / 2;
+        const controlY = Math.min(fromY, toY) - 70;
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.92;
+        context.lineCap = "round";
+        for (let lane = 0; lane < 3; lane += 1) {
+          context.strokeStyle = lane === 0 ? "rgba(255,244,168,0.72)" : lane === 1 ? "rgba(189,248,255,0.66)" : "rgba(255,255,255,0.92)";
+          context.lineWidth = lane === 0 ? 9 : lane === 1 ? 5 : 2.5;
+          context.beginPath();
+          context.moveTo(fromX, fromY + lane * 3);
+          context.quadraticCurveTo(controlX, controlY - lane * 10, toX, toY);
+          context.stroke();
+        }
+        context.fillStyle = "#fffdf1";
+        for (let i = 0; i < 9; i += 1) {
+          const t = (progress * 0.35 + i / 9) % 1;
+          const x = (1 - t) * (1 - t) * fromX + 2 * (1 - t) * t * controlX + t * t * toX;
+          const y = (1 - t) * (1 - t) * fromY + 2 * (1 - t) * t * controlY + t * t * toY;
+          const size = 3 + i % 3;
+          context.beginPath();
+          context.moveTo(x, y - size);
+          context.lineTo(x + size, y);
+          context.lineTo(x, y + size);
+          context.lineTo(x - size, y);
+          context.closePath();
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "blessingStar") {
+        const radius = 28 + progress * 56;
+        context.save();
+        context.translate(effect.x, effect.y - progress * 12);
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.88;
+        context.strokeStyle = "#bdf8ff";
+        context.fillStyle = "rgba(255,244,168,0.18)";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.ellipse(0, 16, radius, radius * 0.32, 0, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.fillStyle = "#fff4a8";
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 2;
+        context.beginPath();
+        for (let i = 0; i < 10; i += 1) {
+          const angle = -Math.PI / 2 + i * Math.PI / 5;
+          const r = i % 2 === 0 ? 18 : 8;
+          const x = Math.cos(angle) * r;
+          const y = Math.sin(angle) * r;
+          if (i === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+        context.closePath();
+        context.fill();
+        context.stroke();
         context.restore();
         continue;
       }
@@ -10473,33 +11198,57 @@ class DodgeballGame {
 
     if (pending.specialType === "hundredRush") {
       const time = performance.now();
-      const centerY = actor.y - actor.jumpZ - 68;
+      const centerY = actor.y - actor.jumpZ - 70;
+      const ballX = actor.x + actor.facing * 28;
+      const ballY = centerY - 4 + Math.sin(time / 42) * 3;
       context.save();
       context.globalCompositeOperation = "lighter";
-      context.globalAlpha = 0.32 + progress * 0.48;
-      context.fillStyle = "rgba(247,247,255,0.28)";
+      context.globalAlpha = 0.24 + progress * 0.36;
+      context.fillStyle = "rgba(247,247,255,0.2)";
       context.beginPath();
-      context.arc(actor.x, centerY, 52 + progress * 32, 0, Math.PI * 2);
+      context.arc(ballX, ballY, 54 + progress * 26, 0, Math.PI * 2);
       context.fill();
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 5;
+      context.strokeStyle = "rgba(255,255,255,0.64)";
+      context.lineWidth = 4;
       context.lineCap = "round";
-      for (let index = 0; index < 18; index += 1) {
+      for (let index = 0; index < 24; index += 1) {
         const side = index % 2 === 0 ? -1 : 1;
-        const phase = time / 28 + index * 0.7;
-        const yOffset = -36 + (index % 6) * 15;
-        const startX = actor.x + side * (64 + Math.sin(phase) * 12);
-        const endX = actor.x + side * (16 + progress * 10);
+        const phase = time / 22 + index * 0.62;
+        const yOffset = -46 + (index % 8) * 13;
+        const startX = ballX + side * (76 + Math.sin(phase) * 14);
+        const endX = ballX + side * (14 + progress * 8);
         context.beginPath();
-        context.moveTo(startX, centerY + yOffset);
-        context.lineTo(endX, centerY + yOffset * 0.62);
+        context.moveTo(startX, ballY + yOffset);
+        context.lineTo(endX, ballY + yOffset * 0.42);
         context.stroke();
+        context.globalAlpha = 0.22 + progress * 0.32;
+        context.fillStyle = "#ffffff";
+        context.beginPath();
+        context.ellipse(endX - side * 6, ballY + yOffset * 0.42, 12, 8, side * 0.2, 0, Math.PI * 2);
+        context.fill();
+        context.globalAlpha = 0.24 + progress * 0.36;
       }
-      context.strokeStyle = "#cfd7ff";
+      context.strokeStyle = "#ffffff";
       context.lineWidth = 8;
       context.beginPath();
-      context.arc(actor.x, centerY, 28 + progress * 24, 0, Math.PI * 2);
+      context.arc(ballX, ballY, 30 + progress * 22, 0, Math.PI * 2);
       context.stroke();
+      context.strokeStyle = "#cfd7ff";
+      context.lineWidth = 4;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.beginPath();
+        context.ellipse(ballX, ballY + 6, 42 + ring * 18 + progress * 16, 15 + ring * 5 + progress * 5, 0, 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.36 + progress * 0.28;
+      context.fillStyle = "rgba(92,70,46,0.45)";
+      for (let dust = 0; dust < 8; dust += 1) {
+        const x = actor.x - actor.facing * 10 + (dust - 3.5) * 12;
+        context.beginPath();
+        context.ellipse(x, actor.y + 18 + Math.sin(time / 90 + dust) * 3, 18, 6, 0, 0, Math.PI * 2);
+        context.fill();
+      }
       context.restore();
       return;
     }
@@ -10511,6 +11260,41 @@ class DodgeballGame {
       const ballY = centerY + Math.sin(time / 130) * 4;
       context.save();
       context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.38 + progress * 0.42;
+      context.strokeStyle = "#b98cff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.ellipse(actor.x, actor.y + 14, 44 + progress * 38, 14 + progress * 7, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#9ee7ff";
+      context.lineWidth = 2;
+      for (let rune = 0; rune < 6; rune += 1) {
+        const angle = time / 520 + rune * Math.PI * 2 / 6;
+        const x = actor.x + Math.cos(angle) * (24 + progress * 28);
+        const y = actor.y + 14 + Math.sin(angle) * (7 + progress * 5);
+        context.beginPath();
+        context.moveTo(x - 5, y);
+        context.lineTo(x + 5, y);
+        context.moveTo(x, y - 5);
+        context.lineTo(x, y + 5);
+        context.stroke();
+      }
+      context.save();
+      context.translate(actor.x, centerY - 72 - progress * 12);
+      context.rotate(Math.sin(time / 500) * 0.08);
+      context.globalAlpha = 0.48 + progress * 0.34;
+      context.fillStyle = "#f8f1ff";
+      context.beginPath();
+      context.arc(0, 0, 28 + progress * 10, -Math.PI * 0.72, Math.PI * 0.72);
+      context.quadraticCurveTo(10 + progress * 8, 0, 0, -20 - progress * 7);
+      context.closePath();
+      context.fill();
+      context.strokeStyle = "#9ee7ff";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(0, 0, 34 + progress * 12, -Math.PI * 0.68, Math.PI * 0.68);
+      context.stroke();
+      context.restore();
       context.globalAlpha = 0.34 + progress * 0.46;
       context.fillStyle = "rgba(107,92,255,0.2)";
       context.beginPath();

@@ -58,6 +58,9 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.guardianShieldFlight = -1;
+    this.guardianShieldProtectorId = null;
+    this.heroBondIntensity = 0;
     this.witchWarpFlight = -1;
     this.witchWarpCheckedIds = new Set();
     this.devilTrianglePass = false;
@@ -254,11 +257,11 @@ class Ball {
     }
     if (this.isFlying && this.kind === "shoot" && this.specialShotType === "lunaticMirage") {
       this.lunaticMirageSurgeTimer = Math.max(0, this.lunaticMirageSurgeTimer - delta);
-      if (!this.lunaticMirageSurged && this.travelDistance >= 520) {
-        this.vx *= 1.16;
-        this.vy *= 1.16;
+      if (!this.lunaticMirageSurged && this.travelDistance >= 460) {
+        this.vx *= 1.22;
+        this.vy *= 1.22;
         this.lunaticMirageSurged = true;
-        this.lunaticMirageSurgeTimer = 0.42;
+        this.lunaticMirageSurgeTimer = 0.56;
       }
     }
     if (this.isFlying && this.specialShotType === "devilShield") {
@@ -414,6 +417,7 @@ class Ball {
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
+    this.heroBondIntensity = 0;
     this.aerialShot = false;
     this.quickShot = false;
     this.quickFlightZ = 0;
@@ -479,6 +483,11 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.guardianShieldFlight = -1;
+    this.guardianShieldProtectorId = null;
+    this.heroBondIntensity = kind === "shoot" && !this.specialShotType && actor.uniformEmblem === "braves-hero"
+      ? Math.max(0, Math.min(1, actor.heroBondIntensity || 0))
+      : 0;
     this.witchWarpFlight = -1;
     this.witchWarpCheckedIds?.clear();
     this.devilTrianglePass = false;
@@ -546,7 +555,7 @@ class Ball {
     } else if (this.specialShotType === "hundredRush") {
       this.radius = this.baseRadius * 1.2;
     } else if (this.specialShotType === "lunaticMirage") {
-      this.radius = this.baseRadius * 1.12;
+      this.radius = this.baseRadius * 1.288;
     } else if (this.specialShotType === "devilClaw") {
       this.radius = this.baseRadius * 1.34;
     } else if (this.specialShotType === "triple") {
@@ -1567,6 +1576,9 @@ class Ball {
     this.counterChainCount = 0;
     this.shieldDevilGuardFlight = -1;
     this.shieldDevilProtectorId = null;
+    this.guardianShieldFlight = -1;
+    this.guardianShieldProtectorId = null;
+    this.heroBondIntensity = 0;
     this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
@@ -1621,6 +1633,7 @@ class Ball {
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
+    this.heroBondIntensity = 0;
     this.devilTrianglePass = false;
     this.aerialShot = false;
     this.quickShot = false;
@@ -2031,6 +2044,35 @@ class Ball {
           context.stroke();
         }
 
+        context.globalCompositeOperation = "source-over";
+        for (let bat = 0; bat < 6; bat += 1) {
+          const phase = time / 150 + bat * 0.83;
+          const back = 28 + bat * 28;
+          const side = Math.sin(phase * 1.7) * (22 + (bat % 3) * 8);
+          const bx = this.x + tailX * back + tailY * side;
+          const by = drawY + tailY * back - tailX * side;
+          const size = 0.72 + (bat % 3) * 0.11 + intensity * 0.08;
+          const flap = Math.sin(time / 58 + bat) * 6;
+          context.save();
+          context.translate(bx, by);
+          context.rotate(Math.atan2(this.vy, this.vx) + Math.sin(phase) * 0.22);
+          context.scale(size, size);
+          context.globalAlpha = 0.72 + (bat % 2) * 0.14;
+          context.fillStyle = bat % 2 === 0 ? "#140014" : "#2a001f";
+          context.strokeStyle = "#ff5a75";
+          context.lineWidth = 1.4;
+          context.beginPath();
+          context.moveTo(0, 0);
+          context.quadraticCurveTo(-11, -8 - flap, -25, 2);
+          context.quadraticCurveTo(-13, 7, 0, 3);
+          context.quadraticCurveTo(13, 7, 25, 2);
+          context.quadraticCurveTo(11, -8 + flap, 0, 0);
+          context.closePath();
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+
         context.globalAlpha = 0.34;
         context.strokeStyle = "#24000a";
         context.lineWidth = 34;
@@ -2432,6 +2474,263 @@ class Ball {
     }
     if (this.specialShotType === "arcanaSphere") {
       this.drawArcanaSphereOrb(context);
+    }
+    const blessingShot = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      !this.specialShotType &&
+      !this.counterShot &&
+      this.thrower?.uniformEmblem === "braves-cleric"
+    );
+    const qigongShot = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      !this.specialShotType &&
+      !this.counterShot &&
+      this.thrower?.uniformEmblem === "braves-martialArtist"
+    );
+    const heroStraight = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      !this.specialShotType &&
+      !this.counterShot &&
+      this.thrower?.uniformEmblem === "braves-hero"
+    );
+    const melodyShot = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      !this.specialShotType &&
+      !this.counterShot &&
+      this.thrower?.uniformEmblem === "braves-bard"
+    );
+    const vampireNormalShot = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      !this.specialShotType &&
+      !this.counterShot &&
+      (this.thrower?.characterType === "vampire" || this.thrower?.uniformEmblem === "vampire")
+    );
+    if (blessingShot) {
+      const time = performance.now();
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.34 + Math.sin(time / 140) * 0.08;
+      const glow = context.createRadialGradient(0, 0, this.radius * 0.35, 0, 0, this.radius * 2.2);
+      glow.addColorStop(0, "rgba(255,255,255,0.44)");
+      glow.addColorStop(0.42, "rgba(255,244,168,0.24)");
+      glow.addColorStop(0.72, "rgba(189,248,255,0.18)");
+      glow.addColorStop(1, "rgba(189,248,255,0)");
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.2, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#fff4a8";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(0, 0, this.radius * 1.45, this.radius * 0.5, time / 420, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#bdf8ff";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.ellipse(0, 0, this.radius * 1.28, this.radius * 0.44, -time / 520, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = "#fffdf1";
+      for (let i = 0; i < 5; i += 1) {
+        const angle = time / 260 + i * Math.PI * 2 / 5;
+        const dist = this.radius * (1.25 + (i % 2) * 0.22);
+        const size = 2.5 + i % 2;
+        const x = Math.cos(angle) * dist;
+        const y = Math.sin(angle) * dist * 0.72;
+        context.beginPath();
+        context.moveTo(x, y - size);
+        context.lineTo(x + size, y);
+        context.lineTo(x, y + size);
+        context.lineTo(x - size, y);
+        context.closePath();
+        context.fill();
+      }
+      context.restore();
+    }
+    if (qigongShot) {
+      const time = performance.now();
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.38 + Math.sin(time / 80) * 0.08;
+      const glow = context.createRadialGradient(0, 0, this.radius * 0.35, 0, 0, this.radius * 2.25);
+      glow.addColorStop(0, "rgba(255,255,255,0.54)");
+      glow.addColorStop(0.42, "rgba(230,240,255,0.28)");
+      glow.addColorStop(0.72, "rgba(165,190,255,0.16)");
+      glow.addColorStop(1, "rgba(165,190,255,0)");
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.25, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 4;
+      context.lineCap = "round";
+      for (let ring = 0; ring < 2; ring += 1) {
+        context.save();
+        context.rotate(time / (ring === 0 ? 360 : -440));
+        context.scale(1, 0.34 + ring * 0.08);
+        context.beginPath();
+        context.arc(0, 0, this.radius * (1.25 + ring * 0.34), Math.PI * 0.08, Math.PI * 1.9);
+        context.stroke();
+        context.restore();
+      }
+      context.strokeStyle = "rgba(255,255,255,0.72)";
+      context.lineWidth = 3;
+      for (let i = 0; i < 5; i += 1) {
+        const angle = time / 120 + i * Math.PI * 2 / 5;
+        context.beginPath();
+        context.moveTo(Math.cos(angle) * this.radius * 0.62, Math.sin(angle) * this.radius * 0.62);
+        context.lineTo(Math.cos(angle) * this.radius * 1.62, Math.sin(angle) * this.radius * 1.1);
+        context.stroke();
+      }
+      context.restore();
+    }
+    if (heroStraight) {
+      const time = performance.now();
+      const bond = Math.max(0, Math.min(1, this.heroBondIntensity || 0));
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      const tailX = -this.vx / speed;
+      const tailY = -this.vy / speed;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.26 + bond * 0.18 + Math.sin(time / 150) * 0.04;
+      const glow = context.createRadialGradient(0, 0, this.radius * 0.3, 0, 0, this.radius * (1.85 + bond * 0.35));
+      glow.addColorStop(0, "rgba(255,255,255,0.4)");
+      glow.addColorStop(0.42, "rgba(141,252,255,0.22)");
+      glow.addColorStop(0.72, "rgba(255,228,106,0.16)");
+      glow.addColorStop(1, "rgba(255,228,106,0)");
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(0, 0, this.radius * (1.85 + bond * 0.35), 0, Math.PI * 2);
+      context.fill();
+
+      context.lineCap = "round";
+      context.strokeStyle = "rgba(151,244,255,0.72)";
+      context.lineWidth = 3 + bond * 2;
+      context.beginPath();
+      context.moveTo(tailX * this.radius * 0.62, tailY * this.radius * 0.62);
+      context.lineTo(tailX * this.radius * (2.9 + bond * 1.3), tailY * this.radius * (2.9 + bond * 1.3));
+      context.stroke();
+      context.strokeStyle = "rgba(255,220,92,0.66)";
+      context.lineWidth = 2 + bond;
+      context.beginPath();
+      context.moveTo(tailX * this.radius * 1.05 + tailY * 4, tailY * this.radius * 1.05 - tailX * 4);
+      context.lineTo(tailX * this.radius * (2.35 + bond * 1.1) + tailY * 4, tailY * this.radius * (2.35 + bond * 1.1) - tailX * 4);
+      context.stroke();
+
+      const moteCount = 3 + Math.round(bond * 4);
+      context.fillStyle = "#fff4a8";
+      for (let i = 0; i < moteCount; i += 1) {
+        const phase = (time / 170 + i * 0.73) % 1;
+        const along = this.radius * (1.1 + phase * (2.7 + bond * 1.2));
+        const side = Math.sin(time / 190 + i * 1.7) * this.radius * (0.35 + bond * 0.25);
+        const x = tailX * along + tailY * side;
+        const y = tailY * along - tailX * side;
+        const size = 1.7 + bond * 1.4 + (i % 2);
+        context.beginPath();
+        context.moveTo(x, y - size);
+        context.lineTo(x + size, y);
+        context.lineTo(x, y + size);
+        context.lineTo(x - size, y);
+        context.closePath();
+        context.fill();
+      }
+      context.restore();
+    }
+    if (melodyShot) {
+      const time = performance.now();
+      const speed = Math.hypot(this.vx, this.vy) || 1;
+      const tailX = -this.vx / speed;
+      const tailY = -this.vy / speed;
+      const sideX = -tailY;
+      const sideY = tailX;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.3 + Math.sin(time / 120) * 0.05;
+      const glow = context.createRadialGradient(0, 0, this.radius * 0.35, 0, 0, this.radius * 1.85);
+      glow.addColorStop(0, "rgba(255,255,255,0.34)");
+      glow.addColorStop(0.45, "rgba(255,216,91,0.22)");
+      glow.addColorStop(0.78, "rgba(139,30,77,0.18)");
+      glow.addColorStop(1, "rgba(139,30,77,0)");
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.85, 0, Math.PI * 2);
+      context.fill();
+
+      context.lineCap = "round";
+      for (let line = 0; line < 2; line += 1) {
+        const side = line === 0 ? -1 : 1;
+        context.strokeStyle = line === 0 ? "rgba(255,216,91,0.72)" : "rgba(139,30,77,0.66)";
+        context.lineWidth = line === 0 ? 3 : 2.5;
+        context.beginPath();
+        context.moveTo(tailX * this.radius * 0.75 + sideX * side * 3, tailY * this.radius * 0.75 + sideY * side * 3);
+        for (let step = 1; step <= 4; step += 1) {
+          const along = this.radius * (0.9 + step * 0.58);
+          const sway = Math.sin(time / 115 + step * 0.9 + line) * this.radius * 0.22 * side;
+          context.lineTo(tailX * along + sideX * sway, tailY * along + sideY * sway);
+        }
+        context.stroke();
+      }
+
+      context.font = `bold ${Math.max(12, this.radius * 0.95)}px Meiryo, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.lineWidth = 2;
+      for (let i = 0; i < 5; i += 1) {
+        const phase = (time / 210 + i * 0.61) % 1;
+        const along = this.radius * (1.25 + phase * 3.2);
+        const side = Math.sin(time / 150 + i * 1.4) * this.radius * 0.72;
+        const x = tailX * along + sideX * side;
+        const y = tailY * along + sideY * side;
+        const text = i % 2 === 0 ? "♪" : "♫";
+        context.globalAlpha = 0.22 + (1 - phase) * 0.5;
+        context.strokeStyle = "#ffffff";
+        context.fillStyle = i % 2 === 0 ? "#ffd83d" : "#8b1e4d";
+        context.strokeText(text, x, y);
+        context.fillText(text, x, y);
+      }
+      context.restore();
+    }
+    if (vampireNormalShot) {
+      const time = performance.now();
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.32 + Math.sin(time / 120) * 0.06;
+      const glow = context.createRadialGradient(0, 0, this.radius * 0.42, 0, 0, this.radius * 2.05);
+      glow.addColorStop(0, "rgba(255,90,117,0.24)");
+      glow.addColorStop(0.55, "rgba(70,0,28,0.22)");
+      glow.addColorStop(1, "rgba(70,0,28,0)");
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.05, 0, Math.PI * 2);
+      context.fill();
+      context.globalCompositeOperation = "source-over";
+      for (let i = 0; i < 2; i += 1) {
+        const angle = time / 180 + i * Math.PI;
+        const x = Math.cos(angle) * this.radius * 1.42;
+        const y = Math.sin(angle) * this.radius * 0.9;
+        const flap = Math.sin(time / 70 + i) * 0.28;
+        context.save();
+        context.translate(x, y);
+        context.rotate(angle * 0.35);
+        context.fillStyle = "#190018";
+        context.strokeStyle = "#ff5a75";
+        context.lineWidth = 1.4;
+        context.beginPath();
+        context.moveTo(0, 0);
+        context.quadraticCurveTo(-9, -7 - flap * 8, -18, 1);
+        context.quadraticCurveTo(-9, 5, 0, 2);
+        context.quadraticCurveTo(9, 5, 18, 1);
+        context.quadraticCurveTo(9, -7 + flap * 8, 0, 0);
+        context.closePath();
+        context.fill();
+        context.stroke();
+        context.restore();
+      }
+      context.restore();
     }
     context.fillStyle = this.specialShotType === "iron" ? "#555a62" : this.specialShotType === "hellfire" ? "#050108" : this.specialShotType === "bloodDrain" ? "#5d0618" : devilClawShot ? "#3a0734" : this.demonShot ? "#21040a" : miniDevilPass ? "#2b063b" : "#f06a32";
     context.beginPath();
@@ -3378,76 +3677,127 @@ class Ball {
       }
     }
     if (hundredRush) {
-      context.globalAlpha = 0.76;
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 9;
-      for (let wave = 0; wave < 3; wave += 1) {
-        const distance = 28 + wave * 36;
+      const time = performance.now();
+      context.globalAlpha = 0.82;
+      context.lineCap = "round";
+      for (let wave = 0; wave < 4; wave += 1) {
+        const distance = 18 + wave * 32;
+        const cx = this.x + tailX * distance;
+        const cy = drawY + tailY * distance;
+        context.strokeStyle = wave % 2 === 0 ? "#ffffff" : "#cfd7ff";
+        context.lineWidth = 8 - wave * 1.2;
         context.beginPath();
-        context.arc(this.x + tailX * distance, drawY + tailY * distance, this.radius * (1.1 + wave * 0.35), 0, Math.PI * 2);
+        context.ellipse(cx, cy, this.radius * (1.12 + wave * 0.24), this.radius * (0.42 + wave * 0.12), Math.atan2(this.vy, this.vx), 0, Math.PI * 2);
         context.stroke();
+      }
+      context.strokeStyle = "rgba(255,255,255,0.72)";
+      context.lineWidth = 5;
+      for (let line = 0; line < 8; line += 1) {
+        const distance = 24 + line * 23;
+        const side = Math.sin(time / 55 + line * 1.7) * (18 + line * 1.4);
+        const px = this.x + tailX * distance + -directionY * side;
+        const py = drawY + tailY * distance + directionX * side;
+        context.beginPath();
+        context.moveTo(px - tailX * 18, py - tailY * 18);
+        context.lineTo(px + tailX * 26, py + tailY * 26);
+        context.stroke();
+      }
+      context.fillStyle = "rgba(255,255,255,0.54)";
+      for (let fist = 0; fist < 4; fist += 1) {
+        const distance = 38 + fist * 42;
+        const side = (fist % 2 === 0 ? -1 : 1) * (28 + Math.sin(time / 70 + fist) * 8);
+        const px = this.x + tailX * distance + -directionY * side;
+        const py = drawY + tailY * distance + directionX * side;
+        context.beginPath();
+        context.ellipse(px, py, this.radius * 0.42, this.radius * 0.28, Math.atan2(this.vy, this.vx), 0, Math.PI * 2);
+        context.fill();
       }
     }
     if (lunaticMirage) {
       const time = performance.now();
-      const phase = time / 180;
+      const phase = time / 150;
       const phantomCount = this.lunaticMirageSurged ? 2 : 3;
+      const drawCrescent = (x, y, radius, angle, color, alpha = 1) => {
+        context.save();
+        context.translate(x, y);
+        context.rotate(angle);
+        context.globalAlpha *= alpha;
+        context.fillStyle = color;
+        context.beginPath();
+        context.arc(0, 0, radius, -Math.PI * 0.72, Math.PI * 0.72);
+        context.quadraticCurveTo(radius * 0.18, 0, 0, -radius * 0.72);
+        context.closePath();
+        context.fill();
+        context.restore();
+      };
       for (let index = 0; index < phantomCount; index += 1) {
         const offsetPhase = phase + index * Math.PI * 2 / phantomCount;
-        const back = 22 + index * 24 + Math.sin(offsetPhase) * 8;
-        const side = Math.sin(offsetPhase * 1.4) * (this.radius * (1.25 + index * 0.22));
+        const back = 10 + index * 26 + Math.sin(offsetPhase) * 12;
+        const side = Math.sin(offsetPhase * 1.55) * (this.radius * (1.85 + index * 0.32));
         const px = this.x + tailX * back + -directionY * side;
         const py = drawY + tailY * back + directionX * side;
-        context.globalAlpha = 0.34 + Math.sin(offsetPhase) * 0.08;
-        context.fillStyle = "rgba(140, 120, 255, 0.42)";
+        const fade = this.lunaticMirageSurged ? 0.22 : 0.46;
+        context.globalAlpha = fade + Math.sin(offsetPhase) * 0.08;
+        context.fillStyle = index === 0 ? "rgba(248, 241, 255, 0.46)" : "rgba(140, 120, 255, 0.42)";
         context.beginPath();
-        context.arc(px, py, this.radius * (0.74 - index * 0.05), 0, Math.PI * 2);
+        context.arc(px, py, this.radius * (0.86 - index * 0.05), 0, Math.PI * 2);
         context.fill();
         context.strokeStyle = index % 2 ? "#9ee7ff" : "#d8b6ff";
         context.lineWidth = 3;
         context.beginPath();
-        context.arc(px, py, this.radius * (0.9 - index * 0.04), 0, Math.PI * 2);
+        context.arc(px, py, this.radius * (1.02 - index * 0.04), 0, Math.PI * 2);
         context.stroke();
+        drawCrescent(px, py, this.radius * (0.58 + index * 0.08), offsetPhase + Math.PI * 0.25, index % 2 ? "#9ee7ff" : "#f1dcff", 0.78);
       }
-      context.globalAlpha = 0.72;
-      context.strokeStyle = "#9ee7ff";
-      context.lineWidth = 4;
-      for (let ring = 0; ring < 2; ring += 1) {
+      context.globalAlpha = 0.78;
+      for (let ring = 0; ring < 3; ring += 1) {
         context.save();
-        context.translate(this.x + tailX * (40 + ring * 42), drawY + tailY * (40 + ring * 42));
-        context.rotate(-this.spin * 0.12 + ring);
+        context.translate(this.x + tailX * (24 + ring * 34), drawY + tailY * (24 + ring * 34));
+        context.rotate(-this.spin * 0.16 + ring * Math.PI * 0.72);
         context.scale(1, 0.42);
+        context.strokeStyle = ring === 1 ? "#ffffff" : "#9ee7ff";
+        context.lineWidth = ring === 1 ? 3 : 4;
         context.beginPath();
-        context.arc(0, 0, this.radius * (1.9 + ring * 0.46 + pulse * 0.18), Math.PI * 0.18, Math.PI * 1.85);
+        context.arc(0, 0, this.radius * (1.9 + ring * 0.46 + pulse * 0.24), Math.PI * 0.15, Math.PI * 1.9);
         context.stroke();
         context.restore();
       }
       context.fillStyle = "#f1dcff";
-      for (let i = 0; i < 16; i += 1) {
-        const distance = 18 + i * 16;
-        const side = Math.sin(time / 95 + i * 1.7) * (20 + i * 0.9);
-        const starSize = 2 + i % 3;
-        context.globalAlpha = 0.42 + (i % 3) * 0.1;
+      for (let i = 0; i < 24; i += 1) {
+        const distance = 10 + i * 13;
+        const side = Math.sin(time / 82 + i * 1.42) * (24 + i * 1.15);
+        const starSize = 2 + i % 4;
+        context.globalAlpha = 0.36 + (i % 4) * 0.09;
         context.beginPath();
         context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, starSize, 0, Math.PI * 2);
         context.fill();
       }
       if (this.lunaticMirageSurgeTimer > 0) {
-        const ringProgress = 1 - this.lunaticMirageSurgeTimer / 0.42;
+        const ringProgress = 1 - this.lunaticMirageSurgeTimer / 0.56;
         context.save();
         context.translate(this.x, drawY);
         context.rotate(-this.spin * 0.1);
         context.globalAlpha = Math.max(0, 1 - ringProgress) * 0.86;
         context.strokeStyle = "#ffffff";
-        context.lineWidth = 6 - ringProgress * 3;
+        context.lineWidth = 8 - ringProgress * 4;
         context.scale(1, 0.46);
         context.beginPath();
-        context.arc(0, 0, this.radius * (2.1 + ringProgress * 3.4), 0, Math.PI * 2);
+        context.arc(0, 0, this.radius * (2.3 + ringProgress * 4.1), 0, Math.PI * 2);
         context.stroke();
         context.strokeStyle = "#6f5cff";
-        context.lineWidth = 4;
+        context.lineWidth = 5;
         context.beginPath();
-        context.arc(0, 0, this.radius * (1.35 + ringProgress * 2.3), Math.PI * 0.1, Math.PI * 1.9);
+        context.arc(0, 0, this.radius * (1.45 + ringProgress * 2.7), Math.PI * 0.1, Math.PI * 1.9);
+        context.stroke();
+        context.restore();
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - ringProgress) * 0.74;
+        context.strokeStyle = "#f8f1ff";
+        context.lineWidth = 5 - ringProgress * 2;
+        context.beginPath();
+        context.moveTo(this.x - directionY * this.radius * 2.8, drawY + directionX * this.radius * 2.8);
+        context.lineTo(this.x + tailX * 120, drawY + tailY * 120);
+        context.lineTo(this.x + directionY * this.radius * 2.8, drawY - directionX * this.radius * 2.8);
         context.stroke();
         context.restore();
       }

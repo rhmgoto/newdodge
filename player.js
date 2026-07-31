@@ -40,6 +40,9 @@ const VICTORY_MARCH_CONFIG = {
   moveSpeedScale: 1.18,
   catchScale: 1.2
 };
+const RHYTHM_STEP_CONFIG = {
+  moveSpeedScale: 1.12
+};
 
 const CHARACTER_TYPES = {
   normal: {
@@ -246,6 +249,8 @@ class Player {
     this.slowTimer = 0;
     this.slowScale = 1;
     this.victoryMarchTimer = 0;
+    this.rhythmStepTimer = 0;
+    this.rhythmStepCooldownTimer = 1 + Math.random() * 1.8;
     this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -296,6 +301,8 @@ class Player {
     this.passChainBlockTimer = 0;
     this.shieldAlertTimer = 0;
     this.shieldGuardTimer = 0;
+    this.moonBarrierTimer = 0;
+    this.moonBarrierCooldownTimer = 0;
     this.witchWarpTimer = 0;
     this.reflectChantTimer = 0;
     this.reflectShieldTimer = 0;
@@ -344,8 +351,12 @@ class Player {
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
     this.slowTimer = Math.max(0, this.slowTimer - delta);
     this.victoryMarchTimer = Math.max(0, this.victoryMarchTimer - delta);
+    this.rhythmStepTimer = Math.max(0, this.rhythmStepTimer - delta);
+    this.rhythmStepCooldownTimer = Math.max(0, this.rhythmStepCooldownTimer - delta);
     this.shieldAlertTimer = Math.max(0, this.shieldAlertTimer - delta);
     this.shieldGuardTimer = Math.max(0, this.shieldGuardTimer - delta);
+    this.moonBarrierTimer = Math.max(0, this.moonBarrierTimer - delta);
+    this.moonBarrierCooldownTimer = Math.max(0, this.moonBarrierCooldownTimer - delta);
     this.witchWarpTimer = Math.max(0, this.witchWarpTimer - delta);
     this.reflectChantTimer = Math.max(0, this.reflectChantTimer - delta);
     this.reflectShieldTimer = Math.max(0, this.reflectShieldTimer - delta);
@@ -455,7 +466,8 @@ class Player {
     const dashMultiplier = this.isDashing ? (airborne ? 1 + (config.dashSpeedMultiplier - 1) * 0.5 : config.dashSpeedMultiplier) * vampireDashScale : 1;
     const overdriveScale = this.isRobotOverdrive() ? ROBOT_OVERDRIVE_CONFIG.moveSpeedScale : 1;
     const victoryMoveScale = this.hasVictoryMarchBuff() ? VICTORY_MARCH_CONFIG.moveSpeedScale : 1;
-    const speed = this.speed * overdriveScale * victoryMoveScale * dashMultiplier * duckSlow * turnSlow * this.slowScale;
+    const rhythmMoveScale = this.hasRhythmStepBuff() ? RHYTHM_STEP_CONFIG.moveSpeedScale : 1;
+    const speed = this.speed * overdriveScale * victoryMoveScale * rhythmMoveScale * dashMultiplier * duckSlow * turnSlow * this.slowScale;
     this.vx = (moveX / length) * speed;
     this.vy = (moveY / length) * speed;
     this.updateRunup(delta, moving && duckSlow > 0.5 && this.throwLockTimer <= 0, moveX / length, moveY / length);
@@ -544,6 +556,14 @@ class Player {
 
   applyVictoryMarch(duration) {
     this.victoryMarchTimer = Math.max(this.victoryMarchTimer || 0, duration);
+  }
+
+  applyRhythmStep(duration) {
+    this.rhythmStepTimer = Math.max(this.rhythmStepTimer || 0, duration);
+  }
+
+  hasRhythmStepBuff() {
+    return this.rhythmStepTimer > 0;
   }
 
   hasVictoryMarchBuff() {
@@ -2107,6 +2127,27 @@ class Player {
     } else if (job === "paladin") {
       drawSpear(36, -30 + rootY, 82, -0.09);
       drawShield(-31, -47 + rootY, 19, 31, "#f8fbff", "sun");
+      if (this.shieldGuardTimer > 0) {
+        const guardPulse = Math.max(0, Math.min(1, this.shieldGuardTimer / 0.74));
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = 0.38 + guardPulse * 0.34;
+        context.strokeStyle = "#fff4a8";
+        context.shadowColor = "#ffd83d";
+        context.shadowBlur = 18;
+        context.lineWidth = 6;
+        context.beginPath();
+        context.arc(-36, -50 + rootY, 42 + guardPulse * 8, -Math.PI * 0.72, Math.PI * 0.72);
+        context.stroke();
+        context.fillStyle = "#ffffff";
+        for (let i = 0; i < 7; i += 1) {
+          const angle = -Math.PI * 0.52 + i * Math.PI * 0.17;
+          context.beginPath();
+          context.arc(-36 + Math.cos(angle) * 48, -50 + rootY + Math.sin(angle) * 48, 2.5, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+      }
     } else if (job === "warrior") {
       if (throwWindup) {
         drawSimpleSword(16, -54 + rootY, 94, -0.82, "#9aa3aa", "#ff6244", "#7a4c2c", 3.1);
