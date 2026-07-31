@@ -90,6 +90,10 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.braveSlashSurged = false;
+    this.braveSlashSurgeTimer = 0;
+    this.lunaticMirageSurged = false;
+    this.lunaticMirageSurgeTimer = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
     this.ufoSpinBaseDirX = 0;
@@ -239,6 +243,24 @@ class Ball {
     this.travelDistance += Math.hypot(this.x - lastX, this.y - lastY);
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
+    if (this.isFlying && this.kind === "shoot" && this.specialShotType === "braveSlash") {
+      this.braveSlashSurgeTimer = Math.max(0, this.braveSlashSurgeTimer - delta);
+      if (!this.braveSlashSurged && this.travelDistance >= 560) {
+        this.vx *= 1.09;
+        this.vy *= 1.09;
+        this.braveSlashSurged = true;
+        this.braveSlashSurgeTimer = 0.36;
+      }
+    }
+    if (this.isFlying && this.kind === "shoot" && this.specialShotType === "lunaticMirage") {
+      this.lunaticMirageSurgeTimer = Math.max(0, this.lunaticMirageSurgeTimer - delta);
+      if (!this.lunaticMirageSurged && this.travelDistance >= 520) {
+        this.vx *= 1.16;
+        this.vy *= 1.16;
+        this.lunaticMirageSurged = true;
+        this.lunaticMirageSurgeTimer = 0.42;
+      }
+    }
     if (this.isFlying && this.specialShotType === "devilShield") {
       this.spin += delta * 14;
     }
@@ -268,7 +290,7 @@ class Ball {
 
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost" && !this.aerialShot;
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap" && !this.aerialShot;
-    const straightKiaiFlight = this.isFlying && this.kind === "shoot" && (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush") && !this.aerialShot;
+    const straightKiaiFlight = this.isFlying && this.kind === "shoot" && (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") && !this.aerialShot;
     const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin" && !this.aerialShot;
     const straightHellfireFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "hellfire" && !this.aerialShot;
     const straightArcanaFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "arcanaSphere" && this.arcanaPhase === "chase" && !this.aerialShot;
@@ -410,6 +432,10 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.braveSlashSurged = false;
+    this.braveSlashSurgeTimer = 0;
+    this.lunaticMirageSurged = false;
+    this.lunaticMirageSurgeTimer = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
     this.ufoSpinBaseDirX = 0;
@@ -485,7 +511,7 @@ class Ball {
       this.z = Math.min(62, 34 + actor.jumpZ * 0.08);
     } else if (!this.aerialShot && this.specialShotType === "braveSlash") {
       this.z = Math.min(60, 34 + actor.jumpZ * 0.08);
-    } else if (!this.aerialShot && (this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush")) {
+    } else if (!this.aerialShot && (this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage")) {
       this.z = Math.min(64, 36 + actor.jumpZ * 0.08);
     } else if (!this.aerialShot && this.specialShotType === "devilClaw") {
       this.z = Math.min(66, 36 + actor.jumpZ * 0.08);
@@ -508,7 +534,7 @@ class Ball {
     } else if (this.specialShotType === "kiai") {
       this.radius = this.baseRadius * 1.15;
     } else if (this.specialShotType === "braveSlash") {
-      this.radius = this.baseRadius * 1.22;
+      this.radius = this.baseRadius * 1.4;
     } else if (this.specialShotType === "gigaBreak") {
       this.radius = this.baseRadius * 1.32;
     } else if (this.specialShotType === "fireball") {
@@ -519,6 +545,8 @@ class Ball {
       this.radius = this.baseRadius * 0.98;
     } else if (this.specialShotType === "hundredRush") {
       this.radius = this.baseRadius * 1.2;
+    } else if (this.specialShotType === "lunaticMirage") {
+      this.radius = this.baseRadius * 1.12;
     } else if (this.specialShotType === "devilClaw") {
       this.radius = this.baseRadius * 1.34;
     } else if (this.specialShotType === "triple") {
@@ -559,7 +587,11 @@ class Ball {
     this.slapFlightZ = this.specialShotType === "slap" ? this.z : 0;
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
-    this.kiaiFlightZ = (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush") ? this.z : 0;
+    this.kiaiFlightZ = (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") ? this.z : 0;
+    this.braveSlashSurged = false;
+    this.braveSlashSurgeTimer = 0;
+    this.lunaticMirageSurged = false;
+    this.lunaticMirageSurgeTimer = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = this.specialShotType === "ufoSpin" ? this.z : 0;
     this.ufoSpinBaseDirX = 0;
@@ -605,7 +637,7 @@ class Ball {
               : this.specialShotType === "devilClaw"
                 ? 1.22
                 : this.specialShotType === "braveSlash"
-                  ? 1.18
+                  ? 1.36
                   : this.specialShotType === "gigaBreak"
                     ? 1.12
                     : this.specialShotType === "fireball"
@@ -616,6 +648,8 @@ class Ball {
                           ? 1.42
                           : this.specialShotType === "hundredRush"
                             ? 1.16
+                            : this.specialShotType === "lunaticMirage"
+                              ? 1.18
                             : this.specialShotType === "devilShield"
                               ? 1.08
                               : this.specialShotType === "iron" ? 1.05 : 1;
@@ -737,7 +771,7 @@ class Ball {
         ? (this.config.specialShootSpeed || this.config.shootSpeed) * 1.8
         : speed;
       const flightTime = Math.max(0.22, length / Math.max(1, trajectorySpeed));
-      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "devilClaw" || this.specialShotType === "ufoSpin" || this.specialShotType === "hellfire" || this.specialShotType === "arcanaSphere" || this.specialShotType === "bloodDrain" || this.specialShotType === "devilShield" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
+      const lowAimSpecial = this.specialShotType === "boost" || this.specialShotType === "kiai" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage" || this.specialShotType === "devilClaw" || this.specialShotType === "ufoSpin" || this.specialShotType === "hellfire" || this.specialShotType === "arcanaSphere" || this.specialShotType === "bloodDrain" || this.specialShotType === "devilShield" || this.specialShotType === "slap" || this.specialShotType === "triple" || this.counterShot;
       const targetZ = lowAimSpecial
         ? (this.aerialShot ? (target.jumpZ || 0) + 40 : 26)
         : (target.jumpZ || 0) + 22;
@@ -767,13 +801,13 @@ class Ball {
       this.slapFlightZ = this.z;
       if (!this.aerialShot) this.vz = 0;
     }
-    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush") {
+    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
       const directionLength = Math.hypot(this.vx, this.vy) || 1;
       const directionX = this.vx / directionLength;
       const directionY = this.vy / directionLength;
       this.kiaiCruiseSpeed = speed;
       this.kiaiFlightZ = this.z;
-      const launchScale = this.specialShotType === "devilClaw" ? 1.22 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.18 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.32 : this.specialShotType === "shiningArrow" ? 1.46 : this.specialShotType === "hundredRush" ? 1.24 : 1.16;
+      const launchScale = this.specialShotType === "devilClaw" ? 1.22 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.18 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.32 : this.specialShotType === "shiningArrow" ? 1.46 : this.specialShotType === "hundredRush" ? 1.24 : this.specialShotType === "lunaticMirage" ? 1.2 : 1.16;
       this.vx = directionX * speed * launchScale;
       this.vy = directionY * speed * launchScale;
       if (!this.aerialShot) this.vz = 0;
@@ -952,13 +986,13 @@ class Ball {
         this.vy = directionY * targetSpeed;
       }
     }
-    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush") {
+    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
       this.kiaiElapsed += delta;
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
       const launchRatio = Math.max(0, 1 - this.kiaiElapsed / 0.14);
-      const targetSpeed = this.kiaiCruiseSpeed * (1 + launchRatio * (this.specialShotType === "devilClaw" ? 0.28 : this.specialShotType === "braveSlash" ? 0.26 : this.specialShotType === "gigaBreak" ? 0.18 : this.specialShotType === "fireball" ? 0.16 : this.specialShotType === "holyLance" ? 0.22 : this.specialShotType === "shiningArrow" ? 0.18 : this.specialShotType === "hundredRush" ? 0.24 : 0.16));
+      const targetSpeed = this.kiaiCruiseSpeed * (1 + launchRatio * (this.specialShotType === "devilClaw" ? 0.28 : this.specialShotType === "braveSlash" ? 0.26 : this.specialShotType === "gigaBreak" ? 0.18 : this.specialShotType === "fireball" ? 0.16 : this.specialShotType === "holyLance" ? 0.22 : this.specialShotType === "shiningArrow" ? 0.18 : this.specialShotType === "hundredRush" ? 0.24 : this.specialShotType === "lunaticMirage" ? 0.22 : 0.16));
       this.vx = directionX * targetSpeed;
       this.vy = directionY * targetSpeed;
       if (!this.aerialShot) {
@@ -1430,8 +1464,8 @@ class Ball {
     if (!this.specialShotType) {
       return 1 + t * 0.24;
     }
-    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush") {
-      return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.26 : 1.22);
+    if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
+      return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.26 : this.specialShotType === "lunaticMirage" ? 1.28 : 1.22);
     }
     if (this.specialShotType === "boost") {
       return 0.35;
@@ -1549,6 +1583,10 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.braveSlashSurged = false;
+    this.braveSlashSurgeTimer = 0;
+    this.lunaticMirageSurged = false;
+    this.lunaticMirageSurgeTimer = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
     this.ufoSpinBaseDirX = 0;
@@ -1599,6 +1637,10 @@ class Ball {
     this.kiaiElapsed = 0;
     this.kiaiCruiseSpeed = 0;
     this.kiaiFlightZ = 0;
+    this.braveSlashSurged = false;
+    this.braveSlashSurgeTimer = 0;
+    this.lunaticMirageSurged = false;
+    this.lunaticMirageSurgeTimer = 0;
     this.ufoSpinElapsed = 0;
     this.ufoSpinFlightZ = 0;
     this.ufoSpinBaseDirX = 0;
@@ -1629,6 +1671,7 @@ class Ball {
     if (this.specialShotType === "holyLance") return "#fff4a8";
     if (this.specialShotType === "shiningArrow") return "#ffe36a";
     if (this.specialShotType === "hundredRush") return "#f7f7ff";
+    if (this.specialShotType === "lunaticMirage") return "#b98cff";
     if (this.specialShotType === "devilClaw") return "#ff4fb8";
     if (this.specialShotType === "boost") return "#ff6b1a";
     if (this.specialShotType === "triple") return "#ffcc8a";
@@ -1713,7 +1756,7 @@ class Ball {
       return;
     }
 
-    if (this.isFlying && (this.specialShotType === "kiai" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush")) {
+    if (this.isFlying && (this.specialShotType === "kiai" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage")) {
       this.drawKiaiStraight(context, debugMode);
       return;
     }
@@ -3138,6 +3181,7 @@ class Ball {
     const holyLance = this.specialShotType === "holyLance";
     const shiningArrow = this.specialShotType === "shiningArrow";
     const hundredRush = this.specialShotType === "hundredRush";
+    const lunaticMirage = this.specialShotType === "lunaticMirage";
     const drawY = this.y - this.z;
     const speed = Math.hypot(this.vx, this.vy) || 1;
     const directionX = this.vx / speed;
@@ -3168,19 +3212,33 @@ class Ball {
       );
       context.stroke();
     };
-    const outerTrail = shiningArrow ? "#ffe36a" : hundredRush ? "#cfd7ff" : holyLance ? "#fff4a8" : fireball ? "#ff2f16" : gigaBreak ? "#9b1f18" : braveSlash ? "#348dff" : "#ef3f24";
-    const middleTrail = shiningArrow ? "#ffffff" : hundredRush ? "#ffffff" : holyLance ? "#ffffff" : fireball ? "#ffb02e" : gigaBreak ? "#d9442e" : braveSlash ? "#8ffcff" : "#ffc52f";
-    drawTrail(outerTrail, this.radius * (shiningArrow ? 0.42 : hundredRush ? 0.86 : holyLance ? 0.72 : braveSlash ? 1.02 : gigaBreak ? 1.18 : fireball ? 1.55 : 1.25), shiningArrow ? 1.48 : hundredRush ? 1.06 : holyLance ? 1.28 : braveSlash ? 0.82 : fireball ? 1.08 : 1, fireball ? 0.56 : 0.4);
-    drawTrail(middleTrail, this.radius * (shiningArrow ? 0.2 : holyLance ? 0.38 : braveSlash ? 0.62 : fireball ? 0.86 : 0.72), shiningArrow ? 1.36 : holyLance ? 1.16 : braveSlash ? 0.76 : 0.9, fireball ? 0.8 : 0.68);
-    drawTrail("#ffffff", this.radius * (shiningArrow ? 0.12 : holyLance ? 0.18 : 0.24), shiningArrow ? 1.22 : braveSlash ? 0.7 : holyLance ? 1.04 : 0.82, 0.94);
+    const braveSurge = braveSlash && (this.braveSlashSurged || this.braveSlashSurgeTimer > 0);
+    const outerTrail = shiningArrow ? "#ffe36a" : lunaticMirage ? "#5c4dff" : hundredRush ? "#cfd7ff" : holyLance ? "#fff4a8" : fireball ? "#ff2f16" : gigaBreak ? "#5a1410" : braveSlash ? "#ffd83d" : "#ef3f24";
+    const middleTrail = shiningArrow ? "#ffffff" : lunaticMirage ? "#d8b6ff" : hundredRush ? "#ffffff" : holyLance ? "#ffffff" : fireball ? "#ffb02e" : gigaBreak ? "#a92318" : braveSlash ? "#fffdf1" : "#ffc52f";
+    drawTrail(outerTrail, this.radius * (shiningArrow ? 0.42 : lunaticMirage ? 0.94 : hundredRush ? 0.86 : holyLance ? 0.72 : braveSlash ? (braveSurge ? 0.86 : 0.7) : gigaBreak ? 1.38 : fireball ? 1.55 : 1.25), shiningArrow ? 1.48 : lunaticMirage ? 1.16 : hundredRush ? 1.06 : holyLance ? 1.28 : braveSlash ? 1.28 : gigaBreak ? 0.96 : fireball ? 1.08 : 1, fireball ? 0.56 : braveSlash ? 0.58 : lunaticMirage ? 0.52 : 0.4);
+    drawTrail(middleTrail, this.radius * (shiningArrow ? 0.2 : lunaticMirage ? 0.52 : holyLance ? 0.38 : braveSlash ? 0.34 : fireball ? 0.86 : gigaBreak ? 0.92 : 0.72), shiningArrow ? 1.36 : lunaticMirage ? 1.02 : holyLance ? 1.16 : braveSlash ? 1.05 : 0.9, fireball ? 0.8 : lunaticMirage ? 0.72 : 0.68);
+    if (braveSlash) {
+      const sideGap = this.radius * 0.62;
+      for (let lane = -1; lane <= 1; lane += 2) {
+        context.globalAlpha = 0.76;
+        context.strokeStyle = lane < 0 ? "#fffdf1" : "#8fd8ff";
+        context.lineWidth = this.radius * 0.16;
+        context.beginPath();
+        context.moveTo(this.x + tailX * 18 + -directionY * sideGap * lane, drawY + tailY * 18 + directionX * sideGap * lane);
+        context.lineTo(this.x + tailX * 180 + -directionY * sideGap * lane * 0.38, drawY + tailY * 180 + directionX * sideGap * lane * 0.38);
+        context.stroke();
+      }
+    } else {
+      drawTrail("#ffffff", this.radius * (shiningArrow ? 0.12 : lunaticMirage ? 0.18 : holyLance ? 0.18 : 0.24), shiningArrow ? 1.22 : lunaticMirage ? 0.92 : holyLance ? 1.04 : 0.82, 0.94);
+    }
 
     context.globalAlpha = 0.78;
-    context.strokeStyle = shiningArrow ? "#ffe36a" : hundredRush ? "#f7f7ff" : holyLance ? "#fff4a8" : fireball ? "#ffd36a" : gigaBreak ? "#ff6244" : braveSlash ? "#dffcff" : "#fff0a0";
-    context.lineWidth = shiningArrow ? 3 : holyLance ? 3.5 : braveSlash ? 4 : 5;
+    context.strokeStyle = shiningArrow ? "#ffe36a" : lunaticMirage ? "#d8b6ff" : hundredRush ? "#f7f7ff" : holyLance ? "#fff4a8" : fireball ? "#ffd36a" : gigaBreak ? "#1b1010" : braveSlash ? "#fff4a8" : "#fff0a0";
+    context.lineWidth = shiningArrow ? 3 : lunaticMirage ? 3.5 : holyLance ? 3.5 : braveSlash ? 3.5 : 5;
     for (let index = 0; index < 12; index += 1) {
       const angle = this.spin * 0.55 + index * Math.PI / 6;
       const inner = auraRadius * 1.18;
-      const outer = inner + (shiningArrow ? 8 : holyLance ? 10 : braveSlash ? 13 : 18) + (index % 3) * (shiningArrow ? 3 : holyLance ? 4 : braveSlash ? 6 : 8);
+      const outer = inner + (shiningArrow ? 8 : lunaticMirage ? 11 : holyLance ? 10 : braveSlash ? 13 : 18) + (index % 3) * (shiningArrow ? 3 : lunaticMirage ? 5 : holyLance ? 4 : braveSlash ? 6 : 8);
       context.beginPath();
       context.moveTo(this.x + Math.cos(angle) * inner, drawY + Math.sin(angle) * inner);
       context.lineTo(this.x + Math.cos(angle) * outer, drawY + Math.sin(angle) * outer);
@@ -3188,36 +3246,94 @@ class Ball {
     }
 
     if (braveSlash) {
-      context.globalAlpha = 0.78;
-      context.fillStyle = "rgba(255,255,255,0.72)";
+      context.globalAlpha = 0.88;
+      context.fillStyle = "rgba(255,253,241,0.78)";
       context.beginPath();
-      context.moveTo(this.x + directionX * this.radius * 1.65, drawY + directionY * this.radius * 1.65);
-      context.lineTo(this.x + tailX * this.radius * 1.08 + -directionY * this.radius * 0.72, drawY + tailY * this.radius * 1.08 + directionX * this.radius * 0.72);
-      context.lineTo(this.x + tailX * this.radius * 2.12, drawY + tailY * this.radius * 2.12);
-      context.lineTo(this.x + tailX * this.radius * 1.08 + directionY * this.radius * 0.72, drawY + tailY * this.radius * 1.08 - directionX * this.radius * 0.72);
+      context.moveTo(this.x + directionX * this.radius * 2.25, drawY + directionY * this.radius * 2.25);
+      context.lineTo(this.x + tailX * this.radius * 1.2 + -directionY * this.radius * 0.48, drawY + tailY * this.radius * 1.2 + directionX * this.radius * 0.48);
+      context.lineTo(this.x + tailX * this.radius * 3.25, drawY + tailY * this.radius * 3.25);
+      context.lineTo(this.x + tailX * this.radius * 1.2 + directionY * this.radius * 0.48, drawY + tailY * this.radius * 1.2 - directionX * this.radius * 0.48);
       context.closePath();
       context.fill();
+      context.strokeStyle = "#ffd83d";
+      context.lineWidth = 4;
+      context.globalAlpha = 0.82;
+      context.stroke();
+      context.fillStyle = "#8fd8ff";
+      context.globalAlpha = 0.7;
+      for (let i = 0; i < 14; i += 1) {
+        const distance = 20 + i * 17;
+        const side = Math.sin(this.spin * 0.18 + i * 1.6) * 26;
+        context.beginPath();
+        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, 2 + i % 2, 0, Math.PI * 2);
+        context.fill();
+      }
+      if (this.braveSlashSurgeTimer > 0) {
+        const ringProgress = 1 - this.braveSlashSurgeTimer / 0.36;
+        context.save();
+        context.translate(this.x, drawY);
+        context.rotate(-this.spin * 0.14);
+        context.globalAlpha = Math.max(0, 1 - ringProgress) * 0.95;
+        context.strokeStyle = "#fffdf1";
+        context.lineWidth = 7 - ringProgress * 3;
+        context.scale(1, 0.48);
+        context.beginPath();
+        context.arc(0, 0, this.radius * (2.6 + ringProgress * 3.2), 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#ffd83d";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.arc(0, 0, this.radius * (1.6 + ringProgress * 2.4), 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+      }
     }
     if (gigaBreak) {
-      context.globalAlpha = 0.72;
-      context.strokeStyle = "#ff6244";
-      context.lineWidth = 7;
+      context.globalAlpha = 0.76;
+      context.strokeStyle = "#1b1110";
+      context.lineWidth = 16;
       for (let index = -2; index <= 2; index += 1) {
-        const side = index * this.radius * 0.52;
+        const side = index * this.radius * 0.44;
         context.beginPath();
         context.moveTo(this.x + tailX * 18 + -directionY * side, drawY + tailY * 18 + directionX * side);
-        context.lineTo(this.x + tailX * (132 + index * 8) + -directionY * side * 0.6, drawY + tailY * (132 + index * 8) + directionX * side * 0.6);
+        context.lineTo(this.x + tailX * (148 + index * 8) + -directionY * side * 0.42, drawY + tailY * (148 + index * 8) + directionX * side * 0.42);
         context.stroke();
+      }
+      context.globalAlpha = 0.62;
+      context.strokeStyle = "#c73726";
+      context.lineWidth = 7;
+      for (let wave = 0; wave < 4; wave += 1) {
+        const ahead = this.radius * (1.6 + wave * 0.15);
+        const rx = this.radius * (1.4 + wave * 0.32);
+        const ry = this.radius * (0.72 + wave * 0.14);
+        context.save();
+        context.translate(this.x + directionX * ahead - directionY * Math.sin(this.spin * 0.5 + wave) * 6, drawY + directionY * ahead + directionX * Math.sin(this.spin * 0.5 + wave) * 6);
+        context.rotate(Math.atan2(directionY, directionX));
+        context.beginPath();
+        context.arc(0, 0, rx, -Math.PI * 0.55, Math.PI * 0.55);
+        context.stroke();
+        context.restore();
       }
       context.globalAlpha = 0.6;
       context.fillStyle = "#ffb347";
-      for (let i = 0; i < 12; i += 1) {
-        const distance = 24 + i * 15;
-        const side = Math.sin(this.spin + i * 1.7) * 22;
+      for (let i = 0; i < 16; i += 1) {
+        const distance = 18 + i * 13;
+        const side = Math.sin(this.spin + i * 1.7) * (18 + i);
         context.beginPath();
-        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, 2.5 + i % 3, 0, Math.PI * 2);
+        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side + (i % 2 ? 6 : -4), 2.5 + i % 3, 0, Math.PI * 2);
         context.fill();
       }
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.34;
+      context.fillStyle = "rgba(86, 58, 38, 0.62)";
+      for (let i = 0; i < 8; i += 1) {
+        const distance = 32 + i * 22;
+        const side = Math.sin(this.spin * 0.4 + i) * 16;
+        context.beginPath();
+        context.ellipse(this.x + tailX * distance + -directionY * side, this.y + 12 + tailY * distance * 0.2, 16 + i, 6 + i * 0.3, 0, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.globalCompositeOperation = "lighter";
     }
     if (fireball) {
       const time = performance.now();
@@ -3272,13 +3388,77 @@ class Ball {
         context.stroke();
       }
     }
+    if (lunaticMirage) {
+      const time = performance.now();
+      const phase = time / 180;
+      const phantomCount = this.lunaticMirageSurged ? 2 : 3;
+      for (let index = 0; index < phantomCount; index += 1) {
+        const offsetPhase = phase + index * Math.PI * 2 / phantomCount;
+        const back = 22 + index * 24 + Math.sin(offsetPhase) * 8;
+        const side = Math.sin(offsetPhase * 1.4) * (this.radius * (1.25 + index * 0.22));
+        const px = this.x + tailX * back + -directionY * side;
+        const py = drawY + tailY * back + directionX * side;
+        context.globalAlpha = 0.34 + Math.sin(offsetPhase) * 0.08;
+        context.fillStyle = "rgba(140, 120, 255, 0.42)";
+        context.beginPath();
+        context.arc(px, py, this.radius * (0.74 - index * 0.05), 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = index % 2 ? "#9ee7ff" : "#d8b6ff";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(px, py, this.radius * (0.9 - index * 0.04), 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.globalAlpha = 0.72;
+      context.strokeStyle = "#9ee7ff";
+      context.lineWidth = 4;
+      for (let ring = 0; ring < 2; ring += 1) {
+        context.save();
+        context.translate(this.x + tailX * (40 + ring * 42), drawY + tailY * (40 + ring * 42));
+        context.rotate(-this.spin * 0.12 + ring);
+        context.scale(1, 0.42);
+        context.beginPath();
+        context.arc(0, 0, this.radius * (1.9 + ring * 0.46 + pulse * 0.18), Math.PI * 0.18, Math.PI * 1.85);
+        context.stroke();
+        context.restore();
+      }
+      context.fillStyle = "#f1dcff";
+      for (let i = 0; i < 16; i += 1) {
+        const distance = 18 + i * 16;
+        const side = Math.sin(time / 95 + i * 1.7) * (20 + i * 0.9);
+        const starSize = 2 + i % 3;
+        context.globalAlpha = 0.42 + (i % 3) * 0.1;
+        context.beginPath();
+        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, starSize, 0, Math.PI * 2);
+        context.fill();
+      }
+      if (this.lunaticMirageSurgeTimer > 0) {
+        const ringProgress = 1 - this.lunaticMirageSurgeTimer / 0.42;
+        context.save();
+        context.translate(this.x, drawY);
+        context.rotate(-this.spin * 0.1);
+        context.globalAlpha = Math.max(0, 1 - ringProgress) * 0.86;
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 6 - ringProgress * 3;
+        context.scale(1, 0.46);
+        context.beginPath();
+        context.arc(0, 0, this.radius * (2.1 + ringProgress * 3.4), 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#6f5cff";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.arc(0, 0, this.radius * (1.35 + ringProgress * 2.3), Math.PI * 0.1, Math.PI * 1.9);
+        context.stroke();
+        context.restore();
+      }
+    }
 
     context.translate(this.x, drawY);
     const aura = context.createRadialGradient(-this.radius * 0.2, -this.radius * 0.24, 3, 0, 0, auraRadius);
     aura.addColorStop(0, "rgba(255,255,255,1)");
-    aura.addColorStop(0.34, shiningArrow ? "rgba(255,255,255,0.98)" : hundredRush ? "rgba(247,247,255,0.96)" : holyLance ? "rgba(255,255,255,0.98)" : braveSlash ? "rgba(197,250,255,0.96)" : fireball ? "rgba(255,216,90,0.96)" : gigaBreak ? "rgba(255,98,68,0.9)" : "rgba(255,238,103,0.96)");
-    aura.addColorStop(0.7, shiningArrow ? "rgba(255,216,61,0.72)" : hundredRush ? "rgba(132,164,255,0.58)" : holyLance ? "rgba(255,216,61,0.7)" : braveSlash ? "rgba(54,153,255,0.68)" : fireball ? "rgba(255,78,22,0.78)" : gigaBreak ? "rgba(128,24,18,0.72)" : "rgba(255,107,36,0.7)");
-    aura.addColorStop(1, shiningArrow ? "rgba(255,216,61,0)" : hundredRush ? "rgba(132,164,255,0)" : holyLance ? "rgba(255,216,61,0)" : braveSlash ? "rgba(54,153,255,0)" : fireball ? "rgba(255,42,12,0)" : gigaBreak ? "rgba(96,12,8,0)" : "rgba(227,42,27,0)");
+    aura.addColorStop(0.34, shiningArrow ? "rgba(255,255,255,0.98)" : lunaticMirage ? "rgba(248,241,255,0.96)" : hundredRush ? "rgba(247,247,255,0.96)" : holyLance ? "rgba(255,255,255,0.98)" : braveSlash ? "rgba(255,253,241,0.98)" : fireball ? "rgba(255,216,90,0.96)" : gigaBreak ? "rgba(160,48,34,0.9)" : "rgba(255,238,103,0.96)");
+    aura.addColorStop(0.7, shiningArrow ? "rgba(255,216,61,0.72)" : lunaticMirage ? "rgba(107,92,255,0.7)" : hundredRush ? "rgba(132,164,255,0.58)" : holyLance ? "rgba(255,216,61,0.7)" : braveSlash ? "rgba(255,216,61,0.72)" : fireball ? "rgba(255,78,22,0.78)" : gigaBreak ? "rgba(64,18,14,0.78)" : "rgba(255,107,36,0.7)");
+    aura.addColorStop(1, shiningArrow ? "rgba(255,216,61,0)" : lunaticMirage ? "rgba(107,92,255,0)" : hundredRush ? "rgba(132,164,255,0)" : holyLance ? "rgba(255,216,61,0)" : braveSlash ? "rgba(255,216,61,0)" : fireball ? "rgba(255,42,12,0)" : gigaBreak ? "rgba(32,10,8,0)" : "rgba(227,42,27,0)");
     context.globalAlpha = 0.94;
     context.fillStyle = aura;
     context.beginPath();
@@ -3287,17 +3467,17 @@ class Ball {
 
     context.rotate(this.spin);
     context.globalAlpha = 0.96;
-    context.fillStyle = shiningArrow ? "#fffdf1" : hundredRush ? "#f7f7ff" : holyLance ? "#fffdf1" : fireball ? "#ff7a1f" : gigaBreak ? "#5b1610" : "#fffdf1";
+    context.fillStyle = shiningArrow ? "#fffdf1" : lunaticMirage ? "#f8f1ff" : hundredRush ? "#f7f7ff" : holyLance ? "#fffdf1" : fireball ? "#ff7a1f" : gigaBreak ? "#4a1510" : "#fffdf1";
     context.beginPath();
     context.arc(0, 0, this.radius * 0.72, 0, Math.PI * 2);
     context.fill();
-    context.strokeStyle = shiningArrow ? "#ffd83d" : hundredRush ? "#b8c7ff" : holyLance ? "#fff4a8" : braveSlash ? "#8ffcff" : fireball ? "#ff7a1f" : gigaBreak ? "#d9442e" : "#ffd83d";
+    context.strokeStyle = shiningArrow ? "#ffd83d" : lunaticMirage ? "#6f5cff" : hundredRush ? "#b8c7ff" : holyLance ? "#fff4a8" : braveSlash ? "#ffd83d" : fireball ? "#ff7a1f" : gigaBreak ? "#1d1010" : "#ffd83d";
     context.lineWidth = 7;
     context.beginPath();
     context.arc(0, 0, this.radius * 0.93, 0, Math.PI * 2);
     context.stroke();
 
-    context.strokeStyle = shiningArrow ? "#fff4a8" : hundredRush ? "#ffffff" : holyLance ? "#fff4a8" : braveSlash ? "#ffffff" : fireball ? "#ffd36a" : gigaBreak ? "#ffb347" : "#fff8c4";
+    context.strokeStyle = shiningArrow ? "#fff4a8" : lunaticMirage ? "#d8b6ff" : hundredRush ? "#ffffff" : holyLance ? "#fff4a8" : braveSlash ? "#fffdf1" : fireball ? "#ffd36a" : gigaBreak ? "#ff6244" : "#fff8c4";
     context.lineWidth = 4;
     for (let index = 0; index < 3; index += 1) {
       const offset = (index - 1) * this.radius * 0.42;

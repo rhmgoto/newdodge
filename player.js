@@ -1412,7 +1412,7 @@ class Player {
     if (this.isBravesStyle()) {
       if (this.uniformEmblem === "braves-hero") return 1.1;
       if (this.uniformEmblem === "braves-paladin") return 1.15;
-      if (this.uniformEmblem === "braves-warrior") return 1.2;
+      if (this.uniformEmblem === "braves-warrior") return 1.44;
       if (this.uniformEmblem === "braves-mage") return 0.9;
     }
     return this.isDemonStyle()
@@ -1456,7 +1456,13 @@ class Player {
       martialArtist: { edge: "#7a4a22", body: "#f7f3e7", pants: "#f7f3e7", accent: "#d92d2d", symbol: "#17191d", equip: "#d92d2d" },
       bard: { edge: "#5e3342", body: "#7d2240", pants: "#253b2d", accent: "#e9d9a5", symbol: "#b87333", equip: "#b87333" }
     };
-    const palette = palettes[job] || palettes.hero;
+    let palette = palettes[job] || palettes.hero;
+    const archerVariant = job === "archer" ? this.name : "";
+    if (archerVariant === "レイ") {
+      palette = { edge: "#52713b", body: "#8fcf4a", pants: "#7a5334", accent: "#fff0a8", symbol: "#f5d94a", equip: "#8a5a31" };
+    } else if (archerVariant === "ルイ") {
+      palette = { edge: "#2f4a33", body: "#235d3a", pants: "#5d3f2e", accent: "#a94f36", symbol: "#a94f36", equip: "#6a452c" };
+    }
     const big = job === "warrior" || job === "knight";
     const small = job === "mage" || job === "cleric" || job === "bard";
     const bodyW = big ? 31 : job === "mage" ? 14 : job === "cleric" ? 17 : small ? 25 : 28;
@@ -1687,9 +1693,26 @@ class Player {
       context.fill();
     }
 
+    if (job === "archer" && archerVariant === "ルイ") {
+      context.fillStyle = "#8f3b2f";
+      softStroke(2.2, palette.edge);
+      context.beginPath();
+      context.moveTo(-20, -74 + rootY);
+      context.quadraticCurveTo(-34, -53 + rootY, -27, -22 + rootY);
+      context.quadraticCurveTo(-12, -12 + rootY, 0, -19 + rootY);
+      context.quadraticCurveTo(-6, -48 + rootY, 18, -72 + rootY);
+      context.quadraticCurveTo(0, -65 + rootY, -20, -74 + rootY);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(255,210,150,0.22)";
+      context.beginPath();
+      context.ellipse(-19, -48 + rootY, 5, 23, -0.18, 0, Math.PI * 2);
+      context.fill();
+    }
+
     if (job === "archer") {
       context.fillStyle = "#6f4a2e";
-      softStroke(2.2, "#3f5a37");
+      softStroke(2.2, palette.edge);
       context.beginPath();
       context.ellipse(23, -52 + rootY, 8, 31, -0.24, 0, Math.PI * 2);
       context.fill();
@@ -1907,12 +1930,12 @@ class Player {
       context.ellipse(22, shoulderY + 3, 8, 6, 0.25, 0, Math.PI * 2);
       context.fill();
     } else if (job === "archer") {
-      softStroke(7, "#7a5334");
+      softStroke(7, palette.equip);
       context.beginPath();
       context.moveTo(-20, -78 + rootY);
       context.lineTo(21, -22 + rootY);
       context.stroke();
-      softStroke(2.3, "#d8c08d");
+      softStroke(2.3, palette.accent);
       context.beginPath();
       context.moveTo(-18, -75 + rootY);
       context.lineTo(19, -25 + rootY);
@@ -1924,7 +1947,7 @@ class Player {
       context.lineTo(-17, -70 + rootY);
       context.closePath();
       context.fill();
-      context.fillStyle = "#f7f2d7";
+      context.fillStyle = archerVariant === "レイ" ? "#fff6c7" : archerVariant === "ルイ" ? "#c97955" : "#f7f2d7";
       context.beginPath();
       context.moveTo(-26, -73 + rootY);
       context.quadraticCurveTo(-37, -79 + rootY, -31, -88 + rootY);
@@ -2249,6 +2272,22 @@ class Player {
       context.closePath();
       context.fill();
       context.stroke();
+      if (archerVariant === "レイ") {
+        context.fillStyle = "#fff6c7";
+        softStroke(1.6, "#d6bc4c");
+        context.beginPath();
+        context.moveTo(8, headY - 28);
+        context.quadraticCurveTo(28, headY - 41, 35, headY - 25);
+        context.quadraticCurveTo(21, headY - 25, 10, headY - 17);
+        context.closePath();
+        context.fill();
+        context.stroke();
+      } else if (archerVariant === "ルイ") {
+        context.fillStyle = "#a94f36";
+        context.beginPath();
+        context.ellipse(-14, headY - 11, 6, 3.5, -0.35, 0, Math.PI * 2);
+        context.fill();
+      }
     } else {
       context.fillStyle = hair;
       context.beginPath();

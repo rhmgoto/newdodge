@@ -6,6 +6,7 @@ const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
 const START_SLOT = TEAM_SELECTION_COUNT + 1;
 const CUSTOM_TEAM_CONFIRM_SLOT = TEAM_SELECTION_COUNT + 2;
 const BRAVES_JOB_ORDER = ["hero", "warrior", "paladin", "cleric", "mage", "martialArtist", "bard", "archer"];
+const BRAVES_INNER_JOB_ORDER = BRAVES_JOB_ORDER.filter((jobId) => jobId !== "archer");
 const BRAVES_DEFAULT_SELECTION = ["hero", "warrior", "paladin", "cleric", "mage", "archer", "archer", "archer"];
 const BRAVES_JOB_NAMES = {
   hero: { job: "勇者", name: "アレス" },
@@ -30,7 +31,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "normal",
     maxHp: 400,
     maxStamina: 130,
-    stats: { power: 10, speed: 10, jump: 10, technique: 10, defense: 7, pass: 8 },
+    stats: { power: 13, speed: 13, jump: 13, technique: 13, defense: 11, pass: 11 },
     specialShotType: "braveSlash",
     uniformColor: "#2f73e8",
     pantsColor: "#243a68",
@@ -44,7 +45,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "power",
     maxHp: 300,
     maxStamina: 115,
-    stats: { power: 13, speed: 7, jump: 7, technique: 7, defense: 8, pass: 6 },
+    stats: { power: 15, speed: 7, jump: 7, technique: 8, defense: 9, pass: 8 },
     specialShotType: "gigaBreak",
     uniformColor: "#8f3b25",
     pantsColor: "#3a2a22",
@@ -84,9 +85,9 @@ const BRAVES_JOB_DEFINITIONS = {
   paladin: {
     label: "聖騎士",
     characterType: "normal",
-    maxHp: 350,
+    maxHp: 380,
     maxStamina: 140,
-    stats: { power: 11, speed: 9, jump: 9, technique: 11, defense: 9, pass: 7 },
+    stats: { power: 9, speed: 9, jump: 9, technique: 13, defense: 13, pass: 7 },
     specialShotType: "shiningArrow",
     uniformColor: "#f8fbff",
     pantsColor: "#dbefff",
@@ -100,8 +101,8 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "mage",
     maxHp: 250,
     maxStamina: 150,
-    stats: { power: 12, speed: 8, jump: 8, technique: 13, defense: 4, pass: 8 },
-    specialShotType: "hundredRush",
+    stats: { power: 10, speed: 8, jump: 8, technique: 10, defense: 7, pass: 8 },
+    specialShotType: "lunaticMirage",
     uniformColor: "#4b1f78",
     pantsColor: "#321052",
     trimColor: "#d8b6ff",
@@ -112,9 +113,9 @@ const BRAVES_JOB_DEFINITIONS = {
   cleric: {
     label: "僧侶",
     characterType: "normal",
-    maxHp: 250,
+    maxHp: 280,
     maxStamina: 150,
-    stats: { power: 7, speed: 9, jump: 8, technique: 13, defense: 5, pass: 9 },
+    stats: { power: 8, speed: 9, jump: 8, technique: 11, defense: 8, pass: 9 },
     specialShotType: "grandHeal",
     uniformColor: "#fbfbf1",
     pantsColor: "#dff1e2",
@@ -128,8 +129,8 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "speed",
     maxHp: 145,
     maxStamina: 135,
-    stats: { power: 8, speed: 12, jump: 11, technique: 13, defense: 5, pass: 10 },
-    specialShotType: "kiai",
+    stats: { power: 9, speed: 12, jump: 12, technique: 13, defense: 6, pass: 14 },
+    specialShotType: "none",
     uniformColor: "#4f8f45",
     pantsColor: "#7a5334",
     trimColor: "#d8c08d",
@@ -140,10 +141,10 @@ const BRAVES_JOB_DEFINITIONS = {
   martialArtist: {
     label: "武闘家",
     characterType: "jump",
-    maxHp: 165,
+    maxHp: 250,
     maxStamina: 135,
-    stats: { power: 10, speed: 12, jump: 13, technique: 9, defense: 6, pass: 6 },
-    specialShotType: "kiai",
+    stats: { power: 12, speed: 18, jump: 18, technique: 15, defense: 8, pass: 9 },
+    specialShotType: "hundredRush",
     uniformColor: "#f7f3e7",
     pantsColor: "#f7f3e7",
     trimColor: "#17191d",
@@ -154,9 +155,9 @@ const BRAVES_JOB_DEFINITIONS = {
   bard: {
     label: "吟遊詩人",
     characterType: "speed",
-    maxHp: 140,
+    maxHp: 280,
     maxStamina: 145,
-    stats: { power: 7, speed: 11, jump: 10, technique: 14, defense: 5, pass: 11 },
+    stats: { power: 7, speed: 11, jump: 8, technique: 10, defense: 7, pass: 11 },
     specialShotType: "victoryMarch",
     uniformColor: "#7d2240",
     pantsColor: "#253b2d",
@@ -167,6 +168,22 @@ const BRAVES_JOB_DEFINITIONS = {
   }
 };
 const STATUS_DEFENSE_PASS_OVERRIDES = new Map([
+  ["あお", { defense: 6, pass: 6 }],
+  ["ぐんじょう", { defense: 6, pass: 6 }],
+  ["こおり", { defense: 6, pass: 6 }],
+  ["うみ", { defense: 6, pass: 6 }],
+  ["そら", { defense: 6, pass: 6 }],
+  ["ブルー", { defense: 6, pass: 6 }],
+  ["アクア", { defense: 6, pass: 6 }],
+  ["オーシャン", { defense: 6, pass: 6 }],
+  ["あか", { defense: 6, pass: 6 }],
+  ["しんく", { defense: 6, pass: 6 }],
+  ["もみじ", { defense: 6, pass: 6 }],
+  ["れっか", { defense: 6, pass: 6 }],
+  ["ほむら", { defense: 6, pass: 6 }],
+  ["ぐれん", { defense: 6, pass: 6 }],
+  ["べに", { defense: 6, pass: 6 }],
+  ["かえん", { defense: 6, pass: 6 }],
   ["たけし", { defense: 5, pass: 5 }],
   ["こうた", { defense: 5, pass: 5 }],
   ["まさる", { defense: 5, pass: 5 }],
@@ -175,7 +192,14 @@ const STATUS_DEFENSE_PASS_OVERRIDES = new Map([
   ["ひろし", { defense: 5, pass: 5 }],
   ["けんじ", { defense: 5, pass: 5 }],
   ["たかし", { defense: 5, pass: 5 }],
+  ["たける", { defense: 6, pass: 6 }],
+  ["りょうた", { defense: 6, pass: 6 }],
   ["しょうた", { defense: 8, pass: 8 }],
+  ["ゆうま", { defense: 6, pass: 6 }],
+  ["はるき", { defense: 6, pass: 6 }],
+  ["だいき", { defense: 6, pass: 6 }],
+  ["けいた", { defense: 6, pass: 6 }],
+  ["しゅん", { defense: 6, pass: 6 }],
   ["よこづな", { defense: 10, pass: 6 }],
   ["らいのふじ", { defense: 8, pass: 6 }],
   ["はりておう", { defense: 8, pass: 6 }],
@@ -232,6 +256,22 @@ const STATUS_DEFENSE_PASS_OVERRIDES = new Map([
   ["ピコ|devilClaw", { defense: 6, pass: 16 }],
   ["ペコ", { defense: 6, pass: 16 }],
   ["ポコ", { defense: 6, pass: 16 }],
+  ["オクト", { defense: 9, pass: 8 }],
+  ["ピコ|ufoSpin", { defense: 7, pass: 7 }],
+  ["グニャ", { defense: 7, pass: 7 }],
+  ["フワン", { defense: 7, pass: 7 }],
+  ["キュル", { defense: 7, pass: 7 }],
+  ["ポル", { defense: 7, pass: 7 }],
+  ["ニュル", { defense: 7, pass: 7 }],
+  ["モニョ", { defense: 7, pass: 7 }],
+  ["勇者", { defense: 11, pass: 11 }],
+  ["戦士", { defense: 9, pass: 8 }],
+  ["魔法使い", { defense: 7, pass: 8 }],
+  ["聖騎士", { defense: 13, pass: 7 }],
+  ["僧侶", { defense: 8, pass: 9 }],
+  ["弓使い", { defense: 6, pass: 14 }],
+  ["武闘家", { defense: 8, pass: 9 }],
+  ["吟遊詩人", { defense: 7, pass: 11 }],
 ]);
 
 function getStatusDefensePassOverride(name, specialShotType) {
@@ -260,6 +300,7 @@ const CATCH_DIFFICULTY = {
   holyLance: { duration: 0.07, areaScale: 0.72 },
   shiningArrow: { duration: 0.065, areaScale: 0.68 },
   hundredRush: { duration: 0.085, areaScale: 0.78 },
+  lunaticMirage: { duration: 0.07, areaScale: 0.68 },
   victoryMarch: { duration: 0.12, areaScale: 1 },
   soul: { duration: 0.11, areaScale: 0.88 },
   triple: { duration: 0.09, areaScale: 0.82 },
@@ -334,6 +375,7 @@ const COUNTER_CONFIG = {
   staminaCost: 22,
   releaseDelay: 0.16
 };
+const CPU_CATCH_DURATION_SCALE = 0.85;
 
 const GAME_CONFIG = {
   width: 1440,
@@ -350,12 +392,13 @@ const GAME_CONFIG = {
     paddingY: 0,
     playZoom: 1,
     worldTop: -120,
-    worldBottomPadding: 0
+    worldBottomPadding: 0,
+    screenOffsetY: 56
   },
   player: {
     maxHp: 60,
     maxStamina: 100,
-    speed: 235,
+    speed: 306,
     throwPower: 20,
     stats: {
       power: 5,
@@ -780,7 +823,7 @@ class DodgeballGame {
       ) {
         player.specialShotType = "kiai";
       }
-      const area = this.areas[player.zone];
+      const area = this.getMoveArea(player, false);
       player.clampToArea(area);
       player.homeX = player.x;
       player.homeY = player.y;
@@ -828,7 +871,7 @@ class DodgeballGame {
         players: [
           player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
           player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("まさる", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { captain: true }),
+          player("まさる", "inner", "normal", 80, 100, 7, 7, 7, 7, "kiai", { captain: true }),
           player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
           player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
           player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
@@ -854,7 +897,7 @@ class DodgeballGame {
         players: [
           player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
           player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("しょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "boost", { captain: true }),
+          player("しょうた", "inner", "jump", 110, 100, 8, 10, 8, 8, "boost", { captain: true }),
           player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
           player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
           player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
@@ -909,7 +952,7 @@ class DodgeballGame {
         players: [
           player("\u30c8\u30e0", "inner", "speed", 140, 100, 9, 12, 13, 8, "kiai"),
           player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 11, 9, 8, 7, "kiai"),
-          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 11, "triple", { captain: true }),
+          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 13, "triple", { captain: true }),
           player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 10, 11, 10, 8, "kiai"),
           player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 8, 13, 9, 8, "kiai"),
           player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "kiai"),
@@ -1045,13 +1088,13 @@ class DodgeballGame {
         cpuProfile: "zenmaiGears",
         players: [
           player("ゼロ", "inner", "normal", 320, 200, 14, 8, 8, 14, "lockRocket", { captain: true, uniformEmblem: "robotCaptain" }),
-          player("ボルト", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ギア", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ピストン", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("センサー", "inner", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("レーダー", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("コイル", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ビット", "out", "normal", 200, 200, 11, 7, 6, 11, "clockStop", { uniformEmblem: "robot" })
+          player("ボルト", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ギア", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ピストン", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("センサー", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("レーダー", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("コイル", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
+          player("ビット", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" })
         ]
       },
       {
@@ -1244,22 +1287,32 @@ class DodgeballGame {
       if (!this.bravesSelections) this.bravesSelections = {};
       this.bravesSelections[side] = this.createDefaultBravesSelection();
     }
+    this.normalizeBravesSelection(this.bravesSelections[side]);
+    return this.bravesSelections[side];
+  }
+
+  normalizeBravesSelection(selection) {
+    while (selection.length < TEAM_SELECTION_COUNT) {
+      selection.push(selection.length >= 5 ? "archer" : BRAVES_INNER_JOB_ORDER[selection.length % BRAVES_INNER_JOB_ORDER.length]);
+    }
+    const usedInnerJobs = new Set();
     for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
-      if (this.bravesSelections[side][i] === "swordwoman") {
-        this.bravesSelections[side][i] = "mage";
+      if (selection[i] === "swordwoman") {
+        selection[i] = "mage";
       }
-      if (this.bravesSelections[side][i] === "knight") {
-        this.bravesSelections[side][i] = "paladin";
+      if (selection[i] === "knight") {
+        selection[i] = "paladin";
       }
       if (i >= 5) {
-        this.bravesSelections[side][i] = "archer";
+        selection[i] = "archer";
         continue;
       }
-      if (!BRAVES_JOB_ORDER.includes(this.bravesSelections[side][i])) {
-        this.bravesSelections[side][i] = BRAVES_JOB_ORDER[i % BRAVES_JOB_ORDER.length];
+      if (!BRAVES_INNER_JOB_ORDER.includes(selection[i]) || usedInnerJobs.has(selection[i])) {
+        selection[i] = BRAVES_INNER_JOB_ORDER.find((jobId) => !usedInnerJobs.has(jobId)) || "hero";
       }
+      usedInnerJobs.add(selection[i]);
     }
-    return this.bravesSelections[side];
+    return selection;
   }
 
   getBravesJobDefinition(jobId) {
@@ -1268,20 +1321,7 @@ class DodgeballGame {
 
   createBravesPlayerDefinitions(selection = this.createDefaultBravesSelection()) {
     const normalizedSelection = [...selection];
-    while (normalizedSelection.length < TEAM_SELECTION_COUNT) {
-      normalizedSelection.push(normalizedSelection.length >= 5 ? "archer" : BRAVES_JOB_ORDER[normalizedSelection.length % BRAVES_JOB_ORDER.length]);
-    }
-    for (let i = 0; i < TEAM_SELECTION_COUNT; i += 1) {
-      if (normalizedSelection[i] === "swordwoman") normalizedSelection[i] = "mage";
-      if (normalizedSelection[i] === "knight") normalizedSelection[i] = "paladin";
-      if (i >= 5) {
-        normalizedSelection[i] = "archer";
-        continue;
-      }
-      if (!BRAVES_JOB_ORDER.includes(normalizedSelection[i])) {
-        normalizedSelection[i] = BRAVES_JOB_ORDER[i % BRAVES_JOB_ORDER.length];
-      }
-    }
+    this.normalizeBravesSelection(normalizedSelection);
     return normalizedSelection.slice(0, TEAM_SELECTION_COUNT).map((jobId, slot) => {
       const job = this.getBravesJobDefinition(jobId);
       const jobName = BRAVES_JOB_NAMES[jobId];
@@ -1722,13 +1762,16 @@ class DodgeballGame {
     if (!this.isEditableRosterTeam(team) || slot < 0 || slot >= TEAM_SELECTION_COUNT) return [];
     if (this.isBravesTeam(team)) {
       if (slot >= 5) return [];
-      return BRAVES_JOB_ORDER.map((jobId) => {
+      const selections = this.getBravesSelectionForSide(side);
+      const usedJobs = new Set(selections.slice(0, 5).filter((jobId, index) => index !== slot && BRAVES_INNER_JOB_ORDER.includes(jobId)));
+      return BRAVES_INNER_JOB_ORDER.map((jobId) => {
         const display = BRAVES_JOB_NAMES[jobId];
         return {
           value: jobId,
+          disabled: usedJobs.has(jobId),
           label: display ? `${display.job} ${display.name}` : this.getBravesJobDefinition(jobId).label
         };
-      });
+      }).filter((option) => !option.disabled || option.value === selections[slot]);
     }
     return this.typeOrder.map((type) => ({
       value: type,
@@ -1739,8 +1782,11 @@ class DodgeballGame {
   applyRosterChoice(side, slot, value, team) {
     if (!value) return;
     if (this.isBravesTeam(team)) {
-      if (slot >= 0 && slot < 5 && BRAVES_JOB_ORDER.includes(value)) {
-        this.getBravesSelectionForSide(side)[slot] = value;
+      if (slot >= 0 && slot < 5 && BRAVES_INNER_JOB_ORDER.includes(value)) {
+        const selections = this.getBravesSelectionForSide(side);
+        if (!selections.slice(0, 5).some((jobId, index) => index !== slot && jobId === value)) {
+          selections[slot] = value;
+        }
       }
       return;
     }
@@ -1843,11 +1889,12 @@ class DodgeballGame {
   changeSelectedBravesJob(side, slot, direction) {
     if (slot < 0 || slot >= 5) return;
     const selections = this.getBravesSelectionForSide(side);
-    const currentJob = selections[slot] || BRAVES_JOB_ORDER[slot % BRAVES_JOB_ORDER.length];
-    let index = BRAVES_JOB_ORDER.indexOf(currentJob);
+    const currentJob = selections[slot] || BRAVES_INNER_JOB_ORDER[slot % BRAVES_INNER_JOB_ORDER.length];
+    const availableJobs = BRAVES_INNER_JOB_ORDER.filter((jobId) => jobId === currentJob || !selections.slice(0, 5).includes(jobId));
+    let index = availableJobs.indexOf(currentJob);
     if (index < 0) index = 0;
-    index = (index + direction + BRAVES_JOB_ORDER.length) % BRAVES_JOB_ORDER.length;
-    selections[slot] = BRAVES_JOB_ORDER[index];
+    index = (index + direction + availableJobs.length) % availableJobs.length;
+    selections[slot] = availableJobs[index];
   }
 
   canUseCharacterType(side, slot, type) {
@@ -2083,7 +2130,7 @@ class DodgeballGame {
       ) {
         continue;
       }
-      if (command.catch) member.startCatch(this.getCatchDuration(member));
+      if (command.catch) member.startCatch(this.getCatchDuration(member) * CPU_CATCH_DURATION_SCALE);
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {
@@ -2200,7 +2247,33 @@ class DodgeballGame {
     if (member.role === "out" && (isControlled || this.isTeamOutfieldLooseBall(member.team))) {
       return this.getTeamOutfieldArea(member.team);
     }
-    return this.areas[member.zone];
+    return this.applyInnerVisualMovementPadding(member, this.areas[member.zone]);
+  }
+
+  applyInnerVisualMovementPadding(member, area) {
+    if (!member || member.role !== "inner" || !area?.trapezoid) return area;
+    const padding = this.getInnerVisualBottomPadding(member);
+    if (padding <= 0) return area;
+    const t = area.trapezoid;
+    const yBottom = Math.max(t.yTop + 80, t.yBottom - padding);
+    const bottom = this.getTrapezoidBoundsAtY(t, yBottom);
+    if (!bottom) return area;
+    return {
+      ...area,
+      h: yBottom - t.yTop,
+      trapezoid: {
+        ...t,
+        yBottom,
+        leftBottom: bottom.left,
+        rightBottom: bottom.right
+      }
+    };
+  }
+
+  getInnerVisualBottomPadding(member) {
+    if (member.isDemonStyle?.()) return 170;
+    if (member.isLavaGolemStyle?.()) return 120;
+    return 0;
   }
 
   isTeamOutfieldLooseBall(team) {
@@ -2923,6 +2996,7 @@ class DodgeballGame {
         this.startHellfireFlash(0.36);
         this.startScreenShake(12, 0.12);
       }
+      this.playBraversSpecialLaunchEffect(actor, specialType);
       if (kind === "pass" && charged.target) this.setControlledMember(charged.target.team, charged.target);
     }
     return true;
@@ -3119,6 +3193,7 @@ class DodgeballGame {
         this.startHellfireFlash(0.36);
         this.startScreenShake(12, 0.12);
       }
+      this.playBraversSpecialLaunchEffect(pending.actor, specialType);
       this.spawnEffect(
         pending.actor.x + pending.actor.facing * 40,
         pending.actor.y - 48,
@@ -3393,6 +3468,7 @@ class DodgeballGame {
 
   getSpecialShotType(actor) {
     if (!this.canUseSpiritSpecial(actor)) return null;
+    if (actor.specialShotType === "none") return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "witch" || actor.uniformEmblem === "witch") return "arcanaSphere";
     if (actor.characterType === "mage") return "soul";
@@ -3653,6 +3729,7 @@ class DodgeballGame {
 
     for (const catcher of team) {
       if (catcher.defeated || catcher.hitRecoveryTimer > 0 || catcher.catchTimer <= 0 || catcher === this.ball.thrower) continue;
+      if (catcher.dodgeTimer > 0) continue;
       const friendly = catcher.team === this.ball.thrower.team;
       if (friendly && this.ball.kind === "shoot") continue;
       if (!friendly && this.ball.kind === "shoot" && catcher !== this.ball.target) continue;
@@ -3738,6 +3815,13 @@ class DodgeballGame {
             this.ball.drop();
           }
           this.spawnEffect(catcher.x, catcher.y - catcher.jumpZ - 66, "#2b0a30", "hellfireImpact", 0.65);
+        }
+        if (this.ball.specialShotType === "gigaBreak") {
+          const braceDirection = this.ball.vx >= 0 ? 1 : -1;
+          catcher.knockbackX += braceDirection * GAME_CONFIG.battle.knockbackSpeed * 0.95;
+          catcher.knockbackY += (this.ball.vy >= 0 ? 1 : -1) * GAME_CONFIG.battle.knockbackSpeed * 0.16;
+          this.spawnEffect(catcher.x, catcher.y + 8, "#d9442e", "gigaBreakCatchBrace", 1);
+          this.startScreenShake(16, 0.18);
         }
       }
       catcher.throwLockTimer = 0.2;
@@ -4150,8 +4234,12 @@ class DodgeballGame {
               ? 1.75
               : specialType === "hundredRush"
                 ? 1.95
+                : specialType === "lunaticMirage"
+                  ? 1.55
                 : specialType === "shiningArrow"
                   ? 1.2
+                  : specialType === "braveSlash"
+                    ? 1.45
           : specialType
             ? 1.5
             : demonShot ? 1.18 : 1;
@@ -4190,7 +4278,8 @@ class DodgeballGame {
         }
         if (specialType === "braveSlash") {
           this.addSpirit(target.team, -1.2);
-          this.startScreenShake(12, 0.13);
+          target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.78;
+          this.startScreenShake(15, 0.15);
         }
         if (specialType === "gigaBreak") {
           target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 1.65;
@@ -4211,6 +4300,10 @@ class DodgeballGame {
         if (specialType === "hundredRush") {
           target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.9;
           this.startScreenShake(15, 0.16);
+        }
+        if (specialType === "lunaticMirage") {
+          target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.45;
+          this.startScreenShake(10, 0.12);
         }
         if (specialType === "triple") {
           this.startScreenShake(9, 0.11);
@@ -4254,6 +4347,7 @@ class DodgeballGame {
             : specialType === "holyLance" ? "holyLanceImpact"
             : specialType === "shiningArrow" ? "shiningArrowImpact"
             : specialType === "hundredRush" ? "hundredRushImpact"
+            : specialType === "lunaticMirage" ? "lunaticMirageImpact"
             : specialType === "hellfire" ? "hellfireImpact"
             : specialType === "arcanaSphere" ? "arcanaImpact"
             : specialType === "ufoSpin" ? "ufoSpinImpact"
@@ -4432,6 +4526,8 @@ class DodgeballGame {
       damage = baseDamage * (1.9 + Math.min(0.45, Math.max(0, travelDistance) / 1800 * 0.45));
     } else if (specialType === "hundredRush") {
       damage = baseDamage * 2.18;
+    } else if (specialType === "lunaticMirage") {
+      damage = baseDamage * (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32));
     } else if (specialType === "lightning" || specialType === "triple") {
       damage = baseDamage * 2;
     } else if (specialType === "boomerang") {
@@ -4935,6 +5031,7 @@ class DodgeballGame {
     if (specialType === "holyLance") return "#fff4a8";
     if (specialType === "shiningArrow") return "#ffe36a";
     if (specialType === "hundredRush") return "#f7f7ff";
+    if (specialType === "lunaticMirage") return "#b98cff";
     if (specialType === "triple") return "#ffcc8a";
     if (specialType === "boost") return "#ff7a1f";
     if (specialType === "lightning") return "#8ffcff";
@@ -5006,7 +5103,7 @@ class DodgeballGame {
       scale,
       renderScaleCompensation: 1 / zoom,
       offsetX: (GAME_CONFIG.width - worldWidth * scale) * 0.5,
-      offsetY: (GAME_CONFIG.height - worldHeight * scale) * 0.5
+      offsetY: (GAME_CONFIG.height - worldHeight * scale) * 0.5 + (GAME_CONFIG.view.screenOffsetY || 0)
     };
   }
 
@@ -5289,10 +5386,14 @@ class DodgeballGame {
       : type === "grandHealCast" ? 1
       : type === "grandHealCircle" ? 0.82
       : type === "grandHealFeather" ? 1.05
+      : type === "braveSlashLaunch" ? 0.46
+      : type === "gigaBreakLaunch" ? 0.58
+      : type === "gigaBreakCatchBrace" ? 0.72
+      : type === "lunaticMirageLaunch" ? 0.62
       : type === "shiningPassBow" ? 0.46
       : type === "galeCounterLaunch" ? 0.58
       : type === "galeCounterImpact" ? 0.62
-      : type === "tripleImpact" || type === "bananaImpact" || type === "shieldImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" || type === "hellfireImpact" || type === "arcanaImpact" || type === "braveSlashImpact" || type === "gigaBreakImpact" || type === "fireballImpact" || type === "holyLanceImpact" || type === "shiningArrowImpact" || type === "hundredRushImpact" ? 0.62
+      : type === "tripleImpact" || type === "bananaImpact" || type === "shieldImpact" || type === "clockImpact" || type === "lockRocketImpact" || type === "ufoSpinImpact" || type === "hellfireImpact" || type === "arcanaImpact" || type === "braveSlashImpact" || type === "gigaBreakImpact" || type === "fireballImpact" || type === "holyLanceImpact" || type === "shiningArrowImpact" || type === "hundredRushImpact" || type === "lunaticMirageImpact" ? 0.62
       : type === "kiaiImpact" ? 0.46 : type === "counterCatch" ? 0.48 : 0.32;
     this.effects.push({ x, y, color, type, intensity, life: duration, maxLife: duration });
   }
@@ -5306,6 +5407,24 @@ class DodgeballGame {
   startHellfireFlash(duration = 0.36) {
     this.hellfireFlashDuration = Math.max(this.hellfireFlashDuration || 0, duration);
     this.hellfireFlashTimer = Math.max(this.hellfireFlashTimer || 0, duration);
+  }
+
+  playBraversSpecialLaunchEffect(actor, specialType) {
+    if (!actor || !specialType) return;
+    if (specialType === "braveSlash") {
+      this.spawnEffect(actor.x + actor.facing * 46, actor.y + 10, "#ffd83d", "braveSlashLaunch", 1.15);
+      this.startScreenShake(8, 0.1);
+      return;
+    }
+    if (specialType === "gigaBreak") {
+      this.spawnEffect(actor.x + actor.facing * 50, actor.y + 12, "#d9442e", "gigaBreakLaunch", 1.25);
+      actor.knockbackX -= actor.facing * GAME_CONFIG.battle.knockbackSpeed * 0.32;
+      this.startScreenShake(22, 0.18);
+      return;
+    }
+    if (specialType === "lunaticMirage") {
+      this.spawnEffect(actor.x + actor.facing * 34, actor.y - actor.jumpZ - 72, "#b98cff", "lunaticMirageLaunch", 1.1);
+    }
   }
 
   updateBoostPresentation() {
@@ -5400,8 +5519,10 @@ class DodgeballGame {
     if (specialType === "holyLance") return "ホーリーランス";
     if (specialType === "shiningArrow") return "シャイニングアロー";
     if (specialType === "hundredRush") return "百裂ラッシュ";
+    if (specialType === "lunaticMirage") return "ルナティックミラージュ";
     if (specialType === "victoryMarch") return "勝利の行進曲";
     if (specialType === "grandHeal") return "グランドヒール";
+    if (specialType === "none") return "なし";
     if (specialType === "triple") return "\u30c8\u30ea\u30d7\u30eb\u30b7\u30e7\u30c3\u30c8";
     if (specialType === "boost") return "BOOST";
     if (specialType === "lightning") return "LIGHTNING";
@@ -5551,6 +5672,7 @@ class DodgeballGame {
     context.restore();
 
     this.drawHellfireFlash();
+    this.drawTeamHpAdvantageGraph();
     this.drawSpiritGauges();
     this.drawGamepadButtonMonitor();
     this.drawShotMultiplierDebug();
@@ -5880,8 +6002,10 @@ class DodgeballGame {
     if (specialType === "holyLance") return "聖";
     if (specialType === "shiningArrow") return "矢";
     if (specialType === "hundredRush") return "拳";
+    if (specialType === "lunaticMirage") return "幻";
     if (specialType === "victoryMarch") return "奏";
     if (specialType === "grandHeal") return "癒";
+    if (specialType === "none") return "-";
     if (specialType === "triple") return "三";
     if (specialType === "boost") return "ブ";
     if (specialType === "lightning") return "雷";
@@ -6111,9 +6235,15 @@ class DodgeballGame {
       const stats = editable && team?.isCustom ? definition.stats : player?.stats || team?.stats || definition.stats;
       const maxHp = editable && team?.isCustom ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
       const roleLabel = editable
-        ? (this.isBravesTeam(team) && i >= 5 ? `外野 ${i - 4} 固定` : i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
+        ? (this.isBravesTeam(team) && i >= 5 ? `外野 ${i - 4}` : i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
         : (player?.position === "out" ? "外野" : "内野");
-      const title = editable && team?.isCustom ? this.getTeamSlotName(team, i) || definition.label : player?.name || definition.label;
+      const bravesJobId = this.isBravesTeam(team) ? String(player?.uniformEmblem || "").replace("braves-", "") : "";
+      const bravesDisplay = bravesJobId ? BRAVES_JOB_NAMES[bravesJobId] : null;
+      const title = editable && team?.isCustom
+        ? this.getTeamSlotName(team, i) || definition.label
+        : bravesDisplay
+          ? `${bravesDisplay.job} ${player?.name || bravesDisplay.name}`
+          : player?.name || definition.label;
       const selected = editable && this.isTeamSelectSlotSelected(side, i);
       const previewStyle = editable && team?.isCustom ? null : {
         ...team,
@@ -6161,7 +6291,7 @@ class DodgeballGame {
         cardY + 156
       );
       context.fillText(
-        this.isBravesTeam(team) && editable && i >= 5 ? "固定弓使い" : this.getSpecialShotLabel(player?.specialShotType),
+        this.isBravesTeam(team) && editable && i >= 5 ? "弓使い" : this.getSpecialShotLabel(player?.specialShotType),
         cardX + 61,
         cardY + 168
       );
@@ -7158,6 +7288,10 @@ class DodgeballGame {
   }
 
   drawBackground() {
+    if (this.isFinalBattleCourt()) {
+      this.drawFinalBattleBackground();
+      return;
+    }
     const context = this.context;
     const c = GAME_CONFIG.court;
     const width = c.x + c.w + 260;
@@ -7165,6 +7299,222 @@ class DodgeballGame {
     context.fillRect(c.x - 420, c.y - 310, width + 840, c.h + 620);
     this.drawBench(c.centerX - 650, -56, "#3087f2");
     this.drawBench(c.centerX + 430, -56, "#f05a45");
+  }
+
+  isFinalBattleCourt() {
+    const teams = [...(this.leftTeam || []), ...(this.rightTeam || [])];
+    return teams.some((member) => (
+      member?.cpuProfile === "arkmaz" ||
+      member?.cpuProfile === "arkmaGuard" ||
+      member?.uniformEmblem === "arkmaLord"
+    ));
+  }
+
+  drawFinalBattleBackground() {
+    const context = this.context;
+    const c = GAME_CONFIG.court;
+    const time = performance.now();
+    const left = c.x - 760;
+    const top = c.y - 520;
+    const width = c.w + 1520;
+    const height = c.h + 920;
+    const bg = context.createLinearGradient(0, top, 0, top + height);
+    bg.addColorStop(0, "#12091f");
+    bg.addColorStop(0.34, "#251334");
+    bg.addColorStop(0.7, "#3a243c");
+    bg.addColorStop(1, "#4c3842");
+    context.fillStyle = bg;
+    context.fillRect(left, top, width, height);
+
+    const moonX = c.centerX + 860;
+    const moonY = c.y - 314;
+    const moonGlow = context.createRadialGradient(moonX, moonY, 20, moonX, moonY, 290);
+    moonGlow.addColorStop(0, "rgba(255,110,96,0.95)");
+    moonGlow.addColorStop(0.42, "rgba(178,30,52,0.6)");
+    moonGlow.addColorStop(1, "rgba(178,30,52,0)");
+    context.fillStyle = moonGlow;
+    context.beginPath();
+    context.arc(moonX, moonY, 292, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#b82338";
+    context.beginPath();
+    context.arc(moonX, moonY, 164, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "rgba(55,8,24,0.28)";
+    for (let i = 0; i < 5; i += 1) {
+      context.beginPath();
+      context.ellipse(moonX - 68 + i * 35, moonY - 46 + Math.sin(i) * 34, 20 + i * 5, 9 + i * 2, 0.4, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.fillStyle = "rgba(16,8,24,0.72)";
+    for (let i = 0; i < 9; i += 1) {
+      const x = left + 180 + i * 440 + Math.sin(time / 2400 + i) * 30;
+      const y = top + 95 + (i % 3) * 58;
+      context.beginPath();
+      context.ellipse(x, y, 180, 42, 0, 0, Math.PI * 2);
+      context.ellipse(x + 96, y + 14, 130, 34, 0, 0, Math.PI * 2);
+      context.ellipse(x - 92, y + 18, 120, 30, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    const lightningPhase = Math.floor(time / 900) % 5;
+    if (lightningPhase === 0 || lightningPhase === 3) {
+      context.save();
+      context.globalAlpha = 0.42;
+      context.strokeStyle = "#b78cff";
+      context.lineWidth = 12;
+      context.lineJoin = "round";
+      context.beginPath();
+      const lx = c.centerX - 720 + (lightningPhase === 3 ? 1470 : 0);
+      context.moveTo(lx, top + 70);
+      context.lineTo(lx + 70, top + 168);
+      context.lineTo(lx + 18, top + 168);
+      context.lineTo(lx + 104, top + 302);
+      context.lineTo(lx + 34, top + 224);
+      context.stroke();
+      context.strokeStyle = "#f4d8ff";
+      context.lineWidth = 4;
+      context.stroke();
+      context.restore();
+    }
+
+    const floorBackY = c.y - 60;
+    const wall = context.createLinearGradient(0, top + 220, 0, floorBackY + 120);
+    wall.addColorStop(0, "#14121d");
+    wall.addColorStop(1, "#262033");
+    context.fillStyle = wall;
+    context.fillRect(left, top + 260, width, floorBackY - top);
+
+    for (let i = 0; i < 7; i += 1) {
+      const side = i < 4 ? -1 : 1;
+      const index = i < 4 ? i : i - 4;
+      const x = c.centerX + side * (520 + index * 330);
+      const pillarTop = c.y - 320;
+      const pillarH = 520;
+      context.fillStyle = "#171520";
+      context.fillRect(x - 38, pillarTop, 76, pillarH);
+      context.fillStyle = "#2a2434";
+      context.fillRect(x - 24, pillarTop + 28, 48, pillarH - 44);
+      context.fillStyle = "#0c0a11";
+      context.fillRect(x - 52, pillarTop - 12, 104, 28);
+      context.fillRect(x - 58, pillarTop + pillarH - 18, 116, 34);
+      context.fillStyle = "#a22532";
+      context.beginPath();
+      context.moveTo(x - 30, pillarTop + 64);
+      context.lineTo(x + 30, pillarTop + 64);
+      context.lineTo(x + 18, pillarTop + 158);
+      context.lineTo(x, pillarTop + 130);
+      context.lineTo(x - 18, pillarTop + 158);
+      context.closePath();
+      context.fill();
+    }
+
+    this.drawFinalBattleThrone(c.centerX, c.y - 126);
+    this.drawFinalBattleTorch(c.centerX - 1010, c.y - 92, "#57b8ff");
+    this.drawFinalBattleTorch(c.centerX + 1010, c.y - 92, "#d52b66");
+
+    context.fillStyle = "rgba(255,94,34,0.26)";
+    for (let i = 0; i < 8; i += 1) {
+      const x = left + 220 + i * 360;
+      const y = c.y + c.h + 250 + Math.sin(time / 700 + i) * 8;
+      context.beginPath();
+      context.ellipse(x, y, 150, 24, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "rgba(255,160,42,0.45)";
+      context.beginPath();
+      context.moveTo(x - 38, y - 12);
+      context.quadraticCurveTo(x, y - 80 - (i % 3) * 16, x + 38, y - 12);
+      context.fill();
+      context.fillStyle = "rgba(255,94,34,0.26)";
+    }
+
+    for (let i = 0; i < 10; i += 1) {
+      const x = c.centerX + 520 + Math.sin(time / 1500 + i * 0.7) * 620 + i * 70;
+      const y = c.y - 270 + Math.cos(time / 1900 + i) * 70;
+      context.fillStyle = "rgba(6,4,10,0.75)";
+      context.beginPath();
+      context.moveTo(x, y);
+      context.quadraticCurveTo(x - 18, y - 12, x - 42, y);
+      context.quadraticCurveTo(x - 18, y + 3, x, y);
+      context.quadraticCurveTo(x + 18, y - 12, x + 42, y);
+      context.quadraticCurveTo(x + 18, y + 3, x, y);
+      context.fill();
+    }
+  }
+
+  drawFinalBattleThrone(x, y) {
+    const context = this.context;
+    context.save();
+    context.translate(x, y);
+    context.fillStyle = "rgba(0,0,0,0.28)";
+    context.beginPath();
+    context.ellipse(0, 178, 260, 36, 0, 0, Math.PI * 2);
+    context.fill();
+    const throne = context.createLinearGradient(0, -180, 0, 190);
+    throne.addColorStop(0, "#2d2431");
+    throne.addColorStop(0.55, "#17101c");
+    throne.addColorStop(1, "#09070d");
+    context.fillStyle = throne;
+    context.strokeStyle = "#8e6b2b";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.moveTo(-140, 170);
+    context.lineTo(-124, -68);
+    context.lineTo(-72, -168);
+    context.lineTo(-32, -92);
+    context.lineTo(0, -202);
+    context.lineTo(32, -92);
+    context.lineTo(72, -168);
+    context.lineTo(124, -68);
+    context.lineTo(140, 170);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#5a1024";
+    context.beginPath();
+    context.moveTo(-78, 142);
+    context.quadraticCurveTo(0, 72, 78, 142);
+    context.lineTo(68, -32);
+    context.quadraticCurveTo(0, -76, -68, -32);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = "rgba(255,190,86,0.54)";
+    context.lineWidth = 4;
+    for (let i = -1; i <= 1; i += 1) {
+      context.beginPath();
+      context.moveTo(i * 44, -44);
+      context.lineTo(i * 58, 130);
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  drawFinalBattleTorch(x, y, color) {
+    const context = this.context;
+    const time = performance.now();
+    context.save();
+    context.translate(x, y);
+    context.fillStyle = "#161018";
+    context.fillRect(-20, 0, 40, 170);
+    context.fillStyle = "#6c5428";
+    context.fillRect(-34, -8, 68, 24);
+    const glow = context.createRadialGradient(0, -32, 6, 0, -32, 112);
+    glow.addColorStop(0, color);
+    glow.addColorStop(0.45, "rgba(255,90,55,0.5)");
+    glow.addColorStop(1, "rgba(255,90,55,0)");
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(0, -32, 112, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(-28, -5);
+    context.quadraticCurveTo(-8, -72 - Math.sin(time / 160) * 10, 0, -30);
+    context.quadraticCurveTo(8, -82 + Math.cos(time / 140) * 10, 28, -5);
+    context.closePath();
+    context.fill();
+    context.restore();
   }
 
   drawBench(x, y, color) {
@@ -7245,6 +7595,10 @@ class DodgeballGame {
   }
 
   drawCourt() {
+    if (this.isFinalBattleCourt()) {
+      this.drawFinalBattleCourt();
+      return;
+    }
     const context = this.context;
     const c = GAME_CONFIG.court;
     const topY = c.y + 10;
@@ -7305,6 +7659,167 @@ class DodgeballGame {
     drawProjectedQuad(c.centerX + 12, backY + 8, c.w / 2 - 24, frontY - backY - 16, "rgba(240,90,69,0.035)");
   }
 
+  drawFinalBattleCourt() {
+    const context = this.context;
+    const c = GAME_CONFIG.court;
+    const time = performance.now();
+    const topY = c.y + 10;
+    const bottomY = c.y + c.h;
+    const backY = c.y + 96;
+    const frontY = c.y + c.h - 38;
+
+    const project = (x, y) => {
+      const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
+      const scale = 0.78 + t * 0.22;
+      return {
+        x: c.centerX + (x - c.centerX) * scale,
+        y
+      };
+    };
+
+    const drawProjectedQuad = (x, y, w, h, fillStyle) => {
+      const p1 = project(x, y);
+      const p2 = project(x + w, y);
+      const p3 = project(x + w, y + h);
+      const p4 = project(x, y + h);
+      context.fillStyle = fillStyle;
+      context.beginPath();
+      context.moveTo(p1.x, p1.y);
+      context.lineTo(p2.x, p2.y);
+      context.lineTo(p3.x, p3.y);
+      context.lineTo(p4.x, p4.y);
+      context.closePath();
+      context.fill();
+    };
+
+    const strokeProjectedLine = (x1, y1, x2, y2) => {
+      const p1 = project(x1, y1);
+      const p2 = project(x2, y2);
+      context.beginPath();
+      context.moveTo(p1.x, p1.y);
+      context.lineTo(p2.x, p2.y);
+      context.stroke();
+    };
+
+    const floorGradient = context.createLinearGradient(0, backY, 0, frontY);
+    floorGradient.addColorStop(0, "#51495f");
+    floorGradient.addColorStop(0.48, "#6e6680");
+    floorGradient.addColorStop(1, "#837b90");
+    drawProjectedQuad(c.x, backY, c.w, frontY - backY, floorGradient);
+
+    context.save();
+    context.strokeStyle = "rgba(42,34,50,0.26)";
+    context.lineWidth = 3;
+    for (let y = backY + 70; y < frontY; y += 112) {
+      strokeProjectedLine(c.x, y, c.x + c.w, y);
+    }
+    for (let i = -7; i <= 7; i += 1) {
+      const x = c.centerX + i * 230;
+      strokeProjectedLine(x, backY, x + i * 16, frontY);
+    }
+    context.restore();
+
+    context.save();
+    context.shadowBlur = 18;
+    context.shadowColor = "#f4b94a";
+    context.strokeStyle = "#f6d276";
+    context.lineWidth = 7;
+    strokeProjectedLine(c.x, backY, c.x + c.w, backY);
+    strokeProjectedLine(c.x + c.w, backY, c.x + c.w, frontY);
+    strokeProjectedLine(c.x + c.w, frontY, c.x, frontY);
+    strokeProjectedLine(c.x, frontY, c.x, backY);
+    context.shadowColor = "#ff465e";
+    context.strokeStyle = "#e6a850";
+    context.lineWidth = 8;
+    strokeProjectedLine(c.centerX, backY, c.centerX, frontY);
+    context.strokeStyle = "rgba(255,40,80,0.62)";
+    context.lineWidth = 3;
+    strokeProjectedLine(c.centerX - 14, backY, c.centerX - 14, frontY);
+    strokeProjectedLine(c.centerX + 14, backY, c.centerX + 14, frontY);
+    context.restore();
+
+    context.save();
+    const circleY = (backY + frontY) / 2 + 22;
+    const pulse = 0.5 + Math.sin(time / 520) * 0.5;
+    context.translate(c.centerX, circleY);
+    context.globalCompositeOperation = "lighter";
+    context.strokeStyle = `rgba(189,112,255,${0.44 + pulse * 0.12})`;
+    context.lineWidth = 9;
+    context.beginPath();
+    context.ellipse(0, 0, 330, 122, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.strokeStyle = "rgba(255,80,128,0.5)";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(0, 0, 220, 82, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.strokeStyle = "rgba(255,214,106,0.48)";
+    context.lineWidth = 4;
+    for (let i = 0; i < 8; i += 1) {
+      const angle = i * Math.PI / 4 + time / 2600;
+      context.beginPath();
+      context.moveTo(Math.cos(angle) * 82, Math.sin(angle) * 30);
+      context.lineTo(Math.cos(angle) * 306, Math.sin(angle) * 112);
+      context.stroke();
+    }
+    context.strokeStyle = "rgba(210,150,255,0.58)";
+    context.lineWidth = 4;
+    context.beginPath();
+    for (let i = 0; i <= 6; i += 1) {
+      const angle = -Math.PI / 2 + i * Math.PI * 2 / 6;
+      const x = Math.cos(angle) * 164;
+      const y = Math.sin(angle) * 60;
+      if (i === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+    context.restore();
+
+    this.drawFinalBattleEmblem(c.centerX - 620, circleY + 42, "hero");
+    this.drawFinalBattleEmblem(c.centerX + 620, circleY + 42, "demon");
+  }
+
+  drawFinalBattleEmblem(x, y, type) {
+    const context = this.context;
+    context.save();
+    context.translate(x, y);
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = 0.62;
+    context.strokeStyle = type === "hero" ? "#a8e8ff" : "#ff4f8a";
+    context.fillStyle = type === "hero" ? "rgba(125,210,255,0.11)" : "rgba(190,30,92,0.14)";
+    context.lineWidth = 6;
+    context.beginPath();
+    context.ellipse(0, 0, 120, 44, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.lineWidth = 5;
+    context.beginPath();
+    if (type === "hero") {
+      context.moveTo(0, -30);
+      context.lineTo(0, 30);
+      context.moveTo(-48, 0);
+      context.quadraticCurveTo(-22, -28, 0, -3);
+      context.quadraticCurveTo(22, -28, 48, 0);
+      context.moveTo(-58, 18);
+      context.quadraticCurveTo(-20, 34, 0, 8);
+      context.quadraticCurveTo(20, 34, 58, 18);
+    } else {
+      context.moveTo(0, -35);
+      context.lineTo(32, -6);
+      context.lineTo(18, 32);
+      context.lineTo(0, 12);
+      context.lineTo(-18, 32);
+      context.lineTo(-32, -6);
+      context.closePath();
+      context.moveTo(-46, -14);
+      context.quadraticCurveTo(-74, -42, -98, -10);
+      context.moveTo(46, -14);
+      context.quadraticCurveTo(74, -42, 98, -10);
+    }
+    context.stroke();
+    context.restore();
+  }
+
   drawHud() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
@@ -7352,8 +7867,97 @@ class DodgeballGame {
       context.fillText(`${displayValue.toFixed(Number.isInteger(displayValue) ? 0 : 1)}/${max}`, x + 258, y + 27);
       context.restore();
     };
-    drawGauge("left", 18, 18, "#3087f2", "1P 気合");
-    drawGauge("right", GAME_CONFIG.width - 288, 18, "#f05a45", this.gameMode === "single" ? "CPU 気合" : "2P 気合");
+    drawGauge("left", 18, 6, "#3087f2", "1P 気合");
+    drawGauge("right", GAME_CONFIG.width - 288, 6, "#f05a45", this.gameMode === "single" ? "CPU 気合" : "2P 気合");
+  }
+
+  getTeamHpSummary(team) {
+    const summary = { current: 0, max: 0 };
+    for (const member of team || []) {
+      if (!member) continue;
+      if (member.role !== "inner") continue;
+      summary.current += Math.max(0, member.hp || 0);
+      summary.max += Math.max(0, member.maxHp || 0);
+    }
+    summary.current = Math.round(summary.current);
+    summary.max = Math.round(summary.max);
+    summary.ratio = summary.max > 0 ? summary.current / summary.max : 0;
+    return summary;
+  }
+
+  drawTeamHpAdvantageGraph() {
+    const context = this.context;
+    const left = this.getTeamHpSummary(this.leftTeam);
+    const right = this.getTeamHpSummary(this.rightTeam);
+    const totalCurrent = left.current + right.current;
+    const leftShare = totalCurrent > 0 ? left.current / totalCurrent : 0.5;
+    const rightShare = 1 - leftShare;
+
+    const width = 650;
+    const height = 38;
+    const x = (GAME_CONFIG.width - width) / 2;
+    const y = 6;
+    const barX = x + 14;
+    const barY = y + 9;
+    const barW = width - 28;
+    const barH = 20;
+    const dividerX = barX + barW * leftShare;
+
+    context.save();
+    context.fillStyle = "rgba(21, 29, 38, 0.74)";
+    this.roundRect(context, x, y, width, height, 8);
+    context.fill();
+    context.strokeStyle = "rgba(255,255,255,0.42)";
+    context.lineWidth = 2;
+    context.stroke();
+
+    context.fillStyle = "rgba(255,255,255,0.18)";
+    this.roundRect(context, barX, barY, barW, barH, 6);
+    context.fill();
+
+    context.save();
+    this.roundRect(context, barX, barY, barW, barH, 6);
+    context.clip();
+    const leftGradient = context.createLinearGradient(barX, barY, dividerX, barY);
+    leftGradient.addColorStop(0, "#2d87ff");
+    leftGradient.addColorStop(1, "#64c4ff");
+    context.fillStyle = leftGradient;
+    context.fillRect(barX, barY, Math.max(0, barW * leftShare), barH);
+
+    const rightGradient = context.createLinearGradient(dividerX, barY, barX + barW, barY);
+    rightGradient.addColorStop(0, "#ff8a61");
+    rightGradient.addColorStop(1, "#f03e3e");
+    context.fillStyle = rightGradient;
+    context.fillRect(dividerX, barY, Math.max(0, barW * rightShare), barH);
+    context.restore();
+
+    context.strokeStyle = "rgba(255,255,255,0.72)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(dividerX, barY - 3);
+    context.lineTo(dividerX, barY + barH + 3);
+    context.stroke();
+
+    context.strokeStyle = "rgba(255,255,255,0.34)";
+    context.lineWidth = 1;
+    const centerMarkerX = barX + barW * 0.5;
+    context.beginPath();
+    context.moveTo(centerMarkerX, barY - 4);
+    context.lineTo(centerMarkerX, barY + barH + 4);
+    context.stroke();
+
+    context.font = "bold 14px Meiryo, sans-serif";
+    context.textBaseline = "middle";
+    context.shadowColor = "rgba(0,0,0,0.72)";
+    context.shadowBlur = 4;
+    context.shadowOffsetX = 1;
+    context.shadowOffsetY = 1;
+    context.textAlign = "left";
+    context.fillStyle = "#ffffff";
+    context.fillText(`1P ${left.current}/${left.max}`, barX + 12, barY + barH / 2);
+    context.textAlign = "right";
+    context.fillText(`${this.gameMode === "single" ? "CPU" : "2P"} ${right.current}/${right.max}`, barX + barW - 12, barY + barH / 2);
+    context.restore();
   }
 
   drawGamepadButtonMonitor() {
@@ -8185,16 +8789,106 @@ class DodgeballGame {
         context.restore();
         continue;
       }
-      if (effect.type === "braveSlashImpact") {
-        const radius = 28 + progress * 118;
+      if (effect.type === "braveSlashLaunch") {
+        const radius = 32 + progress * 150;
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
-        context.fillStyle = "rgba(143, 252, 255, 0.18)";
-        context.strokeStyle = progress < 0.42 ? "#ffffff" : "#8ffcff";
-        context.lineWidth = 12 - progress * 6;
-        context.shadowColor = "#66dfff";
+        context.strokeStyle = "#ffd83d";
+        context.lineWidth = 8 - progress * 4;
+        context.beginPath();
+        context.ellipse(0, 0, radius, radius * 0.26, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#fffdf1";
+        context.lineWidth = 5;
+        for (let index = -2; index <= 2; index += 1) {
+          context.beginPath();
+          context.moveTo(-radius * 0.45, index * 12);
+          context.lineTo(radius * (0.55 + progress * 0.2), index * 5);
+          context.stroke();
+        }
+        context.fillStyle = "#8fd8ff";
+        for (let index = 0; index < 10; index += 1) {
+          const angle = -0.3 + index * Math.PI * 1.55 / 9;
+          const dist = radius * (0.35 + (index % 3) * 0.16);
+          context.beginPath();
+          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist * 0.28, 3, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "gigaBreakLaunch") {
+        const radius = 40 + progress * 168;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(255,255,255,0.22)";
+        context.fillRect(-radius * 0.55, -radius * 0.2, radius * 1.15, radius * 0.4);
+        context.strokeStyle = "#1b1110";
+        context.lineWidth = 12 - progress * 5;
+        context.lineCap = "round";
+        for (let index = -2; index <= 2; index += 1) {
+          context.beginPath();
+          context.moveTo(-radius * 0.25, index * 16);
+          context.lineTo(radius * 0.82, index * 8);
+          context.stroke();
+        }
+        context.globalCompositeOperation = "source-over";
+        context.fillStyle = "rgba(82, 55, 36, 0.58)";
+        for (let index = 0; index < 14; index += 1) {
+          const angle = Math.PI * 2 * index / 14;
+          const dist = 24 + progress * (70 + (index % 3) * 18);
+          context.beginPath();
+          context.ellipse(Math.cos(angle) * dist, 32 + Math.sin(angle) * dist * 0.22, 18 + progress * 9, 8 + progress * 5, angle, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.strokeStyle = "#5a2a18";
+        context.lineWidth = 4;
+        for (let index = 0; index < 8; index += 1) {
+          const angle = -0.6 + index * Math.PI * 1.2 / 7;
+          context.beginPath();
+          context.moveTo(0, 38);
+          context.lineTo(Math.cos(angle) * radius * 0.65, 38 + Math.sin(angle) * radius * 0.2);
+          context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "gigaBreakCatchBrace") {
+        const radius = 34 + progress * 126;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "source-over";
+        context.fillStyle = "rgba(82, 55, 36, 0.62)";
+        for (let index = 0; index < 12; index += 1) {
+          const x = -radius * 0.45 + index * radius * 0.09;
+          context.beginPath();
+          context.ellipse(x, 18 + Math.sin(index) * 6, 22 + progress * 10, 8 + progress * 4, 0, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#d9442e";
+        context.lineWidth = 6 - progress * 2;
+        context.beginPath();
+        context.ellipse(0, 0, radius, radius * 0.28, 0, Math.PI * 0.15, Math.PI * 0.85);
+        context.stroke();
+        context.restore();
+        continue;
+      }
+      if (effect.type === "braveSlashImpact") {
+        const radius = 30 + progress * 150;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(255, 216, 61, 0.16)";
+        context.strokeStyle = progress < 0.42 ? "#ffffff" : "#ffd83d";
+        context.lineWidth = 13 - progress * 6;
+        context.shadowColor = "#ffd83d";
         context.shadowBlur = 28;
         context.beginPath();
         context.arc(0, 0, radius, 0, Math.PI * 2);
@@ -8203,41 +8897,57 @@ class DodgeballGame {
 
         context.shadowBlur = 0;
         context.lineCap = "round";
-        for (let lane = -1; lane <= 1; lane += 2) {
-          context.strokeStyle = lane < 0 ? "#ffffff" : "#ffd83d";
-          context.lineWidth = lane < 0 ? 8 : 5;
-          context.beginPath();
-          context.moveTo(-72 - progress * 24, 42 * lane);
-          context.lineTo(86 + progress * 54, -46 * lane);
-          context.stroke();
-        }
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 14 - progress * 7;
+        context.beginPath();
+        context.moveTo(-18, -radius * 0.9);
+        context.lineTo(14, radius * 0.92);
+        context.stroke();
+        context.strokeStyle = "#ffd83d";
+        context.lineWidth = 8 - progress * 3;
+        context.beginPath();
+        context.moveTo(-118 - progress * 28, 0);
+        context.lineTo(138 + progress * 62, 0);
+        context.stroke();
 
-        context.strokeStyle = "#8ffcff";
-        context.lineWidth = 5;
-        for (let index = 0; index < 14; index += 1) {
-          const angle = -0.55 + index * Math.PI * 2 / 14;
-          const inner = radius * 0.24;
-          const outer = radius * (index % 2 === 0 ? 1.05 : 0.78);
+        context.fillStyle = "#fffdf1";
+        for (let index = 0; index < 18; index += 1) {
+          const angle = index * Math.PI * 2 / 18;
+          const outer = radius * (0.42 + (index % 4) * 0.14);
           context.beginPath();
-          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-          context.stroke();
+          if (index % 3 === 0) {
+            context.moveTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+            context.lineTo(Math.cos(angle + 0.18) * (outer + 12), Math.sin(angle + 0.18) * (outer + 12));
+            context.lineTo(Math.cos(angle - 0.18) * (outer + 12), Math.sin(angle - 0.18) * (outer + 12));
+            context.closePath();
+          } else {
+            context.arc(Math.cos(angle) * outer, Math.sin(angle) * outer, 3 + index % 2, 0, Math.PI * 2);
+          }
+          context.fill();
         }
         context.restore();
         continue;
       }
       if (effect.type === "gigaBreakImpact") {
-        const radius = 42 + progress * 150;
+        const radius = 46 + progress * 178;
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
         context.fillStyle = "rgba(88, 28, 18, 0.22)";
-        context.strokeStyle = "#d9442e";
-        context.lineWidth = 18 - progress * 9;
+        context.strokeStyle = "#1b1110";
+        context.lineWidth = 20 - progress * 9;
         context.beginPath();
         context.ellipse(0, 38, radius * 1.1, radius * 0.36, 0, 0, Math.PI * 2);
         context.fill();
+        context.stroke();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 9 - progress * 4;
+        context.beginPath();
+        context.moveTo(-radius * 0.92, -radius * 0.18);
+        context.lineTo(radius * 0.92, radius * 0.12);
+        context.moveTo(-radius * 0.72, radius * 0.16);
+        context.lineTo(radius * 0.74, -radius * 0.18);
         context.stroke();
         context.lineCap = "round";
         for (let index = 0; index < 14; index += 1) {
@@ -8382,6 +9092,84 @@ class DodgeballGame {
           context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
           context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
           context.stroke();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "lunaticMirageLaunch") {
+        const time = performance.now();
+        const radius = 28 + progress * 92;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.86;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#b98cff";
+        context.lineWidth = 5 - progress * 2;
+        for (let ring = 0; ring < 3; ring += 1) {
+          context.save();
+          context.rotate(time / 520 + ring * Math.PI / 3);
+          context.scale(1, 0.44);
+          context.beginPath();
+          context.arc(0, 0, radius + ring * 14, Math.PI * 0.15, Math.PI * 1.85);
+          context.stroke();
+          context.restore();
+        }
+        context.fillStyle = "#f1dcff";
+        for (let index = 0; index < 14; index += 1) {
+          const angle = time / 260 + index * Math.PI * 2 / 14;
+          const dist = radius * (0.35 + (index % 4) * 0.18);
+          context.beginPath();
+          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, 2 + index % 2, 0, Math.PI * 2);
+          context.fill();
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "lunaticMirageImpact") {
+        const radius = 34 + progress * 138;
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress);
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(107, 92, 255, 0.18)";
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 10 - progress * 5;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.72, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#b98cff";
+        context.lineWidth = 5;
+        for (let ring = 0; ring < 3; ring += 1) {
+          context.save();
+          context.rotate(ring * Math.PI / 3 + progress * 2.4);
+          context.scale(1, 0.38);
+          context.beginPath();
+          context.arc(0, 0, radius * (0.42 + ring * 0.24), Math.PI * 0.1, Math.PI * 1.9);
+          context.stroke();
+          context.restore();
+        }
+        context.fillStyle = "#f8f1ff";
+        for (let index = 0; index < 18; index += 1) {
+          const angle = index * Math.PI * 2 / 18 + progress * 1.6;
+          const dist = radius * (0.28 + (index % 5) * 0.14);
+          const size = 3 + index % 3;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * dist, Math.sin(angle) * dist - size);
+          context.lineTo(Math.cos(angle) * dist + size, Math.sin(angle) * dist);
+          context.lineTo(Math.cos(angle) * dist, Math.sin(angle) * dist + size);
+          context.lineTo(Math.cos(angle) * dist - size, Math.sin(angle) * dist);
+          context.closePath();
+          context.fill();
+        }
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.42;
+        context.fillStyle = "rgba(216, 182, 255, 0.36)";
+        for (let ghost = -1; ghost <= 1; ghost += 1) {
+          context.beginPath();
+          context.arc(ghost * radius * 0.42, -radius * 0.08 * ghost, 18 + progress * 12, 0, Math.PI * 2);
+          context.fill();
         }
         context.restore();
         continue;
@@ -9352,6 +10140,11 @@ class DodgeballGame {
     if (pending.specialType === "braveSlash") {
       const groundY = actor.y + 12;
       const time = performance.now();
+      const allies = (actor.team === "left" ? this.leftTeam : this.rightTeam)
+        .filter((member) => member && member !== actor && !member.defeated && member.hp > 0)
+        .sort((a, b) => Math.hypot(a.x - actor.x, a.y - actor.y) - Math.hypot(b.x - actor.x, b.y - actor.y))
+        .slice(0, 3);
+      const allyPower = allies.length;
       context.save();
       context.globalCompositeOperation = "lighter";
       context.globalAlpha = 0.28 + progress * 0.48;
@@ -9381,13 +10174,70 @@ class DodgeballGame {
         context.restore();
       }
 
-      const swordX = actor.x + actor.facing * 26;
-      const swordY = actor.y - actor.jumpZ - 96;
+      for (const [index, ally] of allies.entries()) {
+        const allyX = ally.x;
+        const allyY = ally.y - ally.jumpZ - 80;
+        const targetX = actor.x + actor.facing * 8;
+        const targetY = actor.y - actor.jumpZ - 76;
+        context.globalAlpha = (0.38 + progress * 0.46) * (1 - index * 0.12);
+        context.strokeStyle = index === 1 ? "#ffffff" : "#ffd83d";
+        context.lineWidth = 3 + progress * 4;
+        context.beginPath();
+        context.moveTo(allyX, allyY);
+        context.quadraticCurveTo(
+          (allyX + targetX) / 2,
+          Math.min(allyY, targetY) - 36 - index * 10,
+          targetX,
+          targetY
+        );
+        context.stroke();
+        context.fillStyle = index === 2 ? "#8fd8ff" : "#fffdf1";
+        context.beginPath();
+        context.arc(allyX, allyY, 5 + progress * 5, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      const ballX = actor.x + actor.facing * 12;
+      const ballY = actor.y - actor.jumpZ - 78;
+      const ballGlow = context.createRadialGradient(ballX, ballY, 4, ballX, ballY, 48 + progress * 38);
+      ballGlow.addColorStop(0, "rgba(255,255,255,0.98)");
+      ballGlow.addColorStop(0.32, "rgba(255,216,61,0.78)");
+      ballGlow.addColorStop(0.66, allyPower > 0 ? "rgba(143,216,255,0.28)" : "rgba(210,48,48,0.3)");
+      ballGlow.addColorStop(1, "rgba(255,216,61,0)");
+      context.globalAlpha = 0.9;
+      context.fillStyle = ballGlow;
+      context.beginPath();
+      context.arc(ballX, ballY, 52 + progress * 24 + pulse * 7, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#fffdf1";
+      context.beginPath();
+      context.arc(ballX, ballY, 18 + progress * 5, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = allyPower > 0 ? "#ffd83d" : "#d83232";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(ballX, ballY - 12 - progress * 3);
+      context.lineTo(ballX + 10 + progress * 4, ballY);
+      context.lineTo(ballX, ballY + 12 + progress * 3);
+      context.lineTo(ballX - 10 - progress * 4, ballY);
+      context.closePath();
+      context.stroke();
+
+      context.globalAlpha = 0.38 + progress * 0.38;
+      context.fillStyle = allyPower > 0 ? "rgba(255, 216, 61, 0.18)" : "rgba(210, 48, 48, 0.16)";
+      context.beginPath();
+      context.moveTo(actor.x - actor.facing * 10, actor.y - actor.jumpZ - 92);
+      context.quadraticCurveTo(actor.x - actor.facing * (58 + progress * 24), actor.y - actor.jumpZ - 78, actor.x - actor.facing * (72 + progress * 34), actor.y - actor.jumpZ - 34);
+      context.quadraticCurveTo(actor.x - actor.facing * 28, actor.y - actor.jumpZ - 54, actor.x - actor.facing * 10, actor.y - actor.jumpZ - 32);
+      context.fill();
+
+      const swordX = actor.x + actor.facing * 34;
+      const swordY = actor.y - actor.jumpZ - 112;
       const glow = context.createRadialGradient(swordX, swordY, 4, swordX, swordY, 84 + progress * 42);
       glow.addColorStop(0, "rgba(255,255,255,0.95)");
-      glow.addColorStop(0.26, "rgba(143,252,255,0.82)");
-      glow.addColorStop(0.58, "rgba(54,153,255,0.36)");
-      glow.addColorStop(1, "rgba(54,153,255,0)");
+      glow.addColorStop(0.26, "rgba(255,216,61,0.82)");
+      glow.addColorStop(0.58, "rgba(143,216,255,0.36)");
+      glow.addColorStop(1, "rgba(255,216,61,0)");
       context.fillStyle = glow;
       context.globalAlpha = 0.82;
       context.beginPath();
@@ -9402,7 +10252,7 @@ class DodgeballGame {
       context.moveTo(swordX - actor.facing * 10, swordY + 26);
       context.lineTo(swordX + actor.facing * 22, swordY - 50 - progress * 18);
       context.stroke();
-      context.strokeStyle = "#8ffcff";
+      context.strokeStyle = "#ffd83d";
       context.lineWidth = 11 + progress * 5;
       context.globalAlpha = 0.34 + progress * 0.28;
       context.beginPath();
@@ -9451,13 +10301,60 @@ class DodgeballGame {
         context.lineTo(actor.x + Math.cos(angle) * outer, groundY + Math.sin(angle) * outer * 0.35);
         context.stroke();
       }
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.58;
+      context.fillStyle = "rgba(83, 58, 38, 0.55)";
+      for (let index = 0; index < 12; index += 1) {
+        const angle = index * Math.PI * 2 / 12;
+        const dist = 26 + progress * (58 + (index % 4) * 8);
+        context.beginPath();
+        context.ellipse(actor.x + Math.cos(angle) * dist, groundY + 22 + Math.sin(angle) * dist * 0.18, 18 + progress * 8, 8 + progress * 5, angle, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.strokeStyle = "#5a2a18";
+      context.lineWidth = 4;
+      for (let index = 0; index < 8; index += 1) {
+        const angle = -0.75 + index * Math.PI * 1.5 / 7;
+        context.beginPath();
+        context.moveTo(actor.x, groundY + 20);
+        context.lineTo(actor.x + Math.cos(angle) * (46 + progress * 44), groundY + 20 + Math.sin(angle) * (15 + progress * 18));
+        context.stroke();
+      }
+      context.globalCompositeOperation = "lighter";
       context.globalAlpha = 0.74;
-      context.strokeStyle = "#ffb347";
-      context.lineWidth = 5;
+      context.strokeStyle = "#1b1110";
+      context.lineWidth = 16 + progress * 5;
+      context.lineCap = "round";
       context.beginPath();
-      context.moveTo(actor.x - actor.facing * 48, actor.y - actor.jumpZ - 118);
-      context.lineTo(actor.x + actor.facing * 58, actor.y - actor.jumpZ - 56);
+      context.moveTo(actor.x - actor.facing * 58, actor.y - actor.jumpZ - 128);
+      context.lineTo(actor.x + actor.facing * 62, actor.y - actor.jumpZ - 60);
       context.stroke();
+      context.strokeStyle = "#9a9188";
+      context.lineWidth = 8 + progress * 2;
+      context.beginPath();
+      context.moveTo(actor.x - actor.facing * 52, actor.y - actor.jumpZ - 126);
+      context.lineTo(actor.x + actor.facing * 56, actor.y - actor.jumpZ - 62);
+      context.stroke();
+
+      const ballX = actor.x + actor.facing * 60;
+      const ballY = actor.y - actor.jumpZ - 70 + Math.sin(time / 80) * 4;
+      context.globalAlpha = 0.82;
+      context.fillStyle = "rgba(70, 20, 12, 0.72)";
+      context.beginPath();
+      context.ellipse(ballX, ballY, 28 + progress * 5, 20 - progress * 3, 0, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#ff6244";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.ellipse(ballX, ballY, 32 + progress * 6, 23 - progress * 2, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = "#ffb347";
+      for (let index = 0; index < 10; index += 1) {
+        const angle = time / 55 + index * Math.PI * 2 / 10;
+        context.beginPath();
+        context.arc(ballX + Math.cos(angle) * (30 + progress * 16), ballY + Math.sin(angle) * (18 + progress * 10), 2.5 + index % 2, 0, Math.PI * 2);
+        context.fill();
+      }
       context.restore();
       return;
     }
@@ -9602,6 +10499,65 @@ class DodgeballGame {
       context.lineWidth = 8;
       context.beginPath();
       context.arc(actor.x, centerY, 28 + progress * 24, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+      return;
+    }
+
+    if (pending.specialType === "lunaticMirage") {
+      const time = performance.now();
+      const centerY = actor.y - actor.jumpZ - 76;
+      const ballX = actor.x + actor.facing * 20;
+      const ballY = centerY + Math.sin(time / 130) * 4;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.34 + progress * 0.46;
+      context.fillStyle = "rgba(107,92,255,0.2)";
+      context.beginPath();
+      context.arc(ballX, ballY, 54 + progress * 30, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#b98cff";
+      context.lineWidth = 5;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.save();
+        context.translate(ballX, ballY);
+        context.rotate(time / 560 + ring * Math.PI / 3);
+        context.scale(1, 0.42);
+        context.beginPath();
+        context.arc(0, 0, 32 + progress * 34 + ring * 12, Math.PI * 0.12, Math.PI * 1.88);
+        context.stroke();
+        context.restore();
+      }
+      for (let index = 0; index < 3; index += 1) {
+        const angle = time / 360 + index * Math.PI * 2 / 3;
+        const px = ballX + Math.cos(angle) * (44 + progress * 22);
+        const py = ballY + Math.sin(angle) * (26 + progress * 14);
+        context.globalAlpha = (0.22 + progress * 0.24) * (1 - index * 0.08);
+        context.fillStyle = "rgba(216,182,255,0.72)";
+        context.beginPath();
+        context.arc(px, py, 14 - index, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = index === 1 ? "#9ee7ff" : "#f8f1ff";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(px, py, 18 - index, 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.globalAlpha = 0.82;
+      context.fillStyle = "#f8f1ff";
+      for (let index = 0; index < 16; index += 1) {
+        const angle = time / 280 + index * Math.PI * 2 / 16;
+        const dist = 24 + (index % 5) * 14 + progress * 18;
+        context.beginPath();
+        context.arc(ballX + Math.cos(angle) * dist, ballY + Math.sin(angle) * dist * 0.78, 2 + index % 2, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.globalAlpha = 0.72;
+      context.strokeStyle = "#9ee7ff";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(actor.x - actor.facing * 24, actor.y + 12);
+      context.quadraticCurveTo(actor.x, actor.y + 34 + progress * 18, actor.x + actor.facing * 58, actor.y + 12);
       context.stroke();
       context.restore();
       return;
