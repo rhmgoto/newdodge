@@ -1,6 +1,6 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
-const LAST_UPDATED_AT = "2026/08/01 11:18";
+const LAST_UPDATED_AT = "2026/08/01 19:44";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
@@ -27,13 +27,18 @@ const GRAND_HEAL_CONFIG = {
   startProgress: 0.25,
   cooldown: 60
 };
+const DISSONANCE_FEINT_CONFIG = {
+  damageScale: 0.9,
+  catchWindowScale: 0.9,
+  catchAreaScale: 0.92
+};
 const BRAVES_JOB_DEFINITIONS = {
   hero: {
     label: "勇者",
     characterType: "normal",
-    maxHp: 400,
+    maxHp: 350,
     maxStamina: 130,
-    stats: { power: 13, speed: 13, jump: 13, technique: 13, defense: 11, pass: 11 },
+    stats: { power: 15, speed: 13, jump: 13, technique: 13, defense: 12, pass: 11 },
     specialShotType: "braveSlash",
     uniformColor: "#2f73e8",
     pantsColor: "#243a68",
@@ -45,9 +50,9 @@ const BRAVES_JOB_DEFINITIONS = {
   warrior: {
     label: "戦士",
     characterType: "power",
-    maxHp: 300,
+    maxHp: 280,
     maxStamina: 115,
-    stats: { power: 15, speed: 7, jump: 7, technique: 8, defense: 9, pass: 8 },
+    stats: { power: 18, speed: 7, jump: 7, technique: 8, defense: 10, pass: 8 },
     specialShotType: "gigaBreak",
     uniformColor: "#8f3b25",
     pantsColor: "#3a2a22",
@@ -87,9 +92,9 @@ const BRAVES_JOB_DEFINITIONS = {
   paladin: {
     label: "聖騎士",
     characterType: "normal",
-    maxHp: 380,
+    maxHp: 300,
     maxStamina: 140,
-    stats: { power: 9, speed: 9, jump: 9, technique: 13, defense: 13, pass: 7 },
+    stats: { power: 10, speed: 9, jump: 9, technique: 12, defense: 15, pass: 7 },
     specialShotType: "shiningArrow",
     uniformColor: "#f8fbff",
     pantsColor: "#dbefff",
@@ -101,9 +106,9 @@ const BRAVES_JOB_DEFINITIONS = {
   mage: {
     label: "魔法使い",
     characterType: "mage",
-    maxHp: 250,
+    maxHp: 200,
     maxStamina: 150,
-    stats: { power: 10, speed: 8, jump: 8, technique: 10, defense: 7, pass: 8 },
+    stats: { power: 13, speed: 8, jump: 8, technique: 9, defense: 7, pass: 8 },
     specialShotType: "lunaticMirage",
     uniformColor: "#4b1f78",
     pantsColor: "#321052",
@@ -115,9 +120,9 @@ const BRAVES_JOB_DEFINITIONS = {
   cleric: {
     label: "僧侶",
     characterType: "normal",
-    maxHp: 280,
+    maxHp: 210,
     maxStamina: 150,
-    stats: { power: 8, speed: 9, jump: 8, technique: 11, defense: 8, pass: 9 },
+    stats: { power: 8, speed: 9, jump: 8, technique: 9, defense: 8, pass: 9 },
     specialShotType: "grandHeal",
     uniformColor: "#fbfbf1",
     pantsColor: "#dff1e2",
@@ -131,7 +136,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "speed",
     maxHp: 145,
     maxStamina: 135,
-    stats: { power: 9, speed: 12, jump: 12, technique: 13, defense: 6, pass: 14 },
+    stats: { power: 10, speed: 12, jump: 12, technique: 11, defense: 6, pass: 14 },
     specialShotType: "none",
     uniformColor: "#4f8f45",
     pantsColor: "#7a5334",
@@ -143,9 +148,9 @@ const BRAVES_JOB_DEFINITIONS = {
   martialArtist: {
     label: "武闘家",
     characterType: "jump",
-    maxHp: 250,
+    maxHp: 230,
     maxStamina: 135,
-    stats: { power: 12, speed: 18, jump: 18, technique: 15, defense: 8, pass: 9 },
+    stats: { power: 14, speed: 18, jump: 18, technique: 13, defense: 9, pass: 12 },
     specialShotType: "hundredRush",
     uniformColor: "#f7f3e7",
     pantsColor: "#f7f3e7",
@@ -157,9 +162,9 @@ const BRAVES_JOB_DEFINITIONS = {
   bard: {
     label: "吟遊詩人",
     characterType: "speed",
-    maxHp: 280,
+    maxHp: 210,
     maxStamina: 145,
-    stats: { power: 7, speed: 11, jump: 8, technique: 10, defense: 7, pass: 11 },
+    stats: { power: 7, speed: 9, jump: 8, technique: 8, defense: 7, pass: 9 },
     specialShotType: "victoryMarch",
     uniformColor: "#7d2240",
     pantsColor: "#253b2d",
@@ -293,17 +298,33 @@ const QUICK_SHOT_CONFIG = {
   speedScale: 1.2,
   damageScale: 1.1
 };
+const MARTIAL_ARTIST_QIGONG_SHOT_CONFIG = {
+  closeDistance: 150,
+  midDistance: 250,
+  closeDamageScale: 1.25,
+  midDamageScale: 1.15
+};
+const HUNDRED_RUSH_CONFIG = {
+  closeDistance: 260,
+  baseDamageScale: 2.28,
+  closeDamageScale: 1.12,
+  catchWindowScale: 0.82,
+  catchAreaScale: 0.72
+};
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.18, areaScale: 1 },
   heroStraight: { duration: 0.165, areaScale: 0.94 },
-  melodyShot: { duration: 0.158, areaScale: 0.92 },
+  melodyShot: {
+    duration: 0.18 * DISSONANCE_FEINT_CONFIG.catchWindowScale,
+    areaScale: DISSONANCE_FEINT_CONFIG.catchAreaScale
+  },
   kiai: { duration: 0.11, areaScale: 0.9 },
   braveSlash: { duration: 0.09, areaScale: 0.82 },
   gigaBreak: { duration: 0.075, areaScale: 0.72 },
   fireball: { duration: 0.095, areaScale: 0.84 },
   holyLance: { duration: 0.07, areaScale: 0.72 },
   shiningArrow: { duration: 0.065, areaScale: 0.68 },
-  hundredRush: { duration: 0.085, areaScale: 0.78 },
+  hundredRush: { duration: 0.085 * HUNDRED_RUSH_CONFIG.catchWindowScale, areaScale: HUNDRED_RUSH_CONFIG.catchAreaScale },
   lunaticMirage: { duration: 0.07, areaScale: 0.68 },
   victoryMarch: { duration: 0.12, areaScale: 1 },
   soul: { duration: 0.11, areaScale: 0.88 },
@@ -428,7 +449,14 @@ const SPECIAL_SHOT_DAMAGE_RULES = {
   fireball: 2.15,
   holyLance: 2.25,
   shiningArrow: (travelDistance = 0) => 1.9 + Math.min(0.45, Math.max(0, travelDistance) / 1800 * 0.45),
-  hundredRush: 2.18,
+  hundredRush: (travelDistance = 0) => {
+    const distance = Math.max(0, travelDistance);
+    const closeRate = distance < HUNDRED_RUSH_CONFIG.closeDistance
+      ? 1 - distance / HUNDRED_RUSH_CONFIG.closeDistance
+      : 0;
+    return HUNDRED_RUSH_CONFIG.baseDamageScale *
+      (1 + (HUNDRED_RUSH_CONFIG.closeDamageScale - 1) * closeRate);
+  },
   lunaticMirage: (travelDistance = 0) => (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32)) * 1.15,
   lightning: 2,
   triple: 2,
@@ -453,22 +481,22 @@ const SPECIAL_SHOT_DAMAGE_RULES = {
   }
 };
 const SPIRIT_GAIN_CONFIG = {
-  spiritPassGain: 0.2,
-  spiritNormalShotFireGain: 0.7,
-  spiritStrongShotFireGain: 0.9,
-  spiritJumpShotFireGain: 0.9,
-  spiritSpecialShotFireGain: 1,
-  spiritCounterShotFireGain: 1.3,
-  spiritNormalShotHitGain: 1,
-  spiritQuickShotHitGain: 1.2,
-  spiritCounterHitGain: 1.5,
-  spiritCatchGain: 2.5,
-  spiritDodgeGain: 2,
-  spiritSpecialDodgeBonus: 0.5,
-  spiritCloseDodgeBonus: 0.5,
-  spiritPassCutGain: 1.5,
-  spiritDamageGain: 1,
-  spiritDefeatGain: 5
+  spiritPassGain: 0.3,
+  spiritNormalShotFireGain: 1.05,
+  spiritStrongShotFireGain: 1.35,
+  spiritJumpShotFireGain: 1.35,
+  spiritSpecialShotFireGain: 1.5,
+  spiritCounterShotFireGain: 1.95,
+  spiritNormalShotHitGain: 1.5,
+  spiritQuickShotHitGain: 1.8,
+  spiritCounterHitGain: 2.25,
+  spiritCatchGain: 3.75,
+  spiritDodgeGain: 3,
+  spiritSpecialDodgeBonus: 0.75,
+  spiritCloseDodgeBonus: 0.75,
+  spiritPassCutGain: 2.25,
+  spiritDamageGain: 1.5,
+  spiritDefeatGain: 7.5
 };
 const CPU_CATCH_DURATION_SCALE = 0.85;
 
@@ -1069,8 +1097,8 @@ class DodgeballGame {
           speed,
           jump,
           technique,
-          defense: statusStats?.defense ?? extra.defense ?? 6,
-          pass: statusStats?.pass ?? extra.pass ?? 6
+          defense: extra.defense ?? statusStats?.defense ?? 6,
+          pass: extra.pass ?? statusStats?.pass ?? 6
         },
         specialShotType,
         ...extra
@@ -1093,14 +1121,14 @@ class DodgeballGame {
         stats: { power: 5, speed: 5, jump: 5, technique: 5 },
         cpuProfile: "townDodgies",
         players: [
-          player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("まさる", "inner", "normal", 80, 100, 7, 7, 7, 7, "kiai", { captain: true }),
-          player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("けんじ", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai"),
-          player("たかし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai")
+          player("たけし", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("こうた", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("まさる", "inner", "normal", 80, 100, 7, 7, 7, 7, "kiai", { pass: 5,  defense: 5,  captain: true }),
+          player("ゆうき", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("しんぺい", "inner", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("ひろし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("けんじ", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 }),
+          player("たかし", "out", "normal", 50, 100, 5, 5, 5, 5, "kiai", { defense: 5, pass: 5 })
         ]
       },
       {
@@ -1119,14 +1147,14 @@ class DodgeballGame {
         stats: { power: 6, speed: 8, jump: 7, technique: 6 },
         cpuProfile: "bakusouBoys",
         players: [
-          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("しょうた", "inner", "jump", 110, 100, 8, 10, 8, 8, "boost", { captain: true }),
-          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai"),
-          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai")
+          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("しょうた", "inner", "jump", 110, 100, 8, 10, 8, 8, "boost", { pass: 8,  defense: 8,  captain: true }),
+          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 })
         ]
       },
       {
@@ -1146,14 +1174,14 @@ class DodgeballGame {
         stats: { power: 9, speed: 9, jump: 9, technique: 8 },
         cpuProfile: "hinomaruBombers",
         players: [
-          player("れつ", "inner", "jump", 150, 110, 8, 11, 9, 8, "kiai"),
-          player("むさし", "inner", "normal", 150, 110, 9, 9, 9, 8, "kiai"),
-          player("しょう", "inner", "speed", 150, 110, 9, 8, 10, 7, "boomerang"),
-          player("じん", "inner", "normal", 150, 110, 9, 9, 9, 8, "kiai"),
-          player("だいち", "inner", "power", 250, 150, 13, 7, 9, 8, "lightning", { captain: true }),
-          player("はやと", "out", "normal", 150, 110, 9, 9, 9, 7, "kiai"),
-          player("えんじ", "out", "speed", 150, 110, 9, 8, 9, 7, "kiai"),
-          player("ひかる", "out", "jump", 150, 110, 8, 11, 9, 7, "kiai")
+          player("れつ", "inner", "jump", 170, 110, 8, 11, 9, 8, "kiai", { defense: 8, pass: 8 }),
+          player("むさし", "inner", "normal", 170, 110, 9, 9, 9, 8, "kiai", { defense: 8, pass: 8 }),
+          player("しょう", "inner", "speed", 170, 110, 9, 8, 10, 7, "boomerang", { defense: 8, pass: 8 }),
+          player("じん", "inner", "normal", 170, 110, 9, 9, 9, 8, "kiai", { defense: 8, pass: 8 }),
+          player("だいち", "inner", "power", 240, 150, 13, 7, 9, 8, "lightning", { pass: 10,  defense: 10,  captain: true }),
+          player("はやと", "out", "normal", 170, 110, 9, 9, 9, 7, "kiai", { defense: 8, pass: 8 }),
+          player("えんじ", "out", "speed", 170, 110, 9, 8, 9, 7, "kiai", { defense: 8, pass: 8 }),
+          player("ひかる", "out", "jump", 170, 110, 8, 11, 9, 7, "kiai", { defense: 8, pass: 8 })
         ]
       },
       {
@@ -1174,14 +1202,14 @@ class DodgeballGame {
         stats: { power: 10, speed: 10, jump: 11, technique: 8 },
         cpuProfile: "americanBigBalls",
         players: [
-          player("\u30c8\u30e0", "inner", "speed", 140, 100, 9, 12, 13, 8, "kiai"),
-          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 140, 100, 11, 9, 8, 7, "kiai"),
-          player("\u30b8\u30e7\u30fc", "inner", "normal", 320, 150, 16, 13, 13, 13, "triple", { captain: true }),
-          player("\u30cb\u30c3\u30af", "inner", "normal", 140, 100, 10, 11, 10, 8, "kiai"),
-          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 150, 100, 8, 13, 9, 8, "kiai"),
-          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 150, 100, 9, 8, 9, 7, "kiai"),
-          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 140, 100, 11, 7, 10, 7, "kiai"),
-          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 130, 100, 9, 9, 13, 8, "kiai")
+          player("\u30c8\u30e0", "inner", "speed", 180, 100, 9, 12, 13, 8, "kiai", { defense: 9, pass: 9 }),
+          player("\u30d6\u30e9\u30a4\u30a2\u30f3", "inner", "power", 180, 100, 11, 9, 8, 7, "kiai", { defense: 9, pass: 9 }),
+          player("\u30b8\u30e7\u30fc", "inner", "normal", 250, 150, 16, 13, 13, 13, "triple", { pass: 13,  defense: 13,  captain: true }),
+          player("\u30cb\u30c3\u30af", "inner", "normal", 180, 100, 10, 11, 10, 8, "kiai", { defense: 9, pass: 9 }),
+          player("\u30de\u30c3\u30af\u30b9", "inner", "jump", 180, 100, 8, 13, 9, 8, "kiai", { defense: 9, pass: 9 }),
+          player("\u30b9\u30c6\u30a3\u30fc\u30d6", "out", "normal", 180, 100, 9, 8, 9, 7, "kiai", { defense: 9, pass: 9 }),
+          player("\u30ec\u30c3\u30af\u30b9", "out", "power", 180, 100, 11, 7, 10, 7, "kiai", { defense: 9, pass: 9 }),
+          player("\u30d6\u30ed\u30c3\u30af", "out", "speed", 180, 100, 9, 9, 13, 8, "kiai", { defense: 9, pass: 9 })
         ]
       },
       {
@@ -1201,14 +1229,14 @@ class DodgeballGame {
         maxStamina: 100,
         stats: { power: 9, speed: 8, jump: 8, technique: 8 },
         players: [
-          player("シュナイダー", "inner", "normal", 270, 100, 12, 8, 9, 8, "iron", { captain: true }),
-          player("ミュラー", "inner", "normal", 140, 100, 9, 8, 8, 7, "iron"),
-          player("クライン", "inner", "normal", 140, 100, 9, 8, 7, 8, "iron"),
-          player("ベッカー", "inner", "normal", 140, 100, 8, 9, 9, 7, "iron"),
-          player("ホフマン", "inner", "normal", 140, 100, 9, 8, 8, 8, "iron"),
-          player("リヒター", "out", "normal", 140, 100, 8, 7, 9, 8, "iron"),
-          player("ケラー", "out", "normal", 140, 100, 9, 8, 8, 7, "iron"),
-          player("フィッシャー", "out", "normal", 140, 100, 7, 8, 8, 8, "iron")
+          player("シュナイダー", "inner", "normal", 220, 100, 12, 8, 9, 8, "iron", { pass: 8,  defense: 10,  captain: true }),
+          player("ミュラー", "inner", "normal", 140, 100, 9, 8, 8, 7, "iron", { defense: 8, pass: 6 }),
+          player("クライン", "inner", "normal", 140, 100, 9, 8, 7, 8, "iron", { defense: 8, pass: 6 }),
+          player("ベッカー", "inner", "normal", 140, 100, 8, 9, 9, 7, "iron", { defense: 8, pass: 6 }),
+          player("ホフマン", "inner", "normal", 140, 100, 9, 8, 8, 8, "iron", { defense: 8, pass: 6 }),
+          player("リヒター", "out", "normal", 140, 100, 8, 7, 9, 8, "iron", { defense: 8, pass: 6 }),
+          player("ケラー", "out", "normal", 140, 100, 9, 8, 8, 7, "iron", { defense: 8, pass: 6 }),
+          player("フィッシャー", "out", "normal", 140, 100, 7, 8, 8, 8, "iron", { defense: 8, pass: 6 })
         ]
       },
       {
@@ -1228,14 +1256,14 @@ class DodgeballGame {
         stats: { power: 7, speed: 6, jump: 7, technique: 7 },
         cpuProfile: "kuidaoRangers",
         players: [
-          player("\u305f\u3053\u3078\u3044", "inner", "jump", 180, 100, 9, 8, 9, 9, "tsutenkaku", { uniformEmblem: "takoBib" }),
-          player("\u304a\u3053\u306e\u307f", "inner", "normal", 120, 100, 6, 6, 8, 6, "kiai"),
-          player("\u304f\u3057\u304b\u3064", "inner", "normal", 120, 100, 8, 8, 7, 8, "kiai"),
-          player("\u304f\u3044\u3060\u304a\u308c", "inner", "normal", 120, 100, 7, 8, 7, 7, "kiai"),
-          player("\u304a\u304a\u304d\u306b", "inner", "normal", 120, 100, 7, 5, 9, 7, "kiai"),
-          player("\u306a\u3093\u3067\u3084", "out", "normal", 120, 100, 7, 6, 7, 6, "kiai"),
-          player("\u307e\u3044\u3069", "out", "normal", 120, 100, 6, 7, 6, 7, "kiai"),
-          player("\u3069\u3046\u3068\u3093", "out", "normal", 120, 100, 8, 6, 7, 7, "kiai")
+          player("\u305f\u3053\u3078\u3044", "inner", "jump", 160, 100, 9, 8, 9, 9, "tsutenkaku", { pass: 11,  defense: 9,  uniformEmblem: "takoBib" }),
+          player("\u304a\u3053\u306e\u307f", "inner", "normal", 120, 100, 6, 6, 8, 6, "kiai", { defense: 7, pass: 9 }),
+          player("\u304f\u3057\u304b\u3064", "inner", "normal", 120, 100, 8, 8, 7, 8, "kiai", { defense: 7, pass: 9 }),
+          player("\u304f\u3044\u3060\u304a\u308c", "inner", "normal", 120, 100, 7, 8, 7, 7, "kiai", { defense: 7, pass: 9 }),
+          player("\u304a\u304a\u304d\u306b", "inner", "normal", 120, 100, 7, 5, 9, 7, "kiai", { defense: 7, pass: 9 }),
+          player("\u306a\u3093\u3067\u3084", "out", "normal", 120, 100, 7, 6, 7, 6, "kiai", { defense: 7, pass: 9 }),
+          player("\u307e\u3044\u3069", "out", "normal", 120, 100, 6, 7, 6, 7, "kiai", { defense: 7, pass: 9 }),
+          player("\u3069\u3046\u3068\u3093", "out", "normal", 120, 100, 8, 6, 7, 7, "kiai", { defense: 7, pass: 9 })
         ]
       },
       {
@@ -1255,14 +1283,14 @@ class DodgeballGame {
         stats: { power: 11, speed: 4, jump: 7, technique: 7 },
         cpuProfile: "doskois",
         players: [
-          player("よこづな", "inner", "power", 280, 100, 15, 7, 8, 8, "slap", { uniformEmblem: "sumoGold" }),
-          player("らいのふじ", "inner", "power", 170, 100, 11, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("はりておう", "inner", "power", 170, 100, 12, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("がんさい", "inner", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("ごうのやま", "inner", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("だいふんか", "out", "power", 170, 100, 10, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("かいりきやま", "out", "power", 170, 100, 12, 4, 7, 7, "slap", { uniformEmblem: "sumo" }),
-          player("ちゃんこまる", "out", "power", 170, 100, 9, 4, 8, 6, "slap", { uniformEmblem: "sumo" })
+          player("よこづな", "inner", "power", 200, 100, 15, 7, 8, 8, "slap", { pass: 6,  defense: 10,  uniformEmblem: "sumoGold" }),
+          player("らいのふじ", "inner", "power", 130, 100, 11, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("はりておう", "inner", "power", 130, 100, 12, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("がんさい", "inner", "power", 130, 100, 10, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("ごうのやま", "inner", "power", 130, 100, 10, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("だいふんか", "out", "power", 130, 100, 10, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("かいりきやま", "out", "power", 130, 100, 12, 4, 7, 7, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" }),
+          player("ちゃんこまる", "out", "power", 130, 100, 9, 4, 8, 6, "slap", { pass: 6,  defense: 8,  uniformEmblem: "sumo" })
         ]
       },
       {
@@ -1284,14 +1312,14 @@ class DodgeballGame {
         stats: { power: 9, speed: 7, jump: 16, technique: 12 },
         cpuProfile: "galactakos",
         players: [
-          player("\u30aa\u30af\u30c8", "inner", "alien", 350, 130, 12, 8, 20, 15, "ufoSpin", { captain: true, uniformEmblem: "galactakoCaptain" }),
-          player("\u30d4\u30b3", "inner", "alien", 250, 115, 9, 8, 16, 12, "ufoSpin"),
-          player("\u30b0\u30cb\u30e3", "inner", "alien", 250, 115, 9, 6, 16, 12, "ufoSpin"),
-          player("\u30d5\u30ef\u30f3", "inner", "alien", 250, 120, 9, 7, 16, 12, "ufoSpin"),
-          player("\u30ad\u30e5\u30eb", "inner", "alien", 250, 115, 9, 8, 16, 12, "ufoSpin"),
-          player("\u30dd\u30eb", "out", "alien", 250, 115, 10, 7, 16, 12, "ufoSpin"),
-          player("\u30cb\u30e5\u30eb", "out", "alien", 250, 120, 8, 8, 16, 12, "ufoSpin"),
-          player("\u30e2\u30cb\u30e7", "out", "alien", 250, 115, 9, 6, 16, 12, "ufoSpin")
+          player("\u30aa\u30af\u30c8", "inner", "alien", 300, 130, 14, 8, 20, 13, "ufoSpin", { pass: 8,  defense: 10,  captain: true, uniformEmblem: "galactakoCaptain" }),
+          player("\u30d4\u30b3", "inner", "alien", 200, 115, 9, 8, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30b0\u30cb\u30e3", "inner", "alien", 200, 115, 9, 6, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30d5\u30ef\u30f3", "inner", "alien", 200, 120, 9, 7, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30ad\u30e5\u30eb", "inner", "alien", 200, 115, 9, 8, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30dd\u30eb", "out", "alien", 200, 115, 10, 7, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30cb\u30e5\u30eb", "out", "alien", 200, 120, 8, 8, 16, 10, "ufoSpin", { defense: 7, pass: 7 }),
+          player("\u30e2\u30cb\u30e7", "out", "alien", 200, 115, 9, 6, 16, 10, "ufoSpin", { defense: 7, pass: 7 })
         ]
       },
       {
@@ -1311,14 +1339,14 @@ class DodgeballGame {
         stats: { power: 11, speed: 7, jump: 6, technique: 11 },
         cpuProfile: "zenmaiGears",
         players: [
-          player("ゼロ", "inner", "normal", 320, 200, 14, 8, 8, 14, "lockRocket", { captain: true, uniformEmblem: "robotCaptain" }),
-          player("ボルト", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ギア", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ピストン", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("センサー", "inner", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("レーダー", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("コイル", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" }),
-          player("ビット", "out", "normal", 200, 200, 12, 7, 6, 11, "clockStop", { uniformEmblem: "robot" })
+          player("ゼロ", "inner", "normal", 320, 200, 15, 8, 8, 14, "lockRocket", { pass: 9,  defense: 13,  captain: true, uniformEmblem: "robotCaptain" }),
+          player("ボルト", "inner", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("ギア", "inner", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("ピストン", "inner", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("センサー", "inner", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("レーダー", "out", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("コイル", "out", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" }),
+          player("ビット", "out", "normal", 200, 200, 13, 6, 6, 11, "clockStop", { pass: 8,  defense: 10,  uniformEmblem: "robot" })
         ]
       },
       {
@@ -1337,7 +1365,7 @@ class DodgeballGame {
         stats: { power: 7, speed: 7, jump: 7, technique: 7 },
         cpuProfile: "arkmaz",
         players: [
-          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 500, 200, 18, 13, 13, 13, "hellfire", {
+          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 400, 200, 20, 13, 13, 13, "hellfire", {
             captain: true,
             uniformEmblem: "arkmaLord",
             uniformColor: "#161018",
@@ -1349,7 +1377,7 @@ class DodgeballGame {
             defense: 12,
             pass: 10
           }),
-          player("\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "inner", "lavaGolem", 350, 150, 16, 5, 4, 9, "meteorCrash", {
+          player("\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "inner", "lavaGolem", 300, 150, 16, 5, 4, 9, "meteorCrash", {
             uniformEmblem: "lavaGolem",
             radius: 66,
             uniformColor: "#4a3024",
@@ -1359,10 +1387,10 @@ class DodgeballGame {
             faceColor: "#4a3024",
             eyeColor: "#ffd43b",
             cpuProfile: "arkmaz",
-            defense: 12,
+            defense: 14,
             pass: 6
           }),
-          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 270, 150, 11, 11, 9, 12, "bloodDrain", {
+          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 230, 150, 12, 11, 9, 11, "bloodDrain", {
             uniformEmblem: "vampire",
             uniformColor: "#7a1630",
             pantsColor: "#361227",
@@ -1371,9 +1399,9 @@ class DodgeballGame {
             faceColor: "#d8edf6",
             eyeColor: "#d81942",
             defense: 10,
-            pass: 8
+            pass: 7
           }),
-          player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 280, 150, 8, 12, 8, 14, "devilShield", {
+          player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 250, 150, 10, 12, 8, 13, "devilShield", {
             uniformEmblem: "shieldDevil",
             uniformColor: "#d8dde6",
             pantsColor: "#a8b0bc",
@@ -1385,7 +1413,7 @@ class DodgeballGame {
             defense: 13,
             pass: 16
           }),
-          player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 250, 150, 12, 10, 9, 13, "arcanaSphere", {
+          player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 230, 150, 14, 10, 9, 11, "arcanaSphere", {
             uniformEmblem: "witch",
             uniformColor: "#6f2aa6",
             pantsColor: "#35114f",
@@ -1395,9 +1423,9 @@ class DodgeballGame {
             eyeColor: "#e0183c",
             cpuProfile: "arkmaz",
             defense: 6,
-            pass: 7
+            pass: 8
           }),
-          player("\u30d4\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "devilClaw", {
+          player("\u30d4\u30b3", "out", "miniDevil", 200, 135, 11, 13, 13, 11, "devilClaw", {
             uniformEmblem: "miniDevil",
             uniformColor: "#17101f",
             pantsColor: "#050407",
@@ -1408,7 +1436,7 @@ class DodgeballGame {
             defense: 6,
             pass: 16
           }),
-          player("\u30da\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "devilClaw", {
+          player("\u30da\u30b3", "out", "miniDevil", 200, 135, 11, 13, 13, 11, "devilClaw", {
             uniformEmblem: "miniDevil",
             uniformColor: "#17101f",
             pantsColor: "#050407",
@@ -1419,7 +1447,7 @@ class DodgeballGame {
             defense: 6,
             pass: 16
           }),
-          player("\u30dd\u30b3", "out", "miniDevil", 130, 135, 9, 13, 13, 12, "devilClaw", {
+          player("\u30dd\u30b3", "out", "miniDevil", 200, 135, 11, 13, 13, 11, "devilClaw", {
             uniformEmblem: "miniDevil",
             uniformColor: "#17101f",
             pantsColor: "#050407",
@@ -2228,6 +2256,7 @@ class DodgeballGame {
         radius: GAME_CONFIG.ball.radius * 0.88 * 1.3,
         team: actor.team,
         thrower: actor,
+        specialShotType: "triple",
         power: (actor.getEffectiveThrowPower?.() ?? actor.throwPower) * Math.max(0.7, multiplier) * 0.2 * SHOT_DAMAGE_SCALE,
         life: 1.85,
         age: 0,
@@ -3292,6 +3321,9 @@ class DodgeballGame {
       if (kind === "pass" && this.isShiningPassActor(actor)) {
         this.spawnEffect(actor.x + actor.facing * 46, actor.y - actor.jumpZ - 66, "#fff4a8", "shiningPassBow", 1.05);
       }
+      if (kind === "shoot" && this.isWitchSparkShotBall(this.ball)) {
+        this.spawnEffect(actor.x + actor.facing * 32, actor.y - actor.jumpZ - 74, "#d8b6ff", "witchSparkLaunch", 1);
+      }
       this.spawnEffect(
         actor.x + actor.facing * 40,
         actor.y - 48 - actor.jumpZ,
@@ -3430,6 +3462,9 @@ class DodgeballGame {
       }
       if (pending.kind === "pass" && this.isShiningPassActor(pending.actor)) {
         this.spawnEffect(pending.actor.x + pending.actor.facing * 46, pending.actor.y - pending.actor.jumpZ - 66, "#fff4a8", "shiningPassBow", 1.05);
+      }
+      if (pending.kind === "shoot" && this.isWitchSparkShotBall(this.ball)) {
+        this.spawnEffect(pending.actor.x + pending.actor.facing * 32, pending.actor.y - pending.actor.jumpZ - 74, "#d8b6ff", "witchSparkLaunch", 1);
       }
       if (pending.counter) {
         const targetX = pending.target?.x ?? this.ball.x + pending.aim.x * 900;
@@ -3794,6 +3829,17 @@ class DodgeballGame {
 
   isBravesMartialArtist(player) {
     return player?.uniformEmblem === "braves-martialArtist";
+  }
+
+  getMartialArtistQigongShotDamageScale(travelDistance = 0) {
+    const distance = Math.max(0, travelDistance || 0);
+    if (distance < MARTIAL_ARTIST_QIGONG_SHOT_CONFIG.closeDistance) {
+      return MARTIAL_ARTIST_QIGONG_SHOT_CONFIG.closeDamageScale;
+    }
+    if (distance < MARTIAL_ARTIST_QIGONG_SHOT_CONFIG.midDistance) {
+      return MARTIAL_ARTIST_QIGONG_SHOT_CONFIG.midDamageScale;
+    }
+    return 1;
   }
 
   getMartialArtistSpecialCatchScale(catcher) {
@@ -4202,6 +4248,16 @@ class DodgeballGame {
     );
   }
 
+  isWitchSparkShotBall(ball = this.ball) {
+    return Boolean(
+      ball?.isFlying &&
+      ball.kind === "shoot" &&
+      !ball.specialShotType &&
+      !ball.counterShot &&
+      ball.witchSparkShot
+    );
+  }
+
   getHeroBondIntensity(hero) {
     if (!this.isHeroPlayer(hero)) return 0;
     const team = hero.team === "left" ? this.leftTeam : this.rightTeam;
@@ -4411,6 +4467,11 @@ class DodgeballGame {
       h: 126 * scale
     };
     return this.circleRectOverlap(ballX, ballY, ballRadius, standingBox);
+  }
+
+  getShotHitRadius(shot) {
+    const baseRadius = shot?.radius || 0;
+    return shot?.specialShotType ? baseRadius * 1.2 : baseRadius;
   }
 
   isPiercingShot(specialType) {
@@ -4679,8 +4740,9 @@ class DodgeballGame {
       const originalTarget = target;
       const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
+      const hitRadius = this.getShotHitRadius(this.ball);
       if (this.resolveWitchReflectShield(target, ballY)) return;
-      if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) {
+      if (!this.circleRectOverlap(this.ball.x, ballY, hitRadius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
           this.addSpiritForDodge(target, this.ball);
           if (this.isPiercingShot(this.ball.specialShotType)) {
@@ -4708,9 +4770,16 @@ class DodgeballGame {
       const direction = this.ball.vx >= 0 ? 1 : -1;
       const specialType = this.ball.specialShotType;
       const demonShot = Boolean(this.ball.demonShot);
+      const qigongShot = !specialType && !demonShot && !this.ball.counterShot && this.isBravesMartialArtist(this.ball.thrower);
+      const qigongShotDamageScale = qigongShot
+        ? this.getMartialArtistQigongShotDamageScale(this.ball.travelDistance)
+        : 1;
       let damage = this.getSpecialShotDamage(this.ball.power, specialType, this.ball.travelDistance);
       if (demonShot) {
         damage *= 1.18;
+      }
+      if (qigongShot) {
+        damage *= qigongShotDamageScale;
       }
       if (this.isVampireLightWeakness(target, specialType)) {
         damage *= BLOOD_DRAIN_CONFIG.lightWeaknessScale;
@@ -4860,8 +4929,8 @@ class DodgeballGame {
             : specialType === "slap" ? "slapImpact" : specialType === "kiai" ? "kiaiImpact" : specialType ? "special" : demonShot ? "maouImpact" : "hit",
           this.ball.counterShot ? this.ball.counterIntensity || 1 : 1
         );
-        if (!specialType && !demonShot && !this.ball.counterShot && this.isBravesMartialArtist(this.ball.thrower)) {
-          this.spawnEffect(this.ball.x, ballY, "#ffffff", "qigongShotImpact", 0.9);
+        if (qigongShot) {
+          this.spawnEffect(this.ball.x, ballY, "#ffffff", "qigongShotImpact", 0.85 + (qigongShotDamageScale - 1) * 1.8);
           target.knockbackX += direction * GAME_CONFIG.battle.knockbackSpeed * 0.18;
         }
         if (!specialType && !demonShot && !this.ball.counterShot && this.isHeroRoyalStraightBall(this.ball)) {
@@ -4869,6 +4938,9 @@ class DodgeballGame {
         }
         if (!specialType && !demonShot && !this.ball.counterShot && this.isBardMelodyShotBall(this.ball)) {
           this.spawnEffect(this.ball.x, ballY, "#ffd83d", "melodyShotImpact", 0.9);
+        }
+        if (!specialType && !demonShot && !this.ball.counterShot && this.isWitchSparkShotBall(this.ball)) {
+          this.spawnEffect(this.ball.x, ballY, "#d8b6ff", "witchSparkImpact", 0.9);
         }
         if (this.ball.counterShot) {
           this.startScreenShake(10 + (this.ball.counterIntensity || 1) * 3, 0.14);
@@ -4940,7 +5012,8 @@ class DodgeballGame {
         if (target.defeated || target.role !== "inner" || shot.hitPlayerIds.has(target.id)) continue;
         const hit = target.getHitBox();
         const ballY = shot.y - shot.z;
-        if (!this.circleRectOverlap(shot.x, ballY, shot.radius, hit)) {
+        const hitRadius = this.getShotHitRadius(shot);
+        if (!this.circleRectOverlap(shot.x, ballY, hitRadius, hit)) {
           if (this.isSuccessfulDodgeOverlap(target, shot.x, ballY, shot.radius)) {
             this.addSpiritForDodge(target, { specialShotType: "triple", thrower: this.ball?.thrower });
             shot.hitPlayerIds.add(target.id);
@@ -5973,6 +6046,8 @@ class DodgeballGame {
       : type === "heroStraightImpact" ? 0.46
       : type === "melodyShotImpact" ? 0.48
       : type === "qigongShotImpact" ? 0.42
+      : type === "witchSparkLaunch" ? 0.38
+      : type === "witchSparkImpact" ? 0.44
       : type === "shiningPassBow" ? 0.46
       : type === "galeCounterLaunch" ? 0.58
       : type === "galeCounterImpact" ? 0.62
@@ -6102,7 +6177,7 @@ class DodgeballGame {
     if (specialType === "fireball") return "ファイアボール";
     if (specialType === "holyLance") return "ホーリーランス";
     if (specialType === "shiningArrow") return "シャイニングアロー";
-    if (specialType === "hundredRush") return "百裂ラッシュ";
+    if (specialType === "hundredRush") return "百裂気功弾";
     if (specialType === "lunaticMirage") return "ルナティックミラージュ";
     if (specialType === "victoryMarch") return "勝利の行進曲";
     if (specialType === "grandHeal") return "グランドヒール";
@@ -9687,25 +9762,26 @@ class DodgeballGame {
         continue;
       }
       if (effect.type === "hundredRushImpact") {
-        const radius = 40 + progress * 156;
+        const intensity = effect.intensity || 1;
+        const radius = (46 + progress * 188) * intensity;
         context.save();
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
-        context.fillStyle = "rgba(255,255,255,0.14)";
+        context.fillStyle = "rgba(255,255,255,0.18)";
         context.beginPath();
-        context.ellipse(0, 22, radius * 0.95, radius * 0.32, 0, 0, Math.PI * 2);
+        context.ellipse(0, 22, radius * 1.04, radius * 0.34, 0, 0, Math.PI * 2);
         context.fill();
         context.strokeStyle = "#ffffff";
-        context.lineWidth = 16 - progress * 7;
+        context.lineWidth = 18 - progress * 8;
         context.beginPath();
         context.arc(0, 0, radius, 0, Math.PI * 2);
         context.stroke();
         context.strokeStyle = "#cfd7ff";
-        context.lineWidth = 7;
+        context.lineWidth = 8;
         context.lineCap = "round";
-        for (let index = 0; index < 20; index += 1) {
-          const angle = index * Math.PI * 2 / 20;
+        for (let index = 0; index < 30; index += 1) {
+          const angle = index * Math.PI * 2 / 30;
           const inner = radius * 0.28;
           const outer = radius * (0.9 + (index % 4) * 0.12);
           context.beginPath();
@@ -9714,12 +9790,21 @@ class DodgeballGame {
           context.stroke();
         }
         context.strokeStyle = "#ffffff";
-        context.lineWidth = 9 - progress * 4;
-        for (let fist = -1; fist <= 1; fist += 1) {
+        context.lineWidth = 10 - progress * 4;
+        for (let fist = -3; fist <= 3; fist += 1) {
           context.beginPath();
-          context.moveTo(-radius * 0.9, fist * 22);
-          context.quadraticCurveTo(-radius * 0.15, fist * 8, radius * 0.9, -fist * 14);
+          context.moveTo(-radius * 0.92, fist * 16);
+          context.quadraticCurveTo(-radius * 0.14, fist * 5, radius * 0.92, -fist * 11);
           context.stroke();
+        }
+        context.fillStyle = "rgba(255,255,255,0.62)";
+        for (let fist = 0; fist < 8; fist += 1) {
+          const angle = -0.35 + fist * Math.PI * 2 / 8;
+          const x = Math.cos(angle) * radius * (0.34 + (fist % 3) * 0.12);
+          const y = Math.sin(angle) * radius * 0.32;
+          context.beginPath();
+          context.ellipse(x, y, 20 - progress * 7, 12 - progress * 4, angle, 0, Math.PI * 2);
+          context.fill();
         }
         context.globalCompositeOperation = "source-over";
         context.globalAlpha = Math.max(0, 1 - progress) * 0.56;
@@ -9814,6 +9899,66 @@ class DodgeballGame {
           const text = index % 2 === 0 ? "♪" : "♫";
           context.strokeText(text, x, y);
           context.fillText(text, x, y);
+        }
+        context.restore();
+        continue;
+      }
+      if (effect.type === "witchSparkLaunch") {
+        const radius = (18 + progress * 34) * (effect.intensity || 1);
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.88;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(216,182,255,0.42)";
+        context.beginPath();
+        context.arc(0, 0, radius * 0.75, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = 4 - progress * 1.7;
+        for (let index = 0; index < 6; index += 1) {
+          const angle = index * Math.PI * 2 / 6 + progress * 1.8;
+          const inner = radius * 0.22;
+          const outer = radius * (0.92 + (index % 2) * 0.18);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+        }
+        context.fillStyle = "#f0d7ff";
+        context.beginPath();
+        context.arc(0, 0, Math.max(3, radius * 0.16), 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+        continue;
+      }
+      if (effect.type === "witchSparkImpact") {
+        const radius = (18 + progress * 70) * (effect.intensity || 1);
+        context.save();
+        context.globalAlpha = Math.max(0, 1 - progress) * 0.86;
+        context.translate(effect.x, effect.y);
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = "#d8b6ff";
+        context.lineWidth = 5 - progress * 2;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.52, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#9b2cff";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.ellipse(0, 0, radius * 0.95, radius * 0.32, progress * 1.7, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = "#f0d7ff";
+        for (let index = 0; index < 8; index += 1) {
+          const angle = index * Math.PI * 2 / 8 + progress * 1.2;
+          const inner = radius * 0.18;
+          const outer = radius * (0.72 + (index % 2) * 0.2);
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
+          context.beginPath();
+          context.arc(Math.cos(angle) * outer, Math.sin(angle) * outer, 2.5, 0, Math.PI * 2);
+          context.fill();
         }
         context.restore();
         continue;

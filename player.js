@@ -832,14 +832,17 @@ class Player {
   getHitBox() {
     const ducking = this.dodgeType === "duck" && this.dodgeTimer > 0;
     const scale = this.lastDrawScale || 1;
-    const width = (ducking ? 54 : 62) * scale;
+    const width = (ducking ? 54 : 62 * 1.2) * scale;
     const top = this.y - this.jumpZ - (ducking ? 82 : 108) * scale;
     const bottom = this.y - this.jumpZ + 18 * scale;
+    const heightScale = ducking ? 1 : 1.15;
+    const centerY = (top + bottom) * 0.5;
+    const height = (bottom - top) * heightScale;
     return {
       x: this.x - width * 0.5,
-      y: top,
+      y: centerY - height * 0.5,
       w: width,
-      h: bottom - top
+      h: height
     };
   }
 

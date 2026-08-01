@@ -1945,7 +1945,8 @@ class CPUController {
       const baseCatchRoll = catchChance * profileCatchScale * this.getCatchRollScale() * victoryCatchScale;
       const catchRoll = baseCatchRoll * closeCatchScale;
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
-      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
+      const specialDodgeAttemptScale = specialShot ? 0.8 : 1;
+      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot * specialDodgeAttemptScale;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {
         this.dodgeIncomingShot(command, member, true, {
@@ -1964,6 +1965,11 @@ class CPUController {
           closePanic,
           robotOverdrive
         });
+      }
+      if (laneThreat && distance < 260 && !command.catch && !command.crouch && !command.jump) {
+        command.moveX *= 0.65;
+        command.moveY *= 0.65;
+        command.dash = false;
       }
     }
 
@@ -1984,7 +1990,7 @@ class CPUController {
     const specialShot = Boolean(this.ball.specialShotType);
     if (specialShot) {
       const closeScale = distance < 300
-        ? 0.25 + Math.max(0, distance - 180) / 120 * 0.75
+        ? 0.15 + Math.max(0, distance - 180) / 120 * 0.85
         : 1;
       return closeScale * 0.65;
     }
