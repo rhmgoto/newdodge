@@ -1719,6 +1719,8 @@ class Ball {
 
   canBePickedUpBy(player, distance) {
     if (!this.isLoose || this.owner || this.z >= 78 || player.hitRecoveryTimer > 0) return false;
+    if (player.dodgeTimer > 0) return false;
+    if (player.pickupLockTimer > 0) return false;
     const rollingBonus = !this.isFlying || this.hasBounced ? 78 : 0;
     const catchBonus = player.catchTimer > 0 ? 72 : 0;
     return Math.hypot(this.x - player.x, this.y - player.y) <= distance + rollingBonus + catchBonus + 26;

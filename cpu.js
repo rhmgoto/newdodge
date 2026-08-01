@@ -15,22 +15,21 @@ const CPU_CLOSE_SHOT_DEFENSE = {
 
 const CPU_CATCH_TUNING = {
   globalScale: 0.75,
-  specialScale: 0.5,
-  counterScale: 3.0333333333,
+  counterScale: 5.46,
   delayMin: 0.02,
   delayMax: 0.07
 };
 
 const CPU_ATTACK_TACTIC_WEIGHTS = {
-  buildUp: 1,
-  quickAttack: 1,
+  buildUp: 0.45,
+  quickAttack: 3,
   sideOverload: 1,
-  trianglePass: 1,
+  trianglePass: 0.45,
   oneTwo: 1,
   sideChange: 1,
-  outfieldRelay: 1,
+  outfieldRelay: 0.35,
   decoyAce: 1,
-  closeAttack: 1,
+  closeAttack: 2.2,
   tempoChange: 1,
   shotFeint: 1
 };
@@ -198,7 +197,7 @@ class CPUController {
       passesRequired: type === "buildUp" ? 2 + Math.floor(Math.random() * 2)
         : type === "trianglePass" ? 3
           : type === "tempoChange" ? 2 + Math.floor(Math.random() * 2)
-            : type === "outfieldRelay" ? 3
+            : type === "outfieldRelay" ? (holder.role === "out" ? 1 : 2)
               : type === "sideOverload" || type === "oneTwo" || type === "decoyAce" ? 2
                 : type === "quickAttack" || type === "sideChange" || type === "shotFeint" ? 1
                   : 0,
@@ -292,6 +291,9 @@ class CPUController {
     }
 
     if (tactic.type === "outfieldRelay") {
+      if (holder.role === "out" && tactic.step > 0) {
+        return this.createTacticalShotPlan(holder, "dash-strong-shot");
+      }
       if (tactic.step < tactic.passesRequired) {
         return passThenShoot(this.getNextRelayTarget(holder, tactic));
       }
@@ -555,6 +557,7 @@ class CPUController {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
         command.chargeReleaseMode = "time";
+        if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
         this.finishAttackTactic(plan);
         this.throwTimer = plan.chargeTime + 0.7 + Math.random() * 0.25;
         this.holderPlan = null;
@@ -637,6 +640,7 @@ class CPUController {
       command.dash = true;
       if (this.throwTimer <= 0) {
         command.shoot = true;
+        if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
         this.finishAttackTactic(plan);
         this.throwTimer = 0.42 + Math.random() * 0.22;
         this.holderPlan = null;
@@ -664,7 +668,16 @@ class CPUController {
       } else {
         this.stop(command);
       }
-      if (this.isNearJumpApex(holder) && this.throwTimer <= 0) {
+      const jumpElapsed = plan.jumpAttempted ? (now - plan.jumpStartedAt) / 1000 : 0;
+      const forceShootTimerReady = plan.jumpAttempted && jumpElapsed >= 0.35 && this.throwTimer <= 0.14;
+      const missedApexShoot = plan.jumpAttempted && holder.jumpVelocity < -90 && holder.jumpZ > 28 && this.throwTimer <= 0.22;
+      const landingFallbackShoot = plan.jumpAttempted && holder.jumpZ <= 36 && jumpElapsed >= 0.45;
+      if (
+        (this.isNearJumpApex(holder) && this.throwTimer <= 0) ||
+        forceShootTimerReady ||
+        missedApexShoot ||
+        landingFallbackShoot
+      ) {
         command.shoot = true;
         this.finishAttackTactic(plan);
         this.throwTimer = 0.5 + Math.random() * 0.22;
@@ -682,6 +695,7 @@ class CPUController {
       const missedAerialWindow = holder.jumpZ <= 0 && Date.now() - plan.startedAt > 900;
       if ((holder.jumpZ > 18 || missedAerialWindow) && this.throwTimer <= 0) {
         command.shoot = true;
+        if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
         this.finishAttackTactic(plan);
         this.throwTimer = 0.55 + Math.random() * 0.15;
         this.holderPlan = null;
@@ -702,6 +716,7 @@ class CPUController {
     this.faceNearestThreat(command, holder);
     if (this.throwTimer <= 0) {
       command.shoot = true;
+      if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
       this.finishAttackTactic(plan);
       this.throwTimer = 0.38 + Math.random() * 0.28;
       this.holderPlan = null;
@@ -723,6 +738,20 @@ class CPUController {
       plan.specialAttackPlan = true;
       plan.devilTriangleFinal = true;
       this.throwTimer = Math.min(this.throwTimer, 0.03);
+      return plan;
+    }
+    const postPassAction = holder.getPostPassAction?.() || null;
+    if (postPassAction?.type === "shoot") {
+      if (this.attackTactic) this.attackTactic.finished = true;
+      if (this.specialAttackState?.passInFlight) this.specialAttackState.passInFlight = false;
+      const aerial = (postPassAction.aerial || holder.aerialPassCatchTimer > 0) && holder.jumpZ > 0;
+      const plan = this.createHolderPlan(
+        holder,
+        aerial ? "catch-and-shoot" : (holder.role === "out" ? "dash-strong-shot" : "dash-shot"),
+        holder.role === "out" ? 0.42 + Math.random() * 0.12 : 0.52 + Math.random() * 0.16
+      );
+      plan.forceShotAfterPass = true;
+      this.throwTimer = Math.min(this.throwTimer, holder.role === "out" ? 0.08 : 0.12);
       return plan;
     }
     if (
@@ -747,11 +776,13 @@ class CPUController {
     if (holder.passChainBlockTimer > 0) {
       if (this.attackTactic) this.attackTactic.finished = true;
       const aerial = holder.aerialPassCatchTimer > 0 && holder.jumpZ > 0;
-      return this.createHolderPlan(
+      const plan = this.createHolderPlan(
         holder,
         aerial ? "catch-and-shoot" : (holder.role === "out" ? "dash-strong-shot" : "dash-shot"),
         aerial ? 0.85 + Math.random() * 0.25 : 0.85 + Math.random() * 0.35
       );
+      plan.forceShotAfterPass = true;
+      return plan;
     }
 
     if (this.isRobotOverdrive(holder)) {
@@ -896,10 +927,16 @@ class CPUController {
       return preferred[Math.floor(Math.random() * preferred.length)];
     }
 
+    const grandHealShooter = this.selectGrandHealShooter(active);
+    if (grandHealShooter) return grandHealShooter;
+
     const captain = active.find((member) => member.captain);
     if (captain && Math.random() < 0.6) return captain;
 
-    const weighted = active.map((member) => ({
+    const weightedCandidates = this.filterWastefulGrandHealCandidates(active);
+    if (weightedCandidates.length === 0) return null;
+
+    const weighted = weightedCandidates.map((member) => ({
       member,
       weight: Math.max(1, (member.stats?.power || 5) + (member.stats?.technique || 5) * 0.35)
     }));
@@ -908,7 +945,56 @@ class CPUController {
       roll -= entry.weight;
       if (roll <= 0) return entry.member;
     }
-    return active[0];
+    return weightedCandidates[0];
+  }
+
+  isGrandHealShooter(member) {
+    return member?.specialShotType === "grandHeal";
+  }
+
+  getGrandHealUrgency(active = this.team) {
+    const alive = active.filter((member) => !member.defeated && member.hp > 0);
+    if (alive.length === 0) return 0;
+
+    const hpRatios = alive.map((member) => {
+      const maxHp = Math.max(1, member.maxHp || member.hp || 1);
+      return Math.max(0, Math.min(1, member.hp / maxHp));
+    });
+    const minRatio = Math.min(...hpRatios);
+    const averageMissing = hpRatios.reduce((sum, ratio) => sum + (1 - ratio), 0) / hpRatios.length;
+    if (minRatio >= 0.4 && averageMissing < 0.4) return 0;
+
+    const lowHpUrgency = Math.max(0, (0.4 - minRatio) / 0.25);
+    const teamDamageUrgency = Math.max(0, (averageMissing - 0.4) / 0.35);
+    return Math.max(0, Math.min(1, lowHpUrgency * 0.72 + teamDamageUrgency * 0.45));
+  }
+
+  selectGrandHealShooter(active) {
+    const healers = active.filter((member) => (
+      this.isGrandHealShooter(member) &&
+      (member.grandHealCooldownTimer || 0) <= 0
+    ));
+    if (healers.length === 0) return null;
+
+    const urgency = this.getGrandHealUrgency(active);
+    if (urgency <= 0) return null;
+
+    const selectionChance = Math.min(0.6, 0.08 + urgency * 0.52);
+    if (Math.random() >= selectionChance) return null;
+
+    return healers.sort((a, b) => {
+      const aRatio = a.hp / Math.max(1, a.maxHp || a.hp || 1);
+      const bRatio = b.hp / Math.max(1, b.maxHp || b.hp || 1);
+      return bRatio - aRatio;
+    })[0] || null;
+  }
+
+  filterWastefulGrandHealCandidates(active) {
+    const urgency = this.getGrandHealUrgency(active);
+    if (urgency > 0) {
+      return active.filter((member) => !this.isGrandHealShooter(member) || (member.grandHealCooldownTimer || 0) <= 0);
+    }
+    return active.filter((member) => !this.isGrandHealShooter(member));
   }
 
   isArkmazTeam() {
@@ -1810,16 +1896,29 @@ class CPUController {
       const shotMultiplier = this.ball.shotMultiplier || 1;
       const strongShot = specialShot || shotMultiplier >= 1.28 || this.ball.power >= 28;
       const weakShot = !specialShot && shotMultiplier <= 1.08 && this.ball.power <= 23;
-      const techniqueBoost = 1 + Math.max(0, technique - 5) * 0.32;
       const speedBoost = 1 + Math.max(0, speed - 5) * 0.26;
       const jumpBoost = 1 + Math.max(0, jump - 5) * 0.25;
       const dodgeChance = strongShot
         ? readyToReact ? 0.9 : frontShot ? 0.72 : 0.3
         : readyToReact ? 0.42 : frontShot ? 0.28 : 0.14;
-      const catchChance = weakShot
-        ? readyToReact ? this.config.cpuCatchChance * 3.5556 : frontShot ? this.config.cpuCatchChance * 3.3333 : this.config.cpuCatchChance * 0.35
-        : strongShot ? frontShot ? this.config.cpuCatchChance * 1.3333 : this.config.cpuCatchChance * 0.06
-          : readyToReact ? this.config.cpuCatchChance * 2.6667 : frontShot ? this.config.cpuCatchChance * 2.4444 : this.config.cpuCatchChance * 0.16;
+      let catchChance = this.config.cpuCatchChance * 0.16;
+      if (weakShot) {
+        catchChance = (readyToReact || frontShot)
+          ? this.config.cpuCatchChance * 2
+          : this.config.cpuCatchChance * 0.35;
+      } else if (specialShot) {
+        catchChance = frontShot
+          ? this.config.cpuCatchChance * 0.5333
+          : this.config.cpuCatchChance * 0.024;
+      } else if (strongShot) {
+        catchChance = frontShot
+          ? this.config.cpuCatchChance * 1.0222
+          : this.config.cpuCatchChance * 0.06;
+      } else {
+        catchChance = (readyToReact || frontShot)
+          ? this.config.cpuCatchChance * 1.5556
+          : this.config.cpuCatchChance * 0.16;
+      }
       const catchScale = member.cpuProfile === "townDodgies" ? 0.42 : 1;
       const dodgeScale = member.cpuProfile === "townDodgies" ? 1.22 : 1;
       let profileCatchScale = member.cpuProfile === "hinomaruBombers" ? (frontShot ? 2.15 : 1.25) : catchScale;
@@ -1838,16 +1937,16 @@ class CPUController {
           profileCatchScale *= ROBOT_OVERDRIVE_CONFIG.strongShotCatchScale;
         }
       }
-      if (specialShot && this.isBravesMartialArtist(member)) {
-        profileCatchScale *= 1.3;
-      }
-
       const victoryCatchScale = member.getVictoryMarchCatchScale?.() ?? 1;
-      const catchDistance = ((member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) + Math.max(0, technique - 5) * 30) * victoryCatchScale;
-      const nearExpertCatch = frontShot && technique >= 7 && nearShot && !specialShot;
-      const catchRoll = catchChance * profileCatchScale * techniqueBoost * (nearExpertCatch ? 1.75 : 1) * this.getCatchRollScale() * victoryCatchScale;
-      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost);
-      const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive);
+      const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) * victoryCatchScale;
+      const closeCatchScale = distance < 260
+        ? 0.65 + Math.max(0, distance - 180) / 80 * 0.35
+        : 1;
+      const baseCatchRoll = catchChance * profileCatchScale * this.getCatchRollScale() * victoryCatchScale;
+      const catchRoll = baseCatchRoll * closeCatchScale;
+      const dodgeScaleByShot = this.getDodgeRollScale(distance);
+      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
+      const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {
         this.dodgeIncomingShot(command, member, true, {
           speed,
@@ -1873,11 +1972,26 @@ class CPUController {
 
   getCatchRollScale() {
     let scale = CPU_CATCH_TUNING.globalScale;
-    if (this.ball.specialShotType) scale *= CPU_CATCH_TUNING.specialScale;
-    if (this.ball.specialShotType === "hellfire") scale *= 0.7;
-    if (this.ball.specialShotType === "meteorCrash") scale *= 0.45;
+    if (this.ball.specialShotType) {
+      const difficulty = CATCH_DIFFICULTY?.[this.ball.specialShotType] || CATCH_DIFFICULTY?.normal;
+      scale *= difficulty?.cpuCatchAttemptScale ?? 1;
+    }
     if (this.ball.counterShot) scale *= CPU_CATCH_TUNING.counterScale;
     return scale;
+  }
+
+  getDodgeRollScale(distance) {
+    const specialShot = Boolean(this.ball.specialShotType);
+    if (specialShot) {
+      const closeScale = distance < 300
+        ? 0.25 + Math.max(0, distance - 180) / 120 * 0.75
+        : 1;
+      return closeScale * 0.65;
+    }
+    if (!this.ball.counterShot && distance < 260) {
+      return 0.65 + Math.max(0, distance - 160) / 100 * 0.35;
+    }
+    return 1;
   }
 
   isBravesMartialArtist(member) {

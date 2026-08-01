@@ -61,7 +61,8 @@ class InputManager {
       button4: false,
       avoid: false,
       dash: false,
-      pause: false
+      pause: false,
+      rawButtons: []
     };
   }
 
@@ -71,6 +72,8 @@ class InputManager {
     const gamepad = this.readGamepad(0);
     const gamepadP2 = this.readGamepad(1);
     this.updateDoubleTapDash(keyboard, gamepad);
+    const dodgeDown = keyboard.avoid || keyboard.button1 || gamepad.avoid || gamepad.button1;
+    const p2DodgeDown = gamepadP2.avoid || gamepadP2.button1;
 
     this.current = {
       moveX: this.clampAxis(keyboard.moveX || gamepad.moveX),
@@ -80,15 +83,21 @@ class InputManager {
       button0: keyboard.button0 || gamepad.button0,
       button1: keyboard.button1 || gamepad.button1,
       button2: keyboard.button2 || gamepad.button2,
-      catch: keyboard.catch || gamepad.catch,
+      catch: (keyboard.catch || gamepad.catch) && !dodgeDown,
       button3: keyboard.button3 || gamepad.button3,
       button4: keyboard.button4 || gamepad.button4,
-      avoid: keyboard.avoid || gamepad.avoid,
+      avoid: dodgeDown,
       dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
-      pause: keyboard.pause || gamepad.pause
+      pause: keyboard.pause || gamepad.pause,
+      rawButtons: gamepad.rawButtons || []
     };
     this.previousP2 = { ...this.currentP2 };
-    this.currentP2 = { ...gamepadP2 };
+    this.currentP2 = {
+      ...gamepadP2,
+      avoid: p2DodgeDown,
+      catch: gamepadP2.catch && !p2DodgeDown,
+      rawButtons: gamepadP2.rawButtons || []
+    };
   }
 
   readKeyboard() {
@@ -131,10 +140,12 @@ class InputManager {
     if (playerIndex === 0) {
       this.gamepadName = pad.id || "ゲームパッド";
       this.gamepadConnected = true;
-      this.pressedGamepadButtons = pad.buttons
-        .map((button, index) => (this.isPressed(button) ? index : null))
-        .filter((index) => index !== null);
     }
+
+    const rawButtons = pad.buttons
+      .map((button, index) => (this.isPressed(button) ? index : null))
+      .filter((index) => index !== null);
+    if (playerIndex === 0) this.pressedGamepadButtons = rawButtons;
 
     const leftX = this.deadZone(pad.axes[0] || 0);
     const leftY = this.deadZone(pad.axes[1] || 0);
@@ -158,7 +169,8 @@ class InputManager {
       button4: this.isPressed(pad.buttons[this.gamepadMap.button4]),
       avoid: this.isPressed(pad.buttons[this.gamepadMap.avoid]),
       dash: this.isPressed(pad.buttons[this.gamepadMap.dash]),
-      pause: this.isPressed(pad.buttons[this.gamepadMap.pause])
+      pause: this.isPressed(pad.buttons[this.gamepadMap.pause]),
+      rawButtons
     };
   }
 
@@ -180,6 +192,17 @@ class InputManager {
     const current = this.getCurrent(playerIndex);
     const previous = this.getPrevious(playerIndex);
     return !current[name] && previous[name];
+  }
+
+  isGamepadButtonDown(index, playerIndex = 1) {
+    const rawButtons = this.getCurrent(playerIndex).rawButtons || [];
+    return rawButtons.includes(index);
+  }
+
+  wasGamepadButtonPressed(index, playerIndex = 1) {
+    const currentButtons = this.getCurrent(playerIndex).rawButtons || [];
+    const previousButtons = this.getPrevious(playerIndex).rawButtons || [];
+    return currentButtons.includes(index) && !previousButtons.includes(index);
   }
 
   isPressed(button) {

@@ -251,6 +251,7 @@ class Player {
     this.victoryMarchTimer = 0;
     this.rhythmStepTimer = 0;
     this.rhythmStepCooldownTimer = 1 + Math.random() * 1.8;
+    this.grandHealCooldownTimer = 0;
     this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -287,6 +288,7 @@ class Player {
     this.counterThrowTimer = 0;
     this.counterThrowIntensity = 0;
     this.dodgeTimer = 0;
+    this.pickupLockTimer = 0;
     this.dodgeType = "none";
     this.downTimer = 0;
     this.leaveTimer = 0;
@@ -299,6 +301,7 @@ class Player {
     this.aerialPassCatchTimer = 0;
     this.quickShotReadyTimer = 0;
     this.passChainBlockTimer = 0;
+    this.postPassAction = null;
     this.shieldAlertTimer = 0;
     this.shieldGuardTimer = 0;
     this.moonBarrierTimer = 0;
@@ -341,6 +344,29 @@ class Player {
     return Math.max(0.65, Math.min(1.75, 1 + (this.stats.pass - 6) * 0.05));
   }
 
+  setPostPassAction(type = "shoot", duration = 2.2, options = {}) {
+    const expiresAt = Date.now() + Math.max(0.1, duration) * 1000;
+    this.postPassAction = {
+      type,
+      expiresAt,
+      aerial: Boolean(options.aerial),
+      source: options.source || "pass"
+    };
+  }
+
+  getPostPassAction() {
+    if (!this.postPassAction) return null;
+    if (Date.now() >= this.postPassAction.expiresAt) {
+      this.clearPostPassAction();
+      return null;
+    }
+    return this.postPassAction;
+  }
+
+  clearPostPassAction() {
+    this.postPassAction = null;
+  }
+
   update(delta, controls, area, config) {
     const airborneBeforeMove = this.jumpZ > 0 || this.jumpVelocity > 0;
     const startedInsideArea = this.isInsideArea(area);
@@ -353,6 +379,7 @@ class Player {
     this.victoryMarchTimer = Math.max(0, this.victoryMarchTimer - delta);
     this.rhythmStepTimer = Math.max(0, this.rhythmStepTimer - delta);
     this.rhythmStepCooldownTimer = Math.max(0, this.rhythmStepCooldownTimer - delta);
+    this.grandHealCooldownTimer = Math.max(0, this.grandHealCooldownTimer - delta);
     this.shieldAlertTimer = Math.max(0, this.shieldAlertTimer - delta);
     this.shieldGuardTimer = Math.max(0, this.shieldGuardTimer - delta);
     this.moonBarrierTimer = Math.max(0, this.moonBarrierTimer - delta);
@@ -381,13 +408,19 @@ class Player {
       this.clearCounterOpportunity();
     }
     this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
+    this.pickupLockTimer = Math.max(0, this.pickupLockTimer - delta);
     this.updateTurn(delta);
     this.updateRobotVisualState(delta, catchTimerBeforeUpdate);
     this.staminaRecoveryDelay = Math.max(0, this.staminaRecoveryDelay - delta);
     this.aerialPassCatchTimer = Math.max(0, this.aerialPassCatchTimer - delta);
     this.quickShotReadyTimer = Math.max(0, this.quickShotReadyTimer - delta);
     this.passChainBlockTimer = Math.max(0, this.passChainBlockTimer - delta);
-    if (!this.hasBall) this.quickShotReadyTimer = 0;
+    if (!this.hasBall) {
+      this.quickShotReadyTimer = 0;
+      this.clearPostPassAction();
+    } else if (this.postPassAction && Date.now() >= this.postPassAction.expiresAt) {
+      this.clearPostPassAction();
+    }
     if (this.isWitchStyle() && (this.reflectChantTimer > 0 || this.reflectShieldTimer > 0)) {
       this.reflectChantTimer = 0;
       this.reflectShieldTimer = 0;
@@ -539,6 +572,7 @@ class Player {
   startCatch(duration) {
     if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0) return;
     if (this.reflectChantTimer > 0) return;
+    if (this.dodgeTimer > 0) return;
     this.catchTimer = duration;
     this.state = "catching";
   }
@@ -619,8 +653,11 @@ class Player {
     const cost = config.stamina.duckCost;
     if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
 
+    this.catchTimer = 0;
+    this.catchSuccessTimer = 0;
     this.dodgeType = "duck";
     this.dodgeTimer = config.duckDuration;
+    this.pickupLockTimer = Math.max(this.pickupLockTimer || 0, config.duckDuration + 0.25);
     this.robotDodgeDirection = Math.abs(moveX) > 0.08 ? Math.sign(moveX) : this.facing;
     this.state = "dodging";
     return true;

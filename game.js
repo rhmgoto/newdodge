@@ -1,5 +1,6 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
+const LAST_UPDATED_AT = "2026/08/01 11:18";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
@@ -23,7 +24,8 @@ const GRAND_HEAL_CONFIG = {
   duration: 2.6,
   tickInterval: 0.26,
   healRatioPerTick: 0.025,
-  startProgress: 0.25
+  startProgress: 0.25,
+  cooldown: 60
 };
 const BRAVES_JOB_DEFINITIONS = {
   hero: {
@@ -316,10 +318,10 @@ const CATCH_DIFFICULTY = {
   clockStop: { duration: 0.07, areaScale: 0.73 },
   lockRocket: { duration: 0.07, areaScale: 0.72 },
   ufoSpin: { duration: 0.08, areaScale: 0.76 },
-  hellfire: { duration: 0.0455, areaScale: 0.504 },
-  meteorCrash: { duration: 0.035, areaScale: 0.48 },
+  hellfire: { duration: 0.0455, areaScale: 0.504, cpuCatchAttemptScale: 0.7 },
+  meteorCrash: { duration: 0.035, areaScale: 0.48, cpuCatchAttemptScale: 0.45 },
   bloodDrain: { duration: 0.08, areaScale: 0.8 },
-  arcanaSphere: { duration: 0.075, areaScale: 0.74 },
+  arcanaSphere: { duration: 0.075, areaScale: 0.74, chargeCatchWindowPenalty: 0.25 },
   devilClaw: { duration: 0.07, areaScale: 0.72 }
 };
 const HELLFIRE_CONFIG = {
@@ -384,7 +386,7 @@ const AUDIO_CONFIG = {
   catchCooldown: 0.08,
   paths: {
     koutei: "music/koutei.mp3",
-    akuma: "music/akuma.mp3",
+    daimao: "music/daimao.mp3",
     pass: "music/pass.mp3",
     shoot: "music/shoot.mp3",
     special: "music/special.mp3",
@@ -418,6 +420,55 @@ const COUNTER_CONFIG = {
   knockbackScale: 1.4,
   staminaCost: 22,
   releaseDelay: 0.16
+};
+const SPECIAL_SHOT_DAMAGE_RULES = {
+  kiai: 1.7,
+  braveSlash: 1.95,
+  gigaBreak: 2.55,
+  fireball: 2.15,
+  holyLance: 2.25,
+  shiningArrow: (travelDistance = 0) => 1.9 + Math.min(0.45, Math.max(0, travelDistance) / 1800 * 0.45),
+  hundredRush: 2.18,
+  lunaticMirage: (travelDistance = 0) => (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32)) * 1.15,
+  lightning: 2,
+  triple: 2,
+  boomerang: 2.2,
+  devilShield: 1.9,
+  devilClaw: 1.85,
+  boost: (travelDistance = 0) => 1.7 + Math.min(0.8, travelDistance / 1900 * 0.8),
+  iron: 3,
+  tsutenkaku: 2.4,
+  soul: 1.2,
+  slap: (travelDistance = 0) => 2.8 - Math.min(1.75, Math.max(0, travelDistance) / 897),
+  clockStop: 2.2,
+  lockRocket: 2.415,
+  ufoSpin: 1.8,
+  hellfire: () => HELLFIRE_CONFIG.damageScale,
+  meteorCrash: () => METEOR_CRASH_CONFIG.damageScale,
+  bloodDrain: () => BLOOD_DRAIN_CONFIG.damageScale,
+  arcanaSphere: (travelDistance = 0) => {
+    const charge = Math.max(0, Math.min(1, travelDistance / ARCANA_SPHERE_DAMAGE_CONFIG.maxChargeDistance));
+    return ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale +
+      (ARCANA_SPHERE_DAMAGE_CONFIG.maxDamageScale - ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale) * charge;
+  }
+};
+const SPIRIT_GAIN_CONFIG = {
+  spiritPassGain: 0.2,
+  spiritNormalShotFireGain: 0.7,
+  spiritStrongShotFireGain: 0.9,
+  spiritJumpShotFireGain: 0.9,
+  spiritSpecialShotFireGain: 1,
+  spiritCounterShotFireGain: 1.3,
+  spiritNormalShotHitGain: 1,
+  spiritQuickShotHitGain: 1.2,
+  spiritCounterHitGain: 1.5,
+  spiritCatchGain: 2.5,
+  spiritDodgeGain: 2,
+  spiritSpecialDodgeBonus: 0.5,
+  spiritCloseDodgeBonus: 0.5,
+  spiritPassCutGain: 1.5,
+  spiritDamageGain: 1,
+  spiritDefeatGain: 5
 };
 const CPU_CATCH_DURATION_SCALE = 0.85;
 
@@ -456,8 +507,8 @@ const GAME_CONFIG = {
   ball: {
     radius: 37,
     damage: 20,
-    shootSpeed: 1377,
-    specialShootSpeed: 1197,
+    shootSpeed: 2065,
+    specialShootSpeed: 1646,
     passSpeed: 645,
     moveBonus: 0.34,
     gravity: 520,
@@ -486,16 +537,8 @@ const GAME_CONFIG = {
     depthBottom: 1080,
     characterScale: 1.56,
     spiritMax: 10,
-    spiritFillSeconds: 40,
-    spiritPassGain: 0.5,
-    spiritNormalShotHitGain: 1,
-    spiritQuickShotHitGain: 1.2,
-    spiritCounterHitGain: 1.5,
-    spiritCatchGain: 2,
-    spiritDodgeGain: 1.5,
-    spiritPassCutGain: 1.5,
-    spiritDamageGain: 1,
-    spiritDefeatGain: 5,
+    spiritFillSeconds: 120,
+    ...SPIRIT_GAIN_CONFIG,
     stamina: {
       shootCost: 18,
       shootChargeDrainPerSecond: 11,
@@ -569,6 +612,7 @@ class DodgeballGame {
     this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
+    this.heldBallWatchdog = { ownerId: null, timer: 0 };
     this.message = "READY";
     this.setupMatch();
     requestAnimationFrame((time) => this.loop(time));
@@ -587,7 +631,7 @@ class DodgeballGame {
     const bgm = {};
     const sfxPools = {};
     if (supported) {
-      for (const key of ["koutei", "akuma"]) {
+      for (const key of ["koutei", "daimao"]) {
         const audio = new Audio(AUDIO_CONFIG.paths[key]);
         audio.loop = true;
         audio.volume = AUDIO_CONFIG.bgmVolume;
@@ -605,6 +649,7 @@ class DodgeballGame {
     }
     return {
       supported,
+      enabled: true,
       bgm,
       currentBgm: null,
       sfxPools,
@@ -612,6 +657,21 @@ class DodgeballGame {
       cooldowns: {},
       unlocked: false
     };
+  }
+
+  isAudioEnabled() {
+    return Boolean(this.audio?.supported && this.audio.enabled);
+  }
+
+  toggleAudioEnabled() {
+    if (!this.audio?.supported) return;
+    this.audio.enabled = !this.audio.enabled;
+    if (!this.audio.enabled) {
+      this.stopBgm();
+      return;
+    }
+    this.unlockAudio();
+    if (this.state === "playing") this.startMatchBgm();
   }
 
   unlockAudio() {
@@ -641,8 +701,8 @@ class DodgeballGame {
   }
 
   startMatchBgm() {
-    if (!this.audio?.supported || !this.audio.unlocked) return;
-    const key = this.isArkmazMatch() ? "akuma" : "koutei";
+    if (!this.isAudioEnabled() || !this.audio.unlocked) return;
+    const key = this.isArkmazMatch() ? "daimao" : "koutei";
     if (this.audio.currentBgm === key && !this.audio.bgm[key].paused) return;
     for (const [name, audio] of Object.entries(this.audio.bgm)) {
       if (name === key) continue;
@@ -659,7 +719,7 @@ class DodgeballGame {
   }
 
   playSound(key, options = {}) {
-    if (!this.audio?.supported || !this.audio.unlocked) return;
+    if (!this.isAudioEnabled() || !this.audio.unlocked) return;
     const now = performance.now() / 1000;
     const cooldown = options.cooldown || 0;
     if (cooldown > 0 && now < (this.audio.cooldowns[key] || 0)) return;
@@ -765,6 +825,7 @@ class DodgeballGame {
     this.chargingThrow = null;
     this.shotMultiplierDisplay = null;
     this.tripleBalls = [];
+    this.heldBallWatchdog = { ownerId: null, timer: 0 };
   }
 
   createAreas() {
@@ -1548,9 +1609,7 @@ class DodgeballGame {
 
   getTeamDefinitionForSide(team) {
     if (this.gameMode === "watch") {
-      return team === "left"
-        ? this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex)
-        : this.getCpuOpponentTeamByIndex(this.watchCpuRightIndex);
+      return this.getSelectedTeamForSide(team);
     }
     if (this.gameMode === "single" && team === "right") {
       return this.getSelectedCpuOpponentTeam();
@@ -1658,6 +1717,9 @@ class DodgeballGame {
   }
 
   updateModeSelect() {
+    if (this.input.wasPressed("button0")) {
+      this.toggleAudioEnabled();
+    }
     if (this.wasMenuDirectionPressed("left") || this.wasMenuDirectionPressed("up")) {
       this.modeIndex = Math.max(0, this.modeIndex - 1);
     }
@@ -1679,6 +1741,7 @@ class DodgeballGame {
       } else if (this.gameMode === "versus") {
         this.selectedTeamIndices = { left: 0, right: 1 };
       } else {
+        this.selectedTeamIndices = { left: 2, right: 3 };
         this.watchCpuLeftIndex = 2;
         this.watchCpuRightIndex = 3;
       }
@@ -1687,7 +1750,7 @@ class DodgeballGame {
 
   updateTeamSelect() {
     if (this.gameMode === "watch") {
-      this.updateWatchTeamSelect();
+      this.updateSingleTeamSelectCursor();
     } else if (this.gameMode === "versus") {
       this.updateTeamSelectCursor("left", 1);
       this.updateTeamSelectCursor("right", 2);
@@ -1816,7 +1879,7 @@ class DodgeballGame {
   confirmTeamRoster(side) {
     this.teamSelectionConfirmed[side] = true;
     this.teamRosterConfirmed[side] = true;
-    if (this.gameMode === "single") {
+    if (this.gameMode === "single" || this.gameMode === "watch") {
       if (side === "left") {
         this.teamSelectionSide = "right";
         this.teamSelectionSlot = CPU_OPPONENT_SLOT;
@@ -2088,6 +2151,7 @@ class DodgeballGame {
     this.handleCpuButtons(delta);
     this.updateChargingThrow(delta);
     this.updatePendingThrow(delta);
+    this.recoverStalledHeldBall(delta);
     this.updateRhythmStep(delta);
     this.updatePlayers(delta);
     this.resolvePlayerCollisions();
@@ -2217,10 +2281,10 @@ class DodgeballGame {
         this.releaseChargedThrow(holder, "pass");
       }
     } else {
-      if (this.input.wasPressed("avoid")) {
+      const dodgePressed = this.input.wasPressed("avoid") || this.input.wasPressed("button1");
+      if (dodgePressed) {
         active.startDodge(0, 0, GAME_CONFIG.battle);
-      }
-      if (this.input.wasPressed("catch")) {
+      } else if (this.input.wasPressed("catch")) {
         active.startCatch(this.getCatchDuration(active));
       }
     }
@@ -2251,10 +2315,10 @@ class DodgeballGame {
           this.releaseChargedThrow(holder, "pass", 2);
         }
       } else if (activeRight && !activeRight.defeated) {
-        if (this.input.wasPressed("avoid", 2)) {
+        const dodgePressedP2 = this.input.wasPressed("avoid", 2) || this.input.wasPressed("button1", 2);
+        if (dodgePressedP2) {
           activeRight.startDodge(0, 0, GAME_CONFIG.battle);
-        }
-        if (this.input.wasPressed("catch", 2)) {
+        } else if (this.input.wasPressed("catch", 2)) {
           activeRight.startCatch(this.getCatchDuration(activeRight));
         }
       }
@@ -2331,6 +2395,74 @@ class DodgeballGame {
       this.launchFromAi(member, "shoot", opponents, false);
     }
     return true;
+  }
+
+  recoverStalledHeldBall(delta = 0) {
+    const owner = this.ball?.owner;
+    if (!owner || this.ball.isFlying || this.ball.isLoose) {
+      this.heldBallWatchdog = { ownerId: null, timer: 0 };
+      return;
+    }
+
+    const ownerValid = this.players.includes(owner) && !owner.defeated && owner.hp > 0 && owner.downTimer <= 0;
+    if (!ownerValid) {
+      if (owner) owner.hasBall = false;
+      this.releaseBallAt(
+        Number.isFinite(owner?.x) ? owner.x : GAME_CONFIG.court.centerX,
+        Number.isFinite(owner?.y) ? owner.y : GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55,
+        "loose"
+      );
+      this.heldBallWatchdog = { ownerId: null, timer: 0 };
+      return;
+    }
+
+    owner.hasBall = true;
+    for (const member of this.players) {
+      if (member !== owner && member.hasBall) member.hasBall = false;
+    }
+
+    const ownerId = owner.id ?? owner.name;
+    if (this.heldBallWatchdog.ownerId !== ownerId) {
+      this.heldBallWatchdog = { ownerId, timer: 0 };
+    }
+    this.heldBallWatchdog.timer += Math.max(0, delta);
+
+    const cpuLimit = this.pendingThrow?.actor === owner || this.chargingThrow?.actor === owner ? 5.2 : 4.0;
+    const playerLimit = 12;
+    const limit = owner.cpuControlled ? cpuLimit : playerLimit;
+    if (this.heldBallWatchdog.timer < limit) return;
+
+    if (this.pendingThrow?.actor === owner) {
+      owner.clockStopAnticipation = false;
+      owner.arcanaAnticipation = false;
+      this.pendingThrow = null;
+    }
+    if (this.chargingThrow?.actor === owner) {
+      owner.clockStopAnticipation = false;
+      owner.arcanaAnticipation = false;
+      this.chargingThrow = null;
+    }
+
+    owner.throwLockTimer = 0;
+    owner.throwTimer = 0;
+    owner.throwPhase = "none";
+    owner.throwKind = "none";
+    owner.counterThrowTimer = 0;
+    owner.hitRecoveryTimer = 0;
+    owner.cpuHoldStallTimer = 0;
+
+    if (owner.cpuControlled) {
+      const opponents = owner.team === "left" ? this.rightTeam : this.leftTeam;
+      const started = this.startCpuChargedShoot(owner, 0.35, "time", false) ||
+        this.launchFromAi(owner, "shoot", opponents, false);
+      if (started) {
+        this.heldBallWatchdog = { ownerId: null, timer: 0 };
+        return;
+      }
+    }
+
+    this.releaseBallAt(owner.x, owner.y - 24, "loose");
+    this.heldBallWatchdog = { ownerId: null, timer: 0 };
   }
 
   updatePlayers(delta) {
@@ -2618,6 +2750,8 @@ class DodgeballGame {
     const candidates = this.players
       .filter((member) => {
         if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
+        if (member.dodgeTimer > 0) return false;
+        if (member.pickupLockTimer > 0) return false;
         return this.canPlayerAcquireBallAt(member, this.ball.x, this.ball.y);
       })
       .sort((a, b) => (
@@ -2757,6 +2891,8 @@ class DodgeballGame {
     const candidates = this.players
       .filter((member) => {
         if (member.defeated || member.downTimer > 0 || member.stunTimer > 0 || member.hitRecoveryTimer > 0) return false;
+        if (member.dodgeTimer > 0) return false;
+        if (member.pickupLockTimer > 0) return false;
         return this.canPlayerAcquireBallAt(member, this.ball.x, this.ball.y);
       })
       .map((member) => ({
@@ -3142,12 +3278,15 @@ class DodgeballGame {
     if (this.isSupportSpecialShot(specialType)) {
       this.consumeSpirit(actor.team);
       this.applySupportSpecial(actor, specialType);
+      this.addSpiritForShotFire({ actor, kind, specialType, shotMultiplier: multiplier, aerialCombo: charged.aerialCombo });
       this.playSound("special");
       if (kind === "shoot") this.showShotMultiplier(multiplier, actor, specialType);
       return true;
     }
     this.updateHeroBondIntensityFor(actor);
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
+      if (specialType) this.consumeSpirit(actor.team);
+      this.addSpiritForShotFire({ actor, kind, specialType, shotMultiplier: multiplier, aerialCombo: charged.aerialCombo });
       this.playThrowSound(kind, specialType, false);
       if (kind === "shoot") this.showShotMultiplier(multiplier, actor, specialType);
       if (kind === "pass" && this.isShiningPassActor(actor)) {
@@ -3277,12 +3416,14 @@ class DodgeballGame {
     if (this.isSupportSpecialShot(specialType)) {
       this.consumeSpirit(pending.actor.team);
       this.applySupportSpecial(pending.actor, specialType);
+      this.addSpiritForShotFire(pending);
       this.playSound("special");
       if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
       return;
     }
     this.updateHeroBondIntensityFor(pending.actor);
     if (this.ball.launch(pending.actor, launchTarget, pending.kind, pending.aim, launchMultiplier, specialType)) {
+      if (!specialType) this.addSpiritForShotFire(pending);
       this.playThrowSound(pending.kind, specialType, Boolean(pending.counter));
       if (pending.devilTrianglePass) {
         this.ball.devilTrianglePass = true;
@@ -3356,7 +3497,10 @@ class DodgeballGame {
         this.spawnCatchResultLabel(pending.actor, "QUICK!", "#fff27a");
         return;
       }
-      if (specialType) this.consumeSpirit(pending.actor.team);
+      if (specialType) {
+        this.consumeSpirit(pending.actor.team);
+        this.addSpiritForShotFire(pending);
+      }
       if (specialType === "triple") this.spawnTripleDummyBalls(pending.actor, pending.aim, pending.shotMultiplier);
       if (pending.kind === "shoot") this.showShotMultiplier(pending.shotMultiplier, pending.actor, specialType);
       if (specialType === "hellfire") {
@@ -3637,7 +3781,6 @@ class DodgeballGame {
   }
 
   getSpecialShotType(actor) {
-    if (!this.canUseSpiritSpecial(actor)) return null;
     if (actor.specialShotType === "none") return null;
     if (actor.specialShotType) return actor.specialShotType;
     if (actor.characterType === "witch" || actor.uniformEmblem === "witch") return "arcanaSphere";
@@ -3665,7 +3808,10 @@ class DodgeballGame {
   }
 
   canUseSpiritSpecial(actor) {
-    return Boolean(actor && actor.role !== "out" && this.hasFullSpirit(actor.team));
+    if (!actor || actor.role === "out" || !this.hasFullSpirit(actor.team)) return false;
+    const specialType = this.getSpecialShotType(actor);
+    if (specialType === "grandHeal" && (actor.grandHealCooldownTimer || 0) > 0) return false;
+    return true;
   }
 
   getThrowWindupScale(actor) {
@@ -3843,6 +3989,7 @@ class DodgeballGame {
       return;
     }
     if (target.hitRecoveryTimer > 0) return;
+    if (target.dodgeTimer > 0 || target.pickupLockTimer > 0) return;
     const horizontalDistance = Math.hypot(this.ball.x - target.x, this.ball.y - (target.y - 34));
     if (
       this.ball.passDuration > 0 &&
@@ -3872,6 +4019,12 @@ class DodgeballGame {
       this.playSound("catch", { cooldown: AUDIO_CONFIG.catchCooldown });
       this.addSpirit(passingTeam, GAME_CONFIG.battle.spiritPassGain);
       target.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
+      if (target.cpuControlled) {
+        target.setPostPassAction?.("shoot", 2.2, {
+          aerial: target.jumpZ > 18,
+          source: "passReceive"
+        });
+      }
       this.setControlledMember(target.team, target);
       this.spawnEffect(target.x, target.y - 55, "#ffffff", "catch");
     }
@@ -3916,6 +4069,7 @@ class DodgeballGame {
       const catchResult = this.getManualCatchResult(catcher, friendly);
       if (catchResult === "wait") continue;
       if (catchResult === "miss") {
+        this.applyCatchMissPenalty(catcher);
         catcher.catchTimer = 0;
         this.spawnCatchResultLabel(catcher, "MISS", "#ff806f");
         continue;
@@ -3945,6 +4099,12 @@ class DodgeballGame {
         this.addSpirit(throwingTeam, GAME_CONFIG.battle.spiritPassGain);
         catcher.quickShotReadyTimer = QUICK_SHOT_CONFIG.windowDuration;
         catcher.passChainBlockTimer = 1.4;
+        if (catcher.cpuControlled) {
+          catcher.setPostPassAction?.("shoot", 2.2, {
+            aerial: caughtFriendlyPassInAir,
+            source: "manualPassCatch"
+          });
+        }
       }
       if (cutEnemyPass) {
         this.addSpirit(catcher.team, GAME_CONFIG.battle.spiritPassCutGain);
@@ -4101,19 +4261,21 @@ class DodgeballGame {
     if (!enemyShot) return 0.3;
 
     const difficulty = this.getCatchDifficulty(catcher);
+    const globalShotCatchDurationScale = 0.9;
     if (this.ball.counterShot) {
       return Math.max(
-        COUNTER_CONFIG.minCatchDuration,
-        COUNTER_CONFIG.catchDuration - (this.ball.counterChainCount || 0) * COUNTER_CONFIG.catchDurationPenaltyPerChain
+        COUNTER_CONFIG.minCatchDuration * globalShotCatchDurationScale,
+        (COUNTER_CONFIG.catchDuration - (this.ball.counterChainCount || 0) * COUNTER_CONFIG.catchDurationPenaltyPerChain) * globalShotCatchDurationScale
       );
     }
 
-    const arcanaCatchScale = this.ball.specialShotType === "arcanaSphere"
-      ? 1 - this.getArcanaSphereChargeRate(this.ball.travelDistance) * 0.25
+    const chargeCatchWindowPenalty = difficulty.chargeCatchWindowPenalty || 0;
+    const chargeCatchScale = chargeCatchWindowPenalty > 0
+      ? 1 - this.getArcanaSphereChargeRate(this.ball.travelDistance) * chargeCatchWindowPenalty
       : 1;
     const baseDuration = (this.ball.quickShot
       ? 0.14
-      : difficulty.duration) * arcanaCatchScale;
+      : difficulty.duration) * chargeCatchScale;
     const techniqueScale = this.getCatchTechniqueWindowScale(catcher.stats?.technique || 5);
     const facingQuality = this.getIncomingFacingQuality(catcher);
     const facingScale = facingQuality === "front" ? 1 : facingQuality === "side" ? 0.55 : 0.2;
@@ -4127,9 +4289,11 @@ class DodgeballGame {
     // 入力時に決まった受付時間内へボールが入れば成功する。乱数は使用しない。
     const victoryScale = catcher.getVictoryMarchCatchScale?.() ?? 1;
     const martialArtistScale = this.getMartialArtistSpecialCatchScale(catcher);
+    let cpuCatchSuccessScale = catcher.cpuControlled ? 0.9 : 1;
+    if (catcher.cpuControlled && this.ball.specialShotType) cpuCatchSuccessScale *= 0.9;
     return Math.max(
-      0.045,
-      Math.min(0.26, baseDuration * techniqueScale * facingScale * distanceScale * powerScale * victoryScale * martialArtistScale)
+      0.045 * globalShotCatchDurationScale,
+      Math.min(0.26 * globalShotCatchDurationScale, baseDuration * techniqueScale * facingScale * distanceScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * globalShotCatchDurationScale)
     );
   }
 
@@ -4254,16 +4418,8 @@ class DodgeballGame {
   }
 
   endShotAfterDodge(target) {
-    const direction = this.ball.vx >= 0 ? 1 : -1;
     this.ball.hitPlayerIds?.add(target.id);
-    this.ball.drop();
-    this.ball.x = target.x + direction * Math.min(58, Math.max(24, this.ball.radius * 1.35));
-    this.ball.y = target.y + (Math.random() - 0.5) * 52;
-    this.ball.z = Math.max(10, Math.min(46, target.jumpZ * 0.18));
-    this.ball.vx = direction * (120 + Math.random() * 80);
-    this.ball.vy = (Math.random() - 0.5) * 170;
-    this.ball.vz = 70 + Math.random() * 55;
-    this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "catch");
+    this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "dodge");
   }
 
   completeShieldDevilThrownGuard(protector, target, direction) {
@@ -4526,7 +4682,7 @@ class DodgeballGame {
       if (this.resolveWitchReflectShield(target, ballY)) return;
       if (!this.circleRectOverlap(this.ball.x, ballY, this.ball.radius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
-          this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
+          this.addSpiritForDodge(target, this.ball);
           if (this.isPiercingShot(this.ball.specialShotType)) {
             this.ball.hitPlayerIds?.add(target.id);
           } else {
@@ -4592,8 +4748,10 @@ class DodgeballGame {
       if (!shieldGuardBlock && this.tryMoonBarrier(target, ballY, damage, direction)) return;
       const hpBefore = target.hp;
       const wasDodging = target.dodgeTimer > 0;
+      const wasTryingCatch = target.catchTimer > 0;
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
+        if (wasTryingCatch) this.applyCatchMissPenalty(target, this.ball);
         const actualDamage = Math.max(0, hpBefore - target.hp);
         this.addSpiritForDamage(target.team, hpBefore, target.hp);
         this.addSpiritForShotHit(this.ball);
@@ -4719,7 +4877,7 @@ class DodgeballGame {
         this.spillHitBallInDefenderCourt(target, direction, damage);
         return;
       } else if (wasDodging) {
-        this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
+        this.addSpiritForDodge(target, this.ball);
         if (this.isPiercingShot(this.ball.specialShotType)) {
           this.ball.hitPlayerIds?.add(target.id);
         } else {
@@ -4784,7 +4942,7 @@ class DodgeballGame {
         const ballY = shot.y - shot.z;
         if (!this.circleRectOverlap(shot.x, ballY, shot.radius, hit)) {
           if (this.isSuccessfulDodgeOverlap(target, shot.x, ballY, shot.radius)) {
-            this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
+            this.addSpiritForDodge(target, { specialShotType: "triple", thrower: this.ball?.thrower });
             shot.hitPlayerIds.add(target.id);
             consumed = true;
             break;
@@ -4799,7 +4957,7 @@ class DodgeballGame {
           this.spawnEffect(shot.x, ballY, shot.color || "#ffcc8a", "tripleSpark");
           this.spawnDamageNumber(target, shot.power);
         } else if (wasDodging) {
-          this.addSpirit(target.team, GAME_CONFIG.battle.spiritDodgeGain);
+          this.addSpiritForDodge(target, { specialShotType: "triple", thrower: this.ball?.thrower });
           shot.hitPlayerIds.add(target.id);
         }
         consumed = true;
@@ -4868,62 +5026,9 @@ class DodgeballGame {
   }
 
   getSpecialShotDamage(baseDamage, specialType, travelDistance = 0) {
-    let damage = baseDamage;
-    if (specialType === "kiai") {
-      damage = baseDamage * 1.7;
-    } else if (specialType === "braveSlash") {
-      damage = baseDamage * 1.95;
-    } else if (specialType === "gigaBreak") {
-      damage = baseDamage * 2.55;
-    } else if (specialType === "fireball") {
-      damage = baseDamage * 2.15;
-    } else if (specialType === "holyLance") {
-      damage = baseDamage * 2.25;
-    } else if (specialType === "shiningArrow") {
-      damage = baseDamage * (1.9 + Math.min(0.45, Math.max(0, travelDistance) / 1800 * 0.45));
-    } else if (specialType === "hundredRush") {
-      damage = baseDamage * 2.18;
-    } else if (specialType === "lunaticMirage") {
-      damage = baseDamage * (1.92 + Math.min(0.32, Math.max(0, travelDistance) / 1500 * 0.32)) * 1.15;
-    } else if (specialType === "lightning" || specialType === "triple") {
-      damage = baseDamage * 2;
-    } else if (specialType === "boomerang") {
-      damage = baseDamage * 2.2;
-    } else if (specialType === "devilShield") {
-      damage = baseDamage * 1.9;
-    } else if (specialType === "devilClaw") {
-      damage = baseDamage * 1.85;
-    } else if (specialType === "boost") {
-      damage = baseDamage * (1.7 + Math.min(0.8, travelDistance / 1900 * 0.8));
-    } else if (specialType === "iron") {
-      damage = baseDamage * 3;
-    } else if (specialType === "tsutenkaku") {
-      damage = baseDamage * 2.4;
-    } else if (specialType === "soul") {
-      damage = baseDamage * 1.2;
-    } else if (specialType === "slap") {
-      const distancePenalty = Math.min(1.75, Math.max(0, travelDistance) / 897);
-      damage = baseDamage * (2.8 - distancePenalty);
-    } else if (specialType === "clockStop") {
-      damage = baseDamage * 2.2;
-    } else if (specialType === "lockRocket") {
-      damage = baseDamage * 2.415;
-    } else if (specialType === "ufoSpin") {
-      damage = baseDamage * 1.8;
-    } else if (specialType === "hellfire") {
-      damage = baseDamage * HELLFIRE_CONFIG.damageScale;
-    } else if (specialType === "meteorCrash") {
-      damage = baseDamage * METEOR_CRASH_CONFIG.damageScale;
-    } else if (specialType === "bloodDrain") {
-      damage = baseDamage * BLOOD_DRAIN_CONFIG.damageScale;
-    } else if (specialType === "arcanaSphere") {
-      const charge = this.getArcanaSphereChargeRate(travelDistance);
-      damage = baseDamage * (
-        ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale +
-        (ARCANA_SPHERE_DAMAGE_CONFIG.maxDamageScale - ARCANA_SPHERE_DAMAGE_CONFIG.minDamageScale) * charge
-      );
-    }
-    return damage * SHOT_DAMAGE_SCALE;
+    const rule = SPECIAL_SHOT_DAMAGE_RULES[specialType];
+    const damageScale = typeof rule === "function" ? rule(travelDistance) : rule ?? 1;
+    return baseDamage * damageScale * SHOT_DAMAGE_SCALE;
   }
 
   getArcanaSphereChargeRate(travelDistance = 0) {
@@ -4998,6 +5103,44 @@ class DodgeballGame {
     if (!this.spiritPoints || !team) return;
     const max = GAME_CONFIG.battle.spiritMax;
     this.spiritPoints[team] = Math.max(0, Math.min(max, (this.spiritPoints[team] || 0) + amount));
+  }
+
+  addSpiritForDodge(player, shot = this.ball) {
+    if (!player) return;
+    let gain = GAME_CONFIG.battle.spiritDodgeGain;
+    if (shot?.specialShotType) gain += GAME_CONFIG.battle.spiritSpecialDodgeBonus;
+    const throwerDistance = shot?.thrower
+      ? Math.hypot(shot.thrower.x - player.x, shot.thrower.y - player.y)
+      : Infinity;
+    if (throwerDistance < 260) gain += GAME_CONFIG.battle.spiritCloseDodgeBonus;
+    this.addSpirit(player.team, gain);
+  }
+
+  applyCatchMissPenalty(catcher, shot = this.ball) {
+    if (!catcher || shot?.kind !== "shoot" || shot?.counterShot) return;
+    const penalty = shot?.specialShotType ? 0.7 : 0.3;
+    catcher.hitRecoveryTimer = Math.max(catcher.hitRecoveryTimer || 0, penalty);
+    catcher.catchTimer = 0;
+  }
+
+  addSpiritForShotFire(throwInfo) {
+    const actor = throwInfo?.actor;
+    if (!actor || throwInfo.kind !== "shoot") return;
+
+    const config = GAME_CONFIG.battle;
+    let gain = 0;
+    if (throwInfo.specialType) {
+      gain = config.spiritSpecialShotFireGain;
+    } else if (throwInfo.counter) {
+      gain = config.spiritCounterShotFireGain;
+    } else if ((actor.jumpZ || 0) > 20 || throwInfo.aerialCombo) {
+      gain = config.spiritJumpShotFireGain;
+    } else if ((throwInfo.shotMultiplier || 1) >= 1.28) {
+      gain = config.spiritStrongShotFireGain;
+    } else {
+      gain = config.spiritNormalShotFireGain;
+    }
+    this.addSpirit(actor.team, gain);
   }
 
   addSpiritForShotHit(ball) {
@@ -5101,6 +5244,7 @@ class DodgeballGame {
 
   applyGrandHeal(actor) {
     if (!actor) return;
+    actor.grandHealCooldownTimer = GRAND_HEAL_CONFIG.cooldown;
     const team = actor.team === "left" ? this.leftTeam : this.rightTeam;
     this.effects.push({
       type: "grandHealRitual",
@@ -5261,7 +5405,7 @@ class DodgeballGame {
         this.spawnDamageNumber(enemy, finalSplashDamage);
       } else if (enemy.hp > 0) {
         if (wasDodging) {
-          this.addSpirit(enemy.team, GAME_CONFIG.battle.spiritDodgeGain);
+          this.addSpiritForDodge(enemy, this.ball);
         }
         enemy.stun(0.24);
         this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 70, "#8ffcff", "special");
@@ -5289,7 +5433,7 @@ class DodgeballGame {
         this.spawnEffect(enemy.x, enemy.y - enemy.jumpZ - 58, "#ff7a1f", "special", 0.78);
         this.spawnDamageNumber(enemy, finalDamage);
       } else if (wasDodging) {
-        this.addSpirit(enemy.team, GAME_CONFIG.battle.spiritDodgeGain);
+        this.addSpiritForDodge(enemy, this.ball);
       }
     }
   }
@@ -6048,6 +6192,7 @@ class DodgeballGame {
     context.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
     if (this.state === "modeSelect") {
       this.drawModeSelect();
+      this.drawModeSelectOverlay();
       this.drawGamepadButtonMonitor();
       return;
     }
@@ -6199,6 +6344,26 @@ class DodgeballGame {
     context.restore();
   }
 
+  drawModeSelectOverlay() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const audioStatus = this.audio?.supported
+      ? this.audio.enabled ? "ON" : "OFF"
+      : "未対応";
+
+    context.save();
+    context.textAlign = "center";
+    context.font = "18px Meiryo, sans-serif";
+    context.fillStyle = this.audio?.enabled ? "#fff7df" : "#ffd0d0";
+    context.fillText(`音声: ${audioStatus} / ボタン0で切替`, centerX, 555);
+
+    context.textAlign = "right";
+    context.font = "14px Meiryo, sans-serif";
+    context.fillStyle = "rgba(255,247,223,0.78)";
+    context.fillText(`最終更新: ${LAST_UPDATED_AT}`, GAME_CONFIG.width - 18, GAME_CONFIG.height - 18);
+    context.restore();
+  }
+
   drawModeSelect() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
@@ -6240,30 +6405,8 @@ class DodgeballGame {
   }
 
   drawWatchTeamSelect() {
-    const leftTeam = this.getCpuOpponentTeamByIndex(this.watchCpuLeftIndex);
-    const rightTeam = this.getCpuOpponentTeamByIndex(this.watchCpuRightIndex);
-    this.drawWatchCpuTeamDetails(leftTeam, 144, 278, "#0057ff");
-    this.drawWatchCpuTeamDetails(rightTeam, 814, 278, "#f01818");
-    this.drawTeamChoicePanel(
-      "left",
-      90,
-      122,
-      590,
-      "LEFT CPU TEAM",
-      "#0057ff",
-      this.watchSelectionSlot === 0,
-      this.watchCpuLeftIndex
-    );
-    this.drawTeamChoicePanel(
-      "right",
-      760,
-      122,
-      590,
-      "RIGHT CPU TEAM",
-      "#f01818",
-      this.watchSelectionSlot === 1,
-      this.watchCpuRightIndex
-    );
+    this.drawPlayableTeamSelectSide("left", 90, "LEFT CPU TEAM", "#0057ff");
+    this.drawPlayableTeamSelectSide("right", 760, "RIGHT CPU TEAM", "#f01818");
   }
 
   drawWatchTeamColumn(title, x, y, color, selectedIndex, active) {
@@ -6811,7 +6954,7 @@ class DodgeballGame {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
     const selected = this.gameMode === "watch"
-      ? this.watchSelectionSlot === 2
+      ? this.teamSelectionSlot === START_SLOT
       : this.gameMode === "versus"
         ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
         : this.teamSelectionSlot === START_SLOT;
