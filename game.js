@@ -32,6 +32,12 @@ const DISSONANCE_FEINT_CONFIG = {
   catchWindowScale: 0.9,
   catchAreaScale: 0.92
 };
+const NO_DEFENSE_HITBOX_CONFIG = {
+  normalScale: 1.2,
+  specialScale: 1.3,
+  closeSpecialScale: 1.2,
+  closeSpecialDistance: 180
+};
 const BRAVES_JOB_DEFINITIONS = {
   hero: {
     label: "勇者",
@@ -4317,11 +4323,13 @@ class DodgeballGame {
     if (!enemyShot) return 0.3;
 
     const difficulty = this.getCatchDifficulty(catcher);
-    const globalShotCatchDurationScale = 0.9;
+    const baseCatchDurationScale = 0.9;
+    const shotCatchDurationScale = 0.9;
+    const specialCatchDurationScale = this.ball.specialShotType ? 0.95 : 1;
     if (this.ball.counterShot) {
       return Math.max(
-        COUNTER_CONFIG.minCatchDuration * globalShotCatchDurationScale,
-        (COUNTER_CONFIG.catchDuration - (this.ball.counterChainCount || 0) * COUNTER_CONFIG.catchDurationPenaltyPerChain) * globalShotCatchDurationScale
+        COUNTER_CONFIG.minCatchDuration * baseCatchDurationScale,
+        (COUNTER_CONFIG.catchDuration - (this.ball.counterChainCount || 0) * COUNTER_CONFIG.catchDurationPenaltyPerChain) * baseCatchDurationScale
       );
     }
 
@@ -4347,9 +4355,10 @@ class DodgeballGame {
     const martialArtistScale = this.getMartialArtistSpecialCatchScale(catcher);
     let cpuCatchSuccessScale = catcher.cpuControlled ? 0.9 : 1;
     if (catcher.cpuControlled && this.ball.specialShotType) cpuCatchSuccessScale *= 0.9;
+    const durationScale = baseCatchDurationScale * shotCatchDurationScale * specialCatchDurationScale;
     return Math.max(
-      0.045 * globalShotCatchDurationScale,
-      Math.min(0.26 * globalShotCatchDurationScale, baseDuration * techniqueScale * facingScale * distanceScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * globalShotCatchDurationScale)
+      0.045 * durationScale,
+      Math.min(0.26 * durationScale, baseDuration * techniqueScale * facingScale * distanceScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * durationScale)
     );
   }
 
@@ -4469,9 +4478,32 @@ class DodgeballGame {
     return this.circleRectOverlap(ballX, ballY, ballRadius, standingBox);
   }
 
-  getShotHitRadius(shot) {
+  isNoDefenseTarget(target) {
+    return Boolean(
+      target &&
+      (target.catchTimer || 0) <= 0 &&
+      (target.dodgeTimer || 0) <= 0
+    );
+  }
+
+  getShotHitRadius(shot, target = null) {
     const baseRadius = shot?.radius || 0;
-    return shot?.specialShotType ? baseRadius * 1.2 : baseRadius;
+    let radius = shot?.specialShotType ? baseRadius * 1.2 : baseRadius;
+    if (!shot || shot.kind !== "shoot" || shot.counterShot || !this.isNoDefenseTarget(target)) {
+      return radius;
+    }
+
+    if (shot.specialShotType) {
+      radius *= NO_DEFENSE_HITBOX_CONFIG.specialScale;
+      const ballY = shot.y - (shot.z || 0);
+      const distance = Math.hypot((shot.x || 0) - target.x, ballY - target.y);
+      if (distance < NO_DEFENSE_HITBOX_CONFIG.closeSpecialDistance) {
+        radius *= NO_DEFENSE_HITBOX_CONFIG.closeSpecialScale;
+      }
+      return radius;
+    }
+
+    return radius * NO_DEFENSE_HITBOX_CONFIG.normalScale;
   }
 
   isPiercingShot(specialType) {
@@ -4740,7 +4772,7 @@ class DodgeballGame {
       const originalTarget = target;
       const hit = target.getHitBox();
       const ballY = this.ball.y - this.ball.z;
-      const hitRadius = this.getShotHitRadius(this.ball);
+      const hitRadius = this.getShotHitRadius(this.ball, target);
       if (this.resolveWitchReflectShield(target, ballY)) return;
       if (!this.circleRectOverlap(this.ball.x, ballY, hitRadius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
@@ -5012,7 +5044,7 @@ class DodgeballGame {
         if (target.defeated || target.role !== "inner" || shot.hitPlayerIds.has(target.id)) continue;
         const hit = target.getHitBox();
         const ballY = shot.y - shot.z;
-        const hitRadius = this.getShotHitRadius(shot);
+        const hitRadius = this.getShotHitRadius(shot, target);
         if (!this.circleRectOverlap(shot.x, ballY, hitRadius, hit)) {
           if (this.isSuccessfulDodgeOverlap(target, shot.x, ballY, shot.radius)) {
             this.addSpiritForDodge(target, { specialShotType: "triple", thrower: this.ball?.thrower });
