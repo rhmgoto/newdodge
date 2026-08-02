@@ -23,7 +23,7 @@ const BRAVES_OUTFIELD_ARCHER_NAMES = ["ロイ", "レイ", "ルイ"];
 const GRAND_HEAL_CONFIG = {
   duration: 2.6,
   tickInterval: 0.26,
-  healRatioPerTick: 0.025,
+  healRatioPerTick: 0.015,
   startProgress: 0.25,
   cooldown: 60
 };
@@ -38,6 +38,19 @@ const NO_DEFENSE_HITBOX_CONFIG = {
   closeSpecialScale: 1.2,
   closeSpecialDistance: 180
 };
+const CATCH_DURATION_SCALE_CONFIG = {
+  base: 0.9,
+  shot: 0.9,
+  special: 0.95
+};
+const LATE_MATCH_PRESSURE_CONFIG = {
+  firstDamageTime: 90,
+  secondDamageTime: 120,
+  firstDamageScale: 1.1,
+  secondDamageScale: 1.2,
+  noDamageSeconds: 10,
+  noDamageHitboxScale: 1.15
+};
 const BRAVES_JOB_DEFINITIONS = {
   hero: {
     label: "勇者",
@@ -49,7 +62,7 @@ const BRAVES_JOB_DEFINITIONS = {
     uniformColor: "#2f73e8",
     pantsColor: "#243a68",
     trimColor: "#d83232",
-    hairColor: "#f0c14b",
+    hairColor: "#b86f36",
     faceColor: "#ffd9b0",
     eyeColor: "#2c6ee8"
   },
@@ -296,7 +309,7 @@ function getStatusDefensePassOverride(name, specialShotType) {
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
 const SHOT_WINDUP_TIME = 0.38 * 1.3;
-const SHOT_DAMAGE_SCALE = 1.3;
+const SHOT_DAMAGE_SCALE = 1.69;
 const VICTORY_MARCH_DURATION = 15;
 const QUICK_SHOT_CONFIG = {
   windowDuration: 0.55,
@@ -860,6 +873,8 @@ class DodgeballGame {
     this.shotMultiplierDisplay = null;
     this.tripleBalls = [];
     this.heldBallWatchdog = { ownerId: null, timer: 0 };
+    this.matchElapsedTime = 0;
+    this.timeSinceLastDamage = 0;
   }
 
   createAreas() {
@@ -2166,6 +2181,8 @@ class DodgeballGame {
       this.counterFreezeTimer = Math.max(0, this.counterFreezeTimer - delta);
       return;
     }
+    this.matchElapsedTime = (this.matchElapsedTime || 0) + delta;
+    this.timeSinceLastDamage = (this.timeSinceLastDamage || 0) + delta;
     this.updateEffects(delta);
     this.updateHellfireZones(delta);
     this.updateMeteorLavaZones(delta);
@@ -4323,9 +4340,9 @@ class DodgeballGame {
     if (!enemyShot) return 0.3;
 
     const difficulty = this.getCatchDifficulty(catcher);
-    const baseCatchDurationScale = 0.9;
-    const shotCatchDurationScale = 0.9;
-    const specialCatchDurationScale = this.ball.specialShotType ? 0.95 : 1;
+    const baseCatchDurationScale = CATCH_DURATION_SCALE_CONFIG.base;
+    const shotCatchDurationScale = CATCH_DURATION_SCALE_CONFIG.shot;
+    const specialCatchDurationScale = this.ball.specialShotType ? CATCH_DURATION_SCALE_CONFIG.special : 1;
     if (this.ball.counterShot) {
       return Math.max(
         COUNTER_CONFIG.minCatchDuration * baseCatchDurationScale,
@@ -4486,9 +4503,31 @@ class DodgeballGame {
     );
   }
 
+  getLateMatchShotDamageScale() {
+    const elapsed = this.matchElapsedTime || 0;
+    if (elapsed >= LATE_MATCH_PRESSURE_CONFIG.secondDamageTime) {
+      return LATE_MATCH_PRESSURE_CONFIG.secondDamageScale;
+    }
+    if (elapsed >= LATE_MATCH_PRESSURE_CONFIG.firstDamageTime) {
+      return LATE_MATCH_PRESSURE_CONFIG.firstDamageScale;
+    }
+    return 1;
+  }
+
+  getNoDamagePressureHitboxScale() {
+    return (this.timeSinceLastDamage || 0) >= LATE_MATCH_PRESSURE_CONFIG.noDamageSeconds
+      ? LATE_MATCH_PRESSURE_CONFIG.noDamageHitboxScale
+      : 1;
+  }
+
+  recordShotDamage() {
+    this.timeSinceLastDamage = 0;
+  }
+
   getShotHitRadius(shot, target = null) {
     const baseRadius = shot?.radius || 0;
     let radius = shot?.specialShotType ? baseRadius * 1.2 : baseRadius;
+    radius *= this.getNoDamagePressureHitboxScale();
     if (!shot || shot.kind !== "shoot" || shot.counterShot || !this.isNoDefenseTarget(target)) {
       return radius;
     }
@@ -4813,6 +4852,7 @@ class DodgeballGame {
       if (qigongShot) {
         damage *= qigongShotDamageScale;
       }
+      damage *= this.getLateMatchShotDamageScale();
       if (this.isVampireLightWeakness(target, specialType)) {
         damage *= BLOOD_DRAIN_CONFIG.lightWeaknessScale;
       }
@@ -5057,10 +5097,11 @@ class DodgeballGame {
         const direction = shot.vx >= 0 ? 1 : -1;
         const hpBefore = target.hp;
         const wasDodging = target.dodgeTimer > 0;
-        if (target.takeDamage(shot.power, direction, GAME_CONFIG.battle, 0.55)) {
+        const shotDamage = shot.power * this.getLateMatchShotDamageScale();
+        if (target.takeDamage(shotDamage, direction, GAME_CONFIG.battle, 0.55)) {
           this.addSpiritForDamage(target.team, hpBefore, target.hp);
           this.spawnEffect(shot.x, ballY, shot.color || "#ffcc8a", "tripleSpark");
-          this.spawnDamageNumber(target, shot.power);
+          this.spawnDamageNumber(target, shotDamage);
         } else if (wasDodging) {
           this.addSpiritForDodge(target, { specialShotType: "triple", thrower: this.ball?.thrower });
           shot.hitPlayerIds.add(target.id);
@@ -5080,7 +5121,8 @@ class DodgeballGame {
       !this.ball.thrower
     ) return;
 
-    const damage = this.getSpecialShotDamage(this.ball.power, "lightning", this.ball.travelDistance);
+    const damage = this.getSpecialShotDamage(this.ball.power, "lightning", this.ball.travelDistance)
+      * this.getLateMatchShotDamageScale();
     this.ball.lightningImpactPending = false;
     this.applyLightningSplash(null, damage, this.ball.lightningTargetX, this.ball.lightningTargetY);
     this.spawnEffect(this.ball.lightningTargetX, this.ball.lightningTargetY - 48, "#ffd400", "special");
@@ -5107,7 +5149,8 @@ class DodgeballGame {
 
     const centerX = this.ball.tsutenkakuTargetX;
     const centerY = this.ball.tsutenkakuTargetY;
-    const damage = this.getSpecialShotDamage(this.ball.power, "tsutenkaku", this.ball.travelDistance);
+    const damage = this.getSpecialShotDamage(this.ball.power, "tsutenkaku", this.ball.travelDistance)
+      * this.getLateMatchShotDamageScale();
     this.ball.tsutenkakuImpactPending = false;
     this.applyTsutenkakuSplash(null, damage, centerX, centerY);
     this.ball.drop();
@@ -5123,7 +5166,9 @@ class DodgeballGame {
     const centerX = this.ball.meteorCrashTargetX;
     const centerY = this.ball.meteorCrashTargetY;
     const meteorHeatScale = 1 + ((this.ball.meteorCrashHeatScale || 1) - 1) * 0.5;
-    const baseDamage = this.getSpecialShotDamage(this.ball.power, "meteorCrash", this.ball.travelDistance) * meteorHeatScale;
+    const baseDamage = this.getSpecialShotDamage(this.ball.power, "meteorCrash", this.ball.travelDistance)
+      * meteorHeatScale
+      * this.getLateMatchShotDamageScale();
     this.ball.meteorCrashImpactPending = false;
     this.applyMeteorCrashSplash(baseDamage, centerX, centerY);
     this.spawnMeteorLavaZone(centerX, centerY, this.ball.thrower.team);
@@ -5260,6 +5305,7 @@ class DodgeballGame {
 
   addSpiritForDamage(team, hpBefore, hpAfter) {
     if (hpBefore <= 0) return;
+    if (hpAfter < hpBefore) this.recordShotDamage();
     const gain = hpAfter <= 0
       ? GAME_CONFIG.battle.spiritDefeatGain
       : GAME_CONFIG.battle.spiritDamageGain;
@@ -7989,6 +8035,49 @@ class DodgeballGame {
     context.fillRect(c.x - 420, c.y - 310, width + 840, c.h + 620);
     this.drawBench(c.centerX - 650, -56, "#3087f2");
     this.drawBench(c.centerX + 430, -56, "#f05a45");
+    this.drawMatchTimeBoard(c.centerX, -42, false);
+  }
+
+  getMatchTimeText() {
+    const totalSeconds = Math.max(0, Math.floor(this.matchElapsedTime || 0));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  drawMatchTimeBoard(x, y, dark = false) {
+    const context = this.context;
+    const timeText = this.getMatchTimeText();
+    context.save();
+    context.translate(x, y);
+    context.fillStyle = "rgba(0,0,0,0.18)";
+    context.beginPath();
+    context.ellipse(0, 64, 126, 12, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = dark ? "#17101c" : "#f7f0d2";
+    context.strokeStyle = dark ? "#8e6b2b" : "#473f31";
+    context.lineWidth = 4;
+    this.roundRect(context, -118, -32, 236, 82, 7);
+    context.fill();
+    context.stroke();
+    context.fillStyle = dark ? "#2c2034" : "#3e4b3f";
+    this.roundRect(context, -100, -17, 200, 52, 5);
+    context.fill();
+    context.strokeStyle = dark ? "rgba(255,214,106,0.55)" : "rgba(255,255,255,0.28)";
+    context.lineWidth = 2;
+    context.stroke();
+    context.fillStyle = dark ? "#f6d276" : "#fff36a";
+    context.font = "bold 15px Meiryo, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("TIME", 0, -4);
+    context.fillStyle = dark ? "#fff4a8" : "#ffffff";
+    context.font = "bold 34px Consolas, 'Courier New', monospace";
+    context.fillText(timeText, 0, 23);
+    context.fillStyle = dark ? "#6c5428" : "#6b5a37";
+    context.fillRect(-91, 50, 10, 40);
+    context.fillRect(81, 50, 10, 40);
+    context.restore();
   }
 
   isFinalBattleCourt() {
@@ -8103,6 +8192,7 @@ class DodgeballGame {
     this.drawFinalBattleThrone(c.centerX, c.y - 126);
     this.drawFinalBattleTorch(c.centerX - 1010, c.y - 92, "#57b8ff");
     this.drawFinalBattleTorch(c.centerX + 1010, c.y - 92, "#d52b66");
+    this.drawMatchTimeBoard(c.centerX, c.y - 390, true);
 
     context.fillStyle = "rgba(255,94,34,0.26)";
     for (let i = 0; i < 8; i += 1) {

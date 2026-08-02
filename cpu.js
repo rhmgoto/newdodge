@@ -979,7 +979,7 @@ class CPUController {
     const urgency = this.getGrandHealUrgency(active);
     if (urgency <= 0) return null;
 
-    const selectionChance = Math.min(0.6, 0.08 + urgency * 0.52);
+    const selectionChance = Math.min(0.4, 0.08 + urgency * 0.52);
     if (Math.random() >= selectionChance) return null;
 
     return healers.sort((a, b) => {
@@ -1945,8 +1945,7 @@ class CPUController {
       const baseCatchRoll = catchChance * profileCatchScale * this.getCatchRollScale() * victoryCatchScale;
       const catchRoll = baseCatchRoll * closeCatchScale;
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
-      const specialDodgeAttemptScale = specialShot ? 0.8 : 1;
-      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot * specialDodgeAttemptScale;
+      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
       if (closeRangeThreat && Math.random() < closeDodgeRoll) {
         this.dodgeIncomingShot(command, member, true, {
@@ -1992,7 +1991,9 @@ class CPUController {
       const closeScale = distance < 300
         ? 0.15 + Math.max(0, distance - 180) / 120 * 0.85
         : 1;
-      return closeScale * 0.65;
+      const activeInner = this.team.filter((member) => member.role === "inner" && !member.defeated && member.hp > 0).length;
+      const lateMemberScale = activeInner <= 2 ? 0.75 : 1;
+      return closeScale * 0.65 * 0.8 * lateMemberScale;
     }
     if (!this.ball.counterShot && distance < 260) {
       return 0.65 + Math.max(0, distance - 160) / 100 * 0.35;
