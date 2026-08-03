@@ -16,6 +16,9 @@ const CPU_CLOSE_SHOT_DEFENSE = {
 const CPU_CATCH_TUNING = {
   globalScale: 0.75,
   counterScale: 5.46,
+  counterAttemptScale: 1.15,
+  counterChainAttemptScale: 1.25,
+  counterCatchCap: 0.93,
   delayMin: 0.02,
   delayMax: 0.07
 };
@@ -1889,6 +1892,7 @@ class CPUController {
         distance < CPU_CLOSE_SHOT_DEFENSE.ballDistance &&
         laneThreat
       );
+      const catchFrontShot = frontShot || (targeted && this.isBallMovingToward(member));
       const farShot = throwerDistance > 520 || distance > 260;
       const quickDefender = defenseStat >= 7;
       const readyToReact = frontShot && (farShot || (quickDefender && nearShot));
@@ -1903,20 +1907,20 @@ class CPUController {
         : readyToReact ? 0.42 : frontShot ? 0.28 : 0.14;
       let catchChance = this.config.cpuCatchChance * 0.16;
       if (weakShot) {
-        catchChance = (readyToReact || frontShot)
-          ? this.config.cpuCatchChance * 2
+        catchChance = (readyToReact || catchFrontShot)
+          ? this.config.cpuCatchChance * 2.2
           : this.config.cpuCatchChance * 0.35;
       } else if (specialShot) {
-        catchChance = frontShot
+        catchChance = catchFrontShot
           ? this.config.cpuCatchChance * 0.5333
           : this.config.cpuCatchChance * 0.024;
       } else if (strongShot) {
-        catchChance = frontShot
-          ? this.config.cpuCatchChance * 1.0222
+        catchChance = catchFrontShot
+          ? this.config.cpuCatchChance * 1.4
           : this.config.cpuCatchChance * 0.06;
       } else {
-        catchChance = (readyToReact || frontShot)
-          ? this.config.cpuCatchChance * 1.5556
+        catchChance = (readyToReact || catchFrontShot)
+          ? this.config.cpuCatchChance * 1.8
           : this.config.cpuCatchChance * 0.16;
       }
       const catchScale = member.cpuProfile === "townDodgies" ? 0.42 : 1;
@@ -1938,16 +1942,24 @@ class CPUController {
         }
       }
       const victoryCatchScale = member.getVictoryMarchCatchScale?.() ?? 1;
-      const catchDistance = (member.cpuProfile === "hinomaruBombers" && frontShot ? 560 : (weakShot ? 360 : 280)) * victoryCatchScale;
+      const catchDistance = (member.cpuProfile === "hinomaruBombers" && catchFrontShot ? 560 : (weakShot ? 360 : 280)) * victoryCatchScale;
       const closeCatchScale = distance < 260
-        ? 0.65 + Math.max(0, distance - 180) / 80 * 0.35
+        ? 0.8 + Math.max(0, distance - 180) / 80 * 0.2
         : 1;
       const baseCatchRoll = catchChance * profileCatchScale * this.getCatchRollScale() * victoryCatchScale;
       const catchRoll = baseCatchRoll * closeCatchScale;
+      const catchCap = this.ball.counterShot ? CPU_CATCH_TUNING.counterCatchCap : 0.94;
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
-      if (closeRangeThreat && Math.random() < closeDodgeRoll) {
+      const targetedFrontNormalShot = targeted && catchFrontShot && !specialShot && !this.ball.counterShot;
+      const cappedCatchRoll = Math.min(catchCap, catchRoll);
+      if (targetedFrontNormalShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
+        if (this.scheduleDelayedCatch(member)) {
+          this.reportShotDefense(member, "キャッチ試行", cappedCatchRoll, "正面優先");
+        }
+      } else if (closeRangeThreat && Math.random() < closeDodgeRoll) {
+        this.reportShotDefense(member, "回避試行", Math.min(0.97, closeDodgeRoll), "近距離");
         this.dodgeIncomingShot(command, member, true, {
           speed,
           jump,
@@ -1955,9 +1967,12 @@ class CPUController {
           closeRange: true,
           robotOverdrive
         });
-      } else if (frontShot && distance < catchDistance && Math.random() < Math.min(0.94, catchRoll)) {
-        this.scheduleDelayedCatch(member);
+      } else if (!targetedFrontNormalShot && catchFrontShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
+        if (this.scheduleDelayedCatch(member)) {
+          this.reportShotDefense(member, "キャッチ試行", cappedCatchRoll);
+        }
       } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
+        this.reportShotDefense(member, "回避試行", Math.min(0.97, dodgeRoll));
         this.dodgeIncomingShot(command, member, readyToReact || strongShot || closePanic, {
           speed,
           jump,
@@ -1981,8 +1996,22 @@ class CPUController {
       const difficulty = CATCH_DIFFICULTY?.[this.ball.specialShotType] || CATCH_DIFFICULTY?.normal;
       scale *= difficulty?.cpuCatchAttemptScale ?? 1;
     }
-    if (this.ball.counterShot) scale *= CPU_CATCH_TUNING.counterScale;
+    if (this.ball.counterShot) {
+      scale *= CPU_CATCH_TUNING.counterScale;
+      scale *= (this.ball.counterChainCount || 0) >= 1
+        ? CPU_CATCH_TUNING.counterChainAttemptScale
+        : CPU_CATCH_TUNING.counterAttemptScale;
+    }
     return scale;
+  }
+
+  reportShotDefense(member, action, chance, detail = "") {
+    this.config.onShotDefenseEvent?.({
+      player: member,
+      action,
+      chance,
+      detail
+    });
   }
 
   getDodgeRollScale(distance) {
@@ -2006,11 +2035,12 @@ class CPUController {
   }
 
   scheduleDelayedCatch(member) {
-    if (this.catchDelayPlans.has(member.id)) return;
+    if (this.catchDelayPlans.has(member.id)) return false;
     this.catchDelayPlans.set(member.id, {
       flightSerial: this.ball.flightSerial || 0,
       timer: CPU_CATCH_TUNING.delayMin + Math.random() * (CPU_CATCH_TUNING.delayMax - CPU_CATCH_TUNING.delayMin)
     });
+    return true;
   }
 
   applyDelayedCatch(command, member, delta) {
@@ -2113,6 +2143,18 @@ class CPUController {
     }
     if (this.ball.vy < 0) return member.visualDirection === "down";
     return member.visualDirection === "up";
+  }
+
+  isBallMovingToward(member) {
+    const speed = Math.hypot(this.ball.vx || 0, this.ball.vy || 0);
+    if (speed <= 0.001) return false;
+    const toMemberX = member.x - this.ball.x;
+    const toMemberY = member.y - this.ball.y;
+    const distance = Math.hypot(toMemberX, toMemberY);
+    if (distance <= 0.001) return true;
+    const dot = ((this.ball.vx || 0) / speed) * (toMemberX / distance) +
+      ((this.ball.vy || 0) / speed) * (toMemberY / distance);
+    return dot >= 0.35;
   }
 
   reactToFriendlyBall() {

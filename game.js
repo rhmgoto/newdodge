@@ -43,6 +43,11 @@ const CATCH_DURATION_SCALE_CONFIG = {
   shot: 0.9,
   special: 0.95
 };
+const NORMAL_SHOT_DISTANCE_CATCH_CONFIG = {
+  startDistance: 350,
+  maxDistance: 950,
+  maxScale: 1.4
+};
 const LATE_MATCH_PRESSURE_CONFIG = {
   firstDamageTime: 90,
   secondDamageTime: 120,
@@ -517,7 +522,8 @@ const SPIRIT_GAIN_CONFIG = {
   spiritDamageGain: 1.5,
   spiritDefeatGain: 7.5
 };
-const CPU_CATCH_DURATION_SCALE = 0.85;
+const SPIRIT_GAIN_RATE_SCALE = 0.5;
+const CPU_CATCH_DURATION_SCALE = 0.95;
 
 const GAME_CONFIG = {
   width: 1440,
@@ -574,7 +580,7 @@ const GAME_CONFIG = {
     knockbackSpeed: 410,
     downTime: 0.9,
     exitDelay: 1.5,
-    cpuCatchChance: 0.3,
+    cpuCatchChance: 0.4,
     jumpVelocity: 630,
     jumpGravity: 920,
     dashSpeedMultiplier: 3.2,
@@ -838,7 +844,8 @@ class DodgeballGame {
         opponentName: "right",
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
-        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y)
+        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
+        onShotDefenseEvent: (event) => this.recordShotDefenseDebug(event)
       })
       : null;
     this.cpuController = this.gameMode !== "versus"
@@ -850,7 +857,8 @@ class DodgeballGame {
         opponentName: "left",
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
-        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y)
+        canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
+        onShotDefenseEvent: (event) => this.recordShotDefenseDebug(event)
       })
       : null;
     this.effects = [];
@@ -2233,7 +2241,7 @@ class DodgeballGame {
 
   updateSpirit(delta) {
     const max = GAME_CONFIG.battle.spiritMax;
-    const gain = max / GAME_CONFIG.battle.spiritFillSeconds;
+    const gain = (max / GAME_CONFIG.battle.spiritFillSeconds) * SPIRIT_GAIN_RATE_SCALE;
     this.spiritPoints.left = Math.min(max, this.spiritPoints.left + gain * delta);
     this.spiritPoints.right = Math.min(max, this.spiritPoints.right + gain * delta);
   }
@@ -4141,6 +4149,7 @@ class DodgeballGame {
         this.applyCatchMissPenalty(catcher);
         catcher.catchTimer = 0;
         this.spawnCatchResultLabel(catcher, "MISS", "#ff806f");
+        if (!friendly) this.recordShotDefenseDebug({ player: catcher, action: "キャッチ", result: "MISS" });
         continue;
       }
       const caughtFriendlyPassInAir = friendly && this.ball.kind === "pass" && catcher.jumpZ > 18;
@@ -4184,6 +4193,7 @@ class DodgeballGame {
       if (caughtEnemyShot) {
         this.addSpirit(catcher.team, GAME_CONFIG.battle.spiritCatchGain);
         catcher.startCatchSuccess();
+        this.recordShotDefenseDebug({ player: catcher, action: "キャッチ", result: "成功" });
         if (this.isVampirePlayer(catcher)) {
           this.healPlayer(catcher, BLOOD_DRAIN_CONFIG.catchHeal, "#ff5a75");
         }
@@ -4372,11 +4382,28 @@ class DodgeballGame {
     const martialArtistScale = this.getMartialArtistSpecialCatchScale(catcher);
     let cpuCatchSuccessScale = catcher.cpuControlled ? 0.9 : 1;
     if (catcher.cpuControlled && this.ball.specialShotType) cpuCatchSuccessScale *= 0.9;
+    const normalShotDistanceCatchScale = this.getNormalShotDistanceCatchScale();
     const durationScale = baseCatchDurationScale * shotCatchDurationScale * specialCatchDurationScale;
     return Math.max(
       0.045 * durationScale,
-      Math.min(0.26 * durationScale, baseDuration * techniqueScale * facingScale * distanceScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * durationScale)
+      Math.min(0.26 * durationScale * normalShotDistanceCatchScale, baseDuration * techniqueScale * facingScale * distanceScale * normalShotDistanceCatchScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * durationScale)
     );
+  }
+
+  getNormalShotDistanceCatchScale() {
+    if (
+      !this.ball?.isFlying ||
+      this.ball.kind !== "shoot" ||
+      this.ball.specialShotType ||
+      this.ball.counterShot
+    ) {
+      return 1;
+    }
+    const start = NORMAL_SHOT_DISTANCE_CATCH_CONFIG.startDistance;
+    const end = NORMAL_SHOT_DISTANCE_CATCH_CONFIG.maxDistance;
+    const maxScale = NORMAL_SHOT_DISTANCE_CATCH_CONFIG.maxScale;
+    const ratio = Math.max(0, Math.min(1, ((this.ball.travelDistance || 0) - start) / Math.max(1, end - start)));
+    return 1 + (maxScale - 1) * ratio;
   }
 
   getCatchTechniqueWindowScale(technique) {
@@ -4816,6 +4843,7 @@ class DodgeballGame {
       if (!this.circleRectOverlap(this.ball.x, ballY, hitRadius, hit)) {
         if (this.isSuccessfulDodgeOverlap(target, this.ball.x, ballY, this.ball.radius)) {
           this.addSpiritForDodge(target, this.ball);
+          this.recordShotDefenseDebug({ player: target, action: "回避", result: "成功" });
           if (this.isPiercingShot(this.ball.specialShotType)) {
             this.ball.hitPlayerIds?.add(target.id);
           } else {
@@ -4893,6 +4921,11 @@ class DodgeballGame {
       const damaged = target.takeDamage(damage, direction, GAME_CONFIG.battle, knockbackScale);
       if (damaged) {
         if (wasTryingCatch) this.applyCatchMissPenalty(target, this.ball);
+        this.recordShotDefenseDebug({
+          player: target,
+          action: wasTryingCatch ? "キャッチ" : wasDodging ? "回避" : "防御なし",
+          result: "被弾"
+        });
         const actualDamage = Math.max(0, hpBefore - target.hp);
         this.addSpiritForDamage(target.team, hpBefore, target.hp);
         this.addSpiritForShotHit(this.ball);
@@ -5252,7 +5285,8 @@ class DodgeballGame {
   addSpirit(team, amount) {
     if (!this.spiritPoints || !team) return;
     const max = GAME_CONFIG.battle.spiritMax;
-    this.spiritPoints[team] = Math.max(0, Math.min(max, (this.spiritPoints[team] || 0) + amount));
+    const scaledAmount = amount > 0 ? amount * SPIRIT_GAIN_RATE_SCALE : amount;
+    this.spiritPoints[team] = Math.max(0, Math.min(max, (this.spiritPoints[team] || 0) + scaledAmount));
   }
 
   addSpiritForDodge(player, shot = this.ball) {
@@ -6243,9 +6277,47 @@ class DodgeballGame {
       multiplier,
       team: actor.team,
       specialType,
+      counterShot: Boolean(this.ball?.counterShot),
+      quickShot: Boolean(this.ball?.quickShot),
+      defenseLines: [],
       life: 2.6,
       maxLife: 2.6
     };
+  }
+
+  recordShotDefenseDebug(event = {}) {
+    if (!event.player && !this.ball?.target) return;
+    const player = event.player || this.ball.target;
+    const display = this.shotMultiplierDisplay || {
+      multiplier: this.ball?.shotMultiplier || 1,
+      team: this.ball?.thrower?.team || player.team,
+      specialType: this.ball?.specialShotType || null,
+      counterShot: Boolean(this.ball?.counterShot),
+      quickShot: Boolean(this.ball?.quickShot),
+      defenseLines: [],
+      life: 2.6,
+      maxLife: 2.6
+    };
+    const name = player?.name || "CPU";
+    const chanceText = Number.isFinite(event.chance) ? ` ${Math.round(event.chance * 100)}%` : "";
+    const resultText = event.result ? ` ${event.result}` : "";
+    const detailText = event.detail ? ` ${event.detail}` : "";
+    const line = `${name}: ${event.action || "防御"}${chanceText}${resultText}${detailText}`;
+    display.defenseLines = [line, ...(display.defenseLines || []).filter((item) => item !== line)].slice(0, 3);
+    display.life = Math.max(display.life || 0, 2.2);
+    display.maxLife = Math.max(display.maxLife || 0, 2.6);
+    this.shotMultiplierDisplay = display;
+  }
+
+  getShotDebugTypeLabel(display) {
+    if (display.counterShot) return "カウンター";
+    const specialLabel = this.getSpecialShotLabel(display.specialType);
+    if (specialLabel) return specialLabel;
+    if (display.quickShot) return "クイック通常";
+    const multiplier = display.multiplier || 1;
+    if (multiplier >= 1.28) return "強通常";
+    if (multiplier <= 1.08) return "弱通常";
+    return "通常";
   }
 
   getSpecialShotLabel(specialType) {
@@ -8192,7 +8264,7 @@ class DodgeballGame {
     this.drawFinalBattleThrone(c.centerX, c.y - 126);
     this.drawFinalBattleTorch(c.centerX - 1010, c.y - 92, "#57b8ff");
     this.drawFinalBattleTorch(c.centerX + 1010, c.y - 92, "#d52b66");
-    this.drawMatchTimeBoard(c.centerX, c.y - 390, true);
+    this.drawMatchTimeBoard(c.centerX, -42, true);
 
     context.fillStyle = "rgba(255,94,34,0.26)";
     for (let i = 0; i < 8; i += 1) {
@@ -8762,16 +8834,18 @@ class DodgeballGame {
     const context = this.context;
     const display = this.shotMultiplierDisplay;
     const alpha = Math.max(0, Math.min(1, display.life / 0.35, 1));
-    const specialLabel = this.getSpecialShotLabel(display.specialType);
+    const shotLabel = this.getShotDebugTypeLabel(display);
     const text = `SHOT x${display.multiplier.toFixed(2)}`;
     const teamText = display.team === "left" ? "1P" : "2P";
-    const height = specialLabel ? 72 : 50;
+    const defenseLines = display.defenseLines || [];
+    const height = 66 + defenseLines.length * 18;
 
     context.save();
     context.globalAlpha = alpha;
     context.font = "bold 18px Meiryo, sans-serif";
     context.textAlign = "left";
-    const width = Math.max(134, context.measureText(specialLabel || text).width + 34);
+    const measuredLines = [text, shotLabel, ...defenseLines];
+    const width = Math.max(156, ...measuredLines.map((line) => context.measureText(line).width + 34));
     const x = 14;
     const y = 14;
     context.fillStyle = "rgba(20, 26, 36, 0.72)";
@@ -8783,10 +8857,19 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "bold 20px Meiryo, sans-serif";
     context.fillText(text, x + 14, y + 41);
-    if (specialLabel) {
-      context.fillStyle = "#8ffcff";
-      context.font = "bold 15px Meiryo, sans-serif";
-      context.fillText(specialLabel, x + 14, y + 62);
+    context.fillStyle = "#8ffcff";
+    context.font = "bold 15px Meiryo, sans-serif";
+    context.fillText(shotLabel, x + 14, y + 62);
+    if (defenseLines.length > 0) {
+      context.font = "bold 13px Meiryo, sans-serif";
+      defenseLines.forEach((line, index) => {
+        context.fillStyle = line.includes("被弾") || line.includes("MISS")
+          ? "#ffb0a6"
+          : line.includes("成功")
+            ? "#9fffd8"
+            : "#fff7df";
+        context.fillText(line, x + 14, y + 82 + index * 18);
+      });
     }
     context.restore();
   }
