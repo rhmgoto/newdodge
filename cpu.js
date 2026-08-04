@@ -1908,7 +1908,7 @@ class CPUController {
       let catchChance = this.config.cpuCatchChance * 0.16;
       if (weakShot) {
         catchChance = (readyToReact || catchFrontShot)
-          ? this.config.cpuCatchChance * 2.2
+          ? this.config.cpuCatchChance * 2.4
           : this.config.cpuCatchChance * 0.35;
       } else if (specialShot) {
         catchChance = catchFrontShot
@@ -1916,11 +1916,11 @@ class CPUController {
           : this.config.cpuCatchChance * 0.024;
       } else if (strongShot) {
         catchChance = catchFrontShot
-          ? this.config.cpuCatchChance * 1.4
+          ? this.config.cpuCatchChance * 1.7
           : this.config.cpuCatchChance * 0.06;
       } else {
         catchChance = (readyToReact || catchFrontShot)
-          ? this.config.cpuCatchChance * 1.8
+          ? this.config.cpuCatchChance * 2.1
           : this.config.cpuCatchChance * 0.16;
       }
       const catchScale = member.cpuProfile === "townDodgies" ? 0.42 : 1;
@@ -1952,7 +1952,7 @@ class CPUController {
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
       const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
-      const targetedFrontNormalShot = targeted && catchFrontShot && !specialShot && !this.ball.counterShot;
+      const targetedFrontNormalShot = targeted && catchFrontShot && !specialShot;
       const cappedCatchRoll = Math.min(catchCap, catchRoll);
       if (targetedFrontNormalShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
         if (this.scheduleDelayedCatch(member)) {
@@ -2006,6 +2006,7 @@ class CPUController {
   }
 
   reportShotDefense(member, action, chance, detail = "") {
+    if (this.ball?.kind === "shoot" && this.ball.target && member !== this.ball.target) return;
     this.config.onShotDefenseEvent?.({
       player: member,
       action,

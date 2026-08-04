@@ -336,7 +336,7 @@ const HUNDRED_RUSH_CONFIG = {
   catchAreaScale: 0.72
 };
 const CATCH_DIFFICULTY = {
-  normal: { duration: 0.18, areaScale: 1 },
+  normal: { duration: 0.2, areaScale: 1 },
   heroStraight: { duration: 0.165, areaScale: 0.94 },
   melodyShot: {
     duration: 0.18 * DISSONANCE_FEINT_CONFIG.catchWindowScale,
@@ -523,7 +523,7 @@ const SPIRIT_GAIN_CONFIG = {
   spiritDefeatGain: 7.5
 };
 const SPIRIT_GAIN_RATE_SCALE = 0.5;
-const CPU_CATCH_DURATION_SCALE = 0.95;
+const CPU_CATCH_DURATION_SCALE = 1.05;
 
 const GAME_CONFIG = {
   width: 1440,
@@ -580,7 +580,7 @@ const GAME_CONFIG = {
     knockbackSpeed: 410,
     downTime: 0.9,
     exitDelay: 1.5,
-    cpuCatchChance: 0.4,
+    cpuCatchChance: 0.5,
     jumpVelocity: 630,
     jumpGravity: 920,
     dashSpeedMultiplier: 3.2,
@@ -6288,6 +6288,7 @@ class DodgeballGame {
   recordShotDefenseDebug(event = {}) {
     if (!event.player && !this.ball?.target) return;
     const player = event.player || this.ball.target;
+    if (this.ball?.kind === "shoot" && this.ball.target && player !== this.ball.target) return;
     const display = this.shotMultiplierDisplay || {
       multiplier: this.ball?.shotMultiplier || 1,
       team: this.ball?.thrower?.team || player.team,
