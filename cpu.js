@@ -2019,11 +2019,11 @@ class CPUController {
     const specialShot = Boolean(this.ball.specialShotType);
     if (specialShot) {
       const closeScale = distance < 300
-        ? 0.15 + Math.max(0, distance - 180) / 120 * 0.85
+        ? 0.22 + Math.max(0, distance - 180) / 120 * 0.78
         : 1;
       const activeInner = this.team.filter((member) => member.role === "inner" && !member.defeated && member.hp > 0).length;
       const lateMemberScale = activeInner <= 2 ? 0.75 : 1;
-      return closeScale * 0.65 * 0.8 * lateMemberScale;
+      return closeScale * 0.65 * 0.8 * 1.15 * lateMemberScale;
     }
     if (!this.ball.counterShot && distance < 260) {
       return 0.65 + Math.max(0, distance - 160) / 100 * 0.35;
