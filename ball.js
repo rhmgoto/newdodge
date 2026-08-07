@@ -556,7 +556,7 @@ class Ball {
     this.passDuration = 0;
     this.radius = this.baseRadius;
     if (this.specialShotType === "iron") {
-      this.radius = this.baseRadius * 1.92;
+      this.radius = this.baseRadius * 2.304;
     } else if (this.specialShotType === "soul") {
       this.radius = this.baseRadius * 2;
     } else if (this.specialShotType === "slap") {
@@ -681,9 +681,9 @@ class Ball {
                             ? 1.3
                             : this.specialShotType === "lunaticMirage"
                               ? 1.18
-                            : this.specialShotType === "devilShield"
+                              : this.specialShotType === "devilShield"
                               ? 1.08
-                              : this.specialShotType === "iron" ? 1.05 : 1;
+                              : this.specialShotType === "iron" ? 1.47 : 1;
     const demonSpeedScale = this.demonShot ? 1.3 : 1;
     const victoryShotSpeedScale = kind === "shoot" ? actor.getVictoryMarchShotSpeedScale?.() ?? 1 : 1;
     const speed = kind === "shoot" ? shootBaseSpeed * speedRatio * specialSpeedScale * demonSpeedScale * victoryShotSpeedScale : this.config.passSpeed;

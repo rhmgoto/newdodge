@@ -313,6 +313,9 @@ function getStatusDefensePassOverride(name, specialShotType) {
 
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
+const SPECIAL_SHOT_ANTICIPATION_TIMES = {
+  slap: 0.5
+};
 const SHOT_WINDUP_TIME = 0.38 * 1.3;
 const SHOT_DAMAGE_SCALE = 1.69;
 const VICTORY_MARCH_DURATION = 15;
@@ -3314,7 +3317,7 @@ class DodgeballGame {
     const remainingWindup = kind === "shoot"
       ? Math.max(0, SHOT_WINDUP_TIME * windupScale - charged.chargeTime)
       : 0;
-    const releaseDelay = remainingWindup + (specialType ? SPECIAL_SHOT_ANTICIPATION_TIME : 0);
+    const releaseDelay = remainingWindup + (specialType ? this.getSpecialAnticipationTime(specialType) : 0);
     if (releaseDelay > 0) {
       this.pendingThrow = {
         actor,
@@ -3422,7 +3425,7 @@ class DodgeballGame {
     if (kind === "shoot") {
       this.pendingThrow.specialType = specialRequested ? this.getSpecialShotType(actor) : null;
       if (this.pendingThrow.specialType) {
-        this.pendingThrow.timer += SPECIAL_SHOT_ANTICIPATION_TIME;
+        this.pendingThrow.timer += this.getSpecialAnticipationTime(this.pendingThrow.specialType);
         this.pendingThrow.anticipation = true;
         if (this.pendingThrow.specialType === "clockStop") {
           actor.clockStopAnticipation = true;
@@ -3856,6 +3859,10 @@ class DodgeballGame {
     if (actor.characterType === "power") return "iron";
     if (actor.characterType === "speed") return "boomerang";
     return "lightning";
+  }
+
+  getSpecialAnticipationTime(specialType) {
+    return SPECIAL_SHOT_ANTICIPATION_TIMES[specialType] ?? SPECIAL_SHOT_ANTICIPATION_TIME;
   }
 
   isBravesMartialArtist(player) {
@@ -11167,16 +11174,97 @@ class DodgeballGame {
   drawSpecialAnticipationEffect() {
     if (!this.pendingThrow || !this.pendingThrow.anticipation || !this.pendingThrow.specialType) return;
     const pending = this.pendingThrow;
-    if (pending.timer > SPECIAL_SHOT_ANTICIPATION_TIME) return;
+    const anticipationTime = this.getSpecialAnticipationTime(pending.specialType);
+    if (pending.timer > anticipationTime) return;
     const actor = pending.actor;
     if (!actor || actor.defeated || this.ball.owner !== actor) return;
 
     const context = this.context;
     const pulse = 0.5 + Math.sin(performance.now() / 42) * 0.5;
-    const progress = Math.max(0, Math.min(1, 1 - pending.timer / SPECIAL_SHOT_ANTICIPATION_TIME));
+    const progress = Math.max(0, Math.min(1, 1 - pending.timer / anticipationTime));
     const x = actor.x;
     const y = actor.y - actor.jumpZ - 66;
     const burstRadius = 82 + progress * 78 + pulse * 18;
+
+    if (pending.specialType === "slap") {
+      const time = performance.now();
+      const groundY = actor.y + 10;
+      const palmX = actor.x + actor.facing * (42 + progress * 16);
+      const palmY = actor.y - actor.jumpZ - 70;
+      context.save();
+      context.globalCompositeOperation = "lighter";
+
+      context.globalAlpha = 0.28 + progress * 0.38;
+      context.fillStyle = "rgba(255, 168, 74, 0.34)";
+      context.beginPath();
+      context.ellipse(actor.x, groundY, 70 + progress * 44, 22 + progress * 8, 0, 0, Math.PI * 2);
+      context.fill();
+
+      context.strokeStyle = "#ffb35c";
+      context.lineWidth = 5 + progress * 4;
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.save();
+        context.translate(actor.x, groundY);
+        context.rotate((ring % 2 === 0 ? 1 : -1) * time / (360 + ring * 80));
+        context.scale(1, 0.34);
+        context.globalAlpha = 0.72 - ring * 0.14;
+        context.beginPath();
+        context.arc(0, 0, 44 + progress * 36 + ring * 19, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+      }
+
+      const palmGlow = context.createRadialGradient(palmX, palmY, 6, palmX, palmY, 76 + progress * 58);
+      palmGlow.addColorStop(0, "rgba(255, 255, 210, 0.95)");
+      palmGlow.addColorStop(0.28, "rgba(255, 117, 48, 0.72)");
+      palmGlow.addColorStop(0.72, "rgba(255, 55, 24, 0.22)");
+      palmGlow.addColorStop(1, "rgba(255, 55, 24, 0)");
+      context.globalAlpha = 0.78;
+      context.fillStyle = palmGlow;
+      context.beginPath();
+      context.arc(palmX, palmY, 62 + progress * 52 + pulse * 9, 0, Math.PI * 2);
+      context.fill();
+
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.9;
+      context.fillStyle = "#ffe7a0";
+      context.strokeStyle = "#8b2d12";
+      context.lineWidth = 4;
+      context.save();
+      context.translate(palmX, palmY);
+      context.rotate(actor.facing * (-0.18 + progress * 0.08));
+      context.scale(actor.facing, 1);
+      context.beginPath();
+      context.ellipse(0, 0, 18 + progress * 7, 24 + progress * 8, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      for (let finger = 0; finger < 4; finger += 1) {
+        this.roundRect(context, -20 + finger * 10, -32 - progress * 4, 8, 24 + progress * 8, 4);
+        context.fill();
+        context.stroke();
+      }
+      context.beginPath();
+      context.ellipse(-21, -4, 8, 18, -0.5, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.restore();
+
+      context.globalCompositeOperation = "lighter";
+      context.strokeStyle = "#fff0a0";
+      context.lineWidth = 5;
+      for (let i = 0; i < 12; i += 1) {
+        const angle = time / 90 + i * Math.PI * 2 / 12;
+        const inner = 34 + progress * 16;
+        const outer = 76 + progress * 74 + (i % 3) * 12;
+        context.globalAlpha = 0.42 + progress * 0.32;
+        context.beginPath();
+        context.moveTo(palmX + Math.cos(angle) * inner, palmY + Math.sin(angle) * inner * 0.72);
+        context.lineTo(palmX + Math.cos(angle) * outer, palmY + Math.sin(angle) * outer * 0.72);
+        context.stroke();
+      }
+      context.restore();
+      return;
+    }
 
     if (pending.specialType === "hellfire") {
       const groundY = actor.y + 10;
