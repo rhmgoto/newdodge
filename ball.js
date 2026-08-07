@@ -1,6 +1,6 @@
 const TSUTENKAKU_SKY_TRAVEL_TIME = 0.8;
-const TSUTENKAKU_WARNING_MIN_TIME = 1.5;
-const TSUTENKAKU_WARNING_MAX_TIME = 2.5;
+const TSUTENKAKU_WARNING_MIN_TIME = 0.5;
+const TSUTENKAKU_WARNING_MAX_TIME = 1.2;
 const METEOR_CRASH_TRAVEL_TIME = 1.32;
 const METEOR_CRASH_WARNING_START = 0.42;
 const METEOR_CRASH_PEAK_Z = 920;
@@ -1480,7 +1480,7 @@ class Ball {
       this.y = this.tsutenkakuTargetY;
       this.vx = 0;
       this.vy = 0;
-      this.vz = -1280;
+      this.vz = -1920;
     }
 
     if (this.tsutenkakuPhase !== "dive") return;
@@ -1488,7 +1488,7 @@ class Ball {
     this.y = this.tsutenkakuTargetY;
     this.vx = 0;
     this.vy = 0;
-    this.vz = Math.min(-1280, this.vz);
+    this.vz = Math.min(-1920, this.vz);
   }
 
   getShootSpeedRatio(throwMultiplier = 1) {
