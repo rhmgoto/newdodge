@@ -1275,12 +1275,6 @@ class Ball {
       this.vz = 0;
       this.clockStopPhase = "hold";
       this.clockStopElapsed = 0;
-      this.clockBurstTargetX = this.target && !this.target.defeated
-        ? this.target.x
-        : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
-      this.clockBurstTargetY = this.target && !this.target.defeated
-        ? this.target.y - 38
-        : this.clockStopY;
       this.catchable = false;
       return;
     }
@@ -1295,11 +1289,18 @@ class Ball {
       this.vz = 0;
       if (this.clockStopElapsed < CLOCK_STOP_DURATION) return;
 
+      this.clockBurstTargetX = this.target && !this.target.defeated
+        ? this.target.x
+        : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
+      this.clockBurstTargetY = this.target && !this.target.defeated
+        ? this.target.y - 38
+        : this.clockStopY;
       const dx = this.clockBurstTargetX - this.x;
       const dy = this.clockBurstTargetY - this.y;
       const length = Math.hypot(dx, dy) || 1;
-      this.vx = dx / length * this.clockBurstSpeed;
-      this.vy = dy / length * this.clockBurstSpeed;
+      const burstSpeed = this.clockBurstSpeed * 0.7;
+      this.vx = dx / length * burstSpeed;
+      this.vy = dy / length * burstSpeed;
       this.vz = 0;
       this.clockStopPhase = "burst";
       this.clockStopElapsed = 0;
