@@ -1,6 +1,6 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
-const LAST_UPDATED_AT = "2026/08/01 19:44";
+const LAST_UPDATED_AT = "2026/08/08 20:47";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
@@ -1172,20 +1172,28 @@ class DodgeballGame {
     const getCpuPlayer = (slot) => bravesTeam
       ? this.getBravesPlayerDefinition(team, slot)
       : cpuTeam?.players?.[slot] || null;
+    const getCustomSlotPlayer = (slot) => teamDefinition?.isCustom ? teamDefinition?.players?.[slot] || null : null;
+    const getCustomSlotStats = (slot) => {
+      const type = selectedTypes[slot] || "normal";
+      const baseStats = CHARACTER_TYPES[type]?.stats || GAME_CONFIG.player.stats;
+      const slotStats = getCustomSlotPlayer(slot)?.stats || {};
+      return { ...baseStats, ...slotStats };
+    };
     const roster = innerPositions.map((position, index) => {
       const cpuPlayer = getCpuPlayer(index);
+      const customPlayer = getCustomSlotPlayer(index);
       return makePlayer({
         id: `${prefix}-inner-${index + 1}`,
-        name: cpuPlayer?.name || teamDefinition?.innerNames?.[index] || `${prefix}-inner-${index + 1}`,
+        name: cpuPlayer?.name || customPlayer?.name || teamDefinition?.innerNames?.[index] || `${prefix}-inner-${index + 1}`,
         role: "inner",
         zone: innerZone,
         x: position.x,
         y: position.y,
         radius: cpuPlayer?.radius,
         characterType: cpuPlayer?.characterType || (teamDefinition?.isCustom ? selectedTypes[index] : teamDefinition?.characterType) || selectedTypes[index],
-        maxHp: cpuPlayer?.maxHp ?? teamDefinition?.maxHp,
-        maxStamina: cpuPlayer?.maxStamina ?? teamDefinition?.maxStamina,
-        stats: cpuPlayer?.stats || teamDefinition?.stats,
+        maxHp: cpuPlayer?.maxHp ?? customPlayer?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: cpuPlayer?.maxStamina ?? customPlayer?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: teamDefinition?.isCustom ? getCustomSlotStats(index) : cpuPlayer?.stats || teamDefinition?.stats,
         uniformColor: cpuPlayer?.uniformColor || teamDefinition?.uniformColor,
         pantsColor: cpuPlayer?.pantsColor || teamDefinition?.pantsColor,
         trimColor: cpuPlayer?.trimColor || teamDefinition?.trimColor,
@@ -1206,11 +1214,11 @@ class DodgeballGame {
         zone: isLeft ? "rightTopOut" : "leftTopOut",
         x: topArea.x + topArea.w * 0.55,
         y: topArea.y + topArea.h * 0.45,
-        name: getCpuPlayer(5)?.name || teamDefinition?.outNames?.[0] || `${prefix}-out-top`,
+        name: getCpuPlayer(5)?.name || getCustomSlotPlayer(5)?.name || teamDefinition?.outNames?.[0] || `${prefix}-out-top`,
         characterType: getCpuPlayer(5)?.characterType || (teamDefinition?.isCustom ? selectedTypes[5] : teamDefinition?.characterType) || selectedTypes[5],
-        maxHp: getCpuPlayer(5)?.maxHp ?? teamDefinition?.maxHp,
-        maxStamina: getCpuPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
-        stats: getCpuPlayer(5)?.stats || teamDefinition?.stats,
+        maxHp: getCpuPlayer(5)?.maxHp ?? getCustomSlotPlayer(5)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(5)?.maxStamina ?? getCustomSlotPlayer(5)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: teamDefinition?.isCustom ? getCustomSlotStats(5) : getCpuPlayer(5)?.stats || teamDefinition?.stats,
         uniformColor: getCpuPlayer(5)?.uniformColor || teamDefinition?.uniformColor,
         pantsColor: getCpuPlayer(5)?.pantsColor || teamDefinition?.pantsColor,
         trimColor: getCpuPlayer(5)?.trimColor || teamDefinition?.trimColor,
@@ -1224,15 +1232,15 @@ class DodgeballGame {
       }),
       makePlayer({
         id: `${prefix}-out-bottom`,
-        name: getCpuPlayer(6)?.name || teamDefinition?.outNames?.[1] || `${prefix}-out-bottom`,
+        name: getCpuPlayer(6)?.name || getCustomSlotPlayer(6)?.name || teamDefinition?.outNames?.[1] || `${prefix}-out-bottom`,
         role: "out",
         zone: isLeft ? "rightBottomOut" : "leftBottomOut",
         x: bottomArea.x + bottomArea.w * 0.45,
         y: bottomArea.y + bottomArea.h * 0.5,
         characterType: getCpuPlayer(6)?.characterType || (teamDefinition?.isCustom ? selectedTypes[6] : teamDefinition?.characterType) || selectedTypes[6],
-        maxHp: getCpuPlayer(6)?.maxHp ?? teamDefinition?.maxHp,
-        maxStamina: getCpuPlayer(6)?.maxStamina ?? teamDefinition?.maxStamina,
-        stats: getCpuPlayer(6)?.stats || teamDefinition?.stats,
+        maxHp: getCpuPlayer(6)?.maxHp ?? getCustomSlotPlayer(6)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(6)?.maxStamina ?? getCustomSlotPlayer(6)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: teamDefinition?.isCustom ? getCustomSlotStats(6) : getCpuPlayer(6)?.stats || teamDefinition?.stats,
         uniformColor: getCpuPlayer(6)?.uniformColor || teamDefinition?.uniformColor,
         pantsColor: getCpuPlayer(6)?.pantsColor || teamDefinition?.pantsColor,
         trimColor: getCpuPlayer(6)?.trimColor || teamDefinition?.trimColor,
@@ -1246,15 +1254,15 @@ class DodgeballGame {
       }),
       makePlayer({
         id: `${prefix}-out-side`,
-        name: getCpuPlayer(7)?.name || teamDefinition?.outNames?.[2] || `${prefix}-out-side`,
+        name: getCpuPlayer(7)?.name || getCustomSlotPlayer(7)?.name || teamDefinition?.outNames?.[2] || `${prefix}-out-side`,
         role: "out",
         zone: isLeft ? "rightSideOut" : "leftSideOut",
         x: sideArea.x + sideArea.w * 0.5,
         y: sideArea.y + sideArea.h * 0.52,
         characterType: getCpuPlayer(7)?.characterType || (teamDefinition?.isCustom ? selectedTypes[7] : teamDefinition?.characterType) || selectedTypes[7],
-        maxHp: getCpuPlayer(7)?.maxHp ?? teamDefinition?.maxHp,
-        maxStamina: getCpuPlayer(7)?.maxStamina ?? teamDefinition?.maxStamina,
-        stats: getCpuPlayer(7)?.stats || teamDefinition?.stats,
+        maxHp: getCpuPlayer(7)?.maxHp ?? getCustomSlotPlayer(7)?.maxHp ?? teamDefinition?.maxHp,
+        maxStamina: getCpuPlayer(7)?.maxStamina ?? getCustomSlotPlayer(7)?.maxStamina ?? teamDefinition?.maxStamina,
+        stats: teamDefinition?.isCustom ? getCustomSlotStats(7) : getCpuPlayer(7)?.stats || teamDefinition?.stats,
         uniformColor: getCpuPlayer(7)?.uniformColor || teamDefinition?.uniformColor,
         pantsColor: getCpuPlayer(7)?.pantsColor || teamDefinition?.pantsColor,
         trimColor: getCpuPlayer(7)?.trimColor || teamDefinition?.trimColor,
@@ -1343,19 +1351,19 @@ class DodgeballGame {
         pantsColor: "#111318",
         trimColor: "#fff3a6",
         hairColor: "#111318",
-        maxHp: 70,
+        maxHp: 90,
         maxStamina: 100,
         stats: { power: 6, speed: 8, jump: 7, technique: 6 },
         cpuProfile: "bakusouBoys",
         players: [
-          player("たける", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("りょうた", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("しょうた", "inner", "jump", 110, 100, 8, 10, 8, 8, "boost", { pass: 8,  defense: 8,  captain: true }),
-          player("ゆうま", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("はるき", "inner", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("だいき", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("けいた", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
-          player("しゅん", "out", "jump", 70, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 })
+          player("たける", "inner", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("りょうた", "inner", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("しょうた", "inner", "jump", 140, 100, 8, 10, 8, 8, "boost", { pass: 8,  defense: 8,  captain: true }),
+          player("ゆうま", "inner", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("はるき", "inner", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("だいき", "out", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("けいた", "out", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 }),
+          player("しゅん", "out", "jump", 90, 100, 6, 8, 7, 6, "kiai", { defense: 6, pass: 6 })
         ]
       },
       {
@@ -1699,9 +1707,19 @@ class DodgeballGame {
         pantsColor: "#0057ff",
         trimColor: "#f6fbff",
         hairColor: "#f2c14e",
-        maxHp: GAME_CONFIG.player.maxHp,
+        maxHp: 80,
         maxStamina: GAME_CONFIG.player.maxStamina,
-        stats: GAME_CONFIG.player.stats
+        stats: GAME_CONFIG.player.stats,
+        players: [
+          { name: "あお", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "ぐんじょう", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "こおり", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "うみ", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "そら", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "ブルー", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "アクア", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "オーシャン", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } }
+        ]
       },
       {
         id: "red-fires",
@@ -1716,9 +1734,19 @@ class DodgeballGame {
         pantsColor: "#f01818",
         trimColor: "#fff0cf",
         hairColor: "#f2c14e",
-        maxHp: GAME_CONFIG.player.maxHp,
+        maxHp: 80,
         maxStamina: GAME_CONFIG.player.maxStamina,
-        stats: GAME_CONFIG.player.stats
+        stats: GAME_CONFIG.player.stats,
+        players: [
+          { name: "あか", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "しんく", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "もみじ", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "れっか", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "ほむら", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "ぐれん", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "べに", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
+          { name: "かえん", position: "out", maxHp: 60, maxStamina: 100, stats: { defense: 6, pass: 6 } }
+        ]
       }
     ];
   }
@@ -7367,13 +7395,14 @@ class DodgeballGame {
         context.fillRect(x - 8, y - 36, 600, 34);
       }
       const bravesPlayer = this.isBravesTeam(team) ? this.getBravesPlayerDefinition(side, i) : null;
+      const customPlayer = editable && team?.isCustom ? team?.players?.[i] : null;
       const player = editable && team?.isCustom ? null : bravesPlayer || team?.players?.[i];
       const type = editable && team?.isCustom
         ? this.teamSelections[side][i]
         : player?.characterType || team?.characterType || "normal";
       const definition = CHARACTER_TYPES[type] || CHARACTER_TYPES.normal;
-      const stats = editable && team?.isCustom ? definition.stats : player?.stats || team?.stats || definition.stats;
-      const maxHp = editable && team?.isCustom ? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
+      const stats = editable && team?.isCustom ? { ...definition.stats, ...(customPlayer?.stats || {}) } : player?.stats || team?.stats || definition.stats;
+      const maxHp = editable && team?.isCustom ? customPlayer?.maxHp ?? definition.maxHp : player?.maxHp ?? team?.maxHp ?? definition.maxHp;
       const roleLabel = editable
         ? (this.isBravesTeam(team) && i >= 5 ? `外野 ${i - 4}` : i < 5 ? `内野 ${i + 1}` : `外野 ${i - 4}`)
         : (player?.position === "out" ? "外野" : "内野");
