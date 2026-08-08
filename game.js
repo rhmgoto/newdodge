@@ -438,6 +438,7 @@ const AUDIO_CONFIG = {
     pass: "music/pass.mp3",
     shoot: "music/shoot.mp3",
     special: "music/special.mp3",
+    counter: "music/counter.mp3",
     catch: "music/catch.mp3",
     damage: "music/damage.mp3"
   }
@@ -697,7 +698,7 @@ class DodgeballGame {
         audio.preload = "auto";
         bgm[key] = audio;
       }
-      for (const key of ["pass", "shoot", "special", "catch", "damage"]) {
+      for (const key of ["pass", "shoot", "special", "counter", "catch", "damage"]) {
         sfxPools[key] = Array.from({ length: key === "damage" ? 4 : 3 }, () => {
           const audio = new Audio(AUDIO_CONFIG.paths[key]);
           audio.volume = AUDIO_CONFIG.sfxVolume;
@@ -964,7 +965,7 @@ class DodgeballGame {
     if (kind === "pass") {
       this.playSound("pass");
     } else if (kind === "shoot") {
-      this.playSound(specialType || counter ? "special" : "shoot");
+      this.playSound(counter ? "counter" : specialType ? "special" : "shoot");
     }
   }
 
