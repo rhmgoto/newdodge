@@ -799,6 +799,81 @@ class DodgeballGame {
     return { x: 18, y: 58, w: 126, h: 34 };
   }
 
+  getTeamSelectSideX(side) {
+    return side === "left" ? 90 : 760;
+  }
+
+  getTeamChoicePanelRect(side) {
+    return { x: this.getTeamSelectSideX(side), y: 122, w: 590, h: 58 };
+  }
+
+  getTeamChoiceListHitRects(side) {
+    if (!this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT)) return [];
+    const teams = this.getSelectableTeams();
+    const selectedIndex = this.selectedTeamIndices?.[side] ?? 0;
+    const visibleCount = Math.min(5, teams.length);
+    const start = Math.max(0, Math.min(selectedIndex - 2, teams.length - visibleCount));
+    const panel = this.getTeamChoicePanelRect(side);
+    const listY = panel.y + 64;
+    const rowHeight = 38;
+    return Array.from({ length: visibleCount }, (_, row) => ({
+      index: start + row,
+      x: panel.x,
+      y: listY + 10 + row * rowHeight,
+      w: panel.w,
+      h: rowHeight - 6
+    }));
+  }
+
+  getTeamCardHitRects(side) {
+    const x = this.getTeamSelectSideX(side);
+    const y = 264;
+    return Array.from({ length: TEAM_SELECTION_COUNT }, (_, slot) => ({
+      slot,
+      x: x + (slot % 4) * 136,
+      y: y + Math.floor(slot / 4) * 180,
+      w: 122,
+      h: 170
+    }));
+  }
+
+  getTeamRosterConfirmRect(side) {
+    const x = this.getTeamSelectSideX(side);
+    return { x: x + 548, y: 382, w: 94, h: 62 };
+  }
+
+  getMatchStartButtonRect() {
+    const centerX = GAME_CONFIG.width * 0.5;
+    return { x: centerX - 200, y: 620, w: 400, h: 44 };
+  }
+
+  getRosterChoiceMenuHitRects() {
+    const menu = this.rosterChoiceMenu;
+    if (!menu) return [];
+    const team = this.getSelectedTeamForSide(menu.side);
+    const options = this.getRosterChoiceOptions(menu.side, menu.slot, team);
+    if (options.length === 0) return [];
+    const x = this.getTeamSelectSideX(menu.side);
+    const y = 264;
+    const row = Math.floor(menu.slot / 4);
+    const col = menu.slot % 4;
+    const cardX = x + col * 136;
+    const cardY = y + row * 180;
+    const width = this.isBravesTeam(team) ? 214 : 170;
+    const rowHeight = 30;
+    const menuHeight = options.length * rowHeight + 44;
+    const menuX = Math.min(GAME_CONFIG.width - width - 24, cardX + 82);
+    const menuY = Math.max(94, Math.min(GAME_CONFIG.height - menuHeight - 20, cardY + 22));
+    return options.map((option, index) => ({
+      index,
+      value: option.value,
+      x: menuX + 8,
+      y: menuY + 36 + index * rowHeight,
+      w: width - 16,
+      h: rowHeight - 5
+    }));
+  }
+
   handleCanvasPointerDown(event) {
     const point = this.getCanvasPointerPosition(event);
 
@@ -808,6 +883,13 @@ class DodgeballGame {
         event.preventDefault();
         this.modeIndex = hit.index;
         this.confirmModeSelection();
+      }
+      return;
+    }
+
+    if (this.state === "teamSelect") {
+      if (this.handleTeamSelectPointer(point)) {
+        event.preventDefault();
       }
       return;
     }
@@ -1783,6 +1865,149 @@ class DodgeballGame {
     if (this.gameMode === "single" && side === "right") {
       this.cpuOpponentIndex = this.selectedTeamIndices.right;
     }
+  }
+
+  setSelectedTeamIndex(side, index) {
+    const teams = this.getSelectableTeams();
+    if (teams.length === 0) return;
+    this.selectedTeamIndices[side] = ((index % teams.length) + teams.length) % teams.length;
+    this.rosterChoiceMenu = null;
+    if (this.teamSelectionConfirmed) this.teamSelectionConfirmed[side] = false;
+    if (this.teamRosterConfirmed) this.teamRosterConfirmed[side] = false;
+    if (this.gameMode === "single" && side === "right") {
+      this.cpuOpponentIndex = this.selectedTeamIndices.right;
+    }
+  }
+
+  setTeamSelectPointerSlot(side, slot) {
+    if (this.gameMode === "versus") {
+      this.teamSelectionSlots[side] = slot;
+      return;
+    }
+    this.teamSelectionSide = side;
+    this.teamSelectionSlot = slot;
+  }
+
+  startSelectedMatchIfReady() {
+    if (!this.canStartSelectedMatch()) return false;
+    this.setupMatch();
+    this.enterPlayingState();
+    return true;
+  }
+
+  activateTeamSelectSlot(side, slot) {
+    this.setTeamSelectPointerSlot(side, slot);
+    const selectedTeam = this.getSelectedTeamForSide(side);
+
+    if (slot < TEAM_SELECTION_COUNT) {
+      if (this.isEditableRosterTeam(selectedTeam) && this.teamSelectionConfirmed?.[side]) {
+        this.openRosterChoiceMenu(side, slot);
+      }
+      return true;
+    }
+
+    if (slot === CUSTOM_TEAM_CONFIRM_SLOT) {
+      if (this.isEditableRosterTeam(selectedTeam)) this.confirmTeamRoster(side);
+      return true;
+    }
+
+    if (slot === START_SLOT) {
+      this.startSelectedMatchIfReady();
+      return true;
+    }
+
+    if (slot !== CPU_OPPONENT_SLOT) return false;
+
+    if (this.gameMode === "versus") {
+      if (!this.teamSelectionConfirmed[side]) {
+        this.teamSelectionConfirmed[side] = true;
+        if (this.isEditableRosterTeam(selectedTeam)) {
+          this.teamSelectionSlots[side] = 0;
+        } else {
+          this.teamRosterConfirmed[side] = true;
+          this.teamSelectionSlots[side] = START_SLOT;
+        }
+      } else {
+        this.teamSelectionSlots[side] = this.isEditableRosterTeam(selectedTeam) ? 0 : START_SLOT;
+      }
+      return true;
+    }
+
+    if (!this.teamSelectionConfirmed[side]) {
+      this.teamSelectionConfirmed[side] = true;
+      if (this.isEditableRosterTeam(selectedTeam)) {
+        this.teamSelectionSide = side;
+        this.teamSelectionSlot = 0;
+      } else if (side === "left") {
+        this.teamRosterConfirmed[side] = true;
+        this.teamSelectionSide = "right";
+        this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+      } else {
+        this.teamRosterConfirmed[side] = true;
+        this.teamSelectionSide = side;
+        this.teamSelectionSlot = START_SLOT;
+      }
+    } else if (this.isEditableRosterTeam(selectedTeam)) {
+      this.teamSelectionSide = side;
+      this.teamSelectionSlot = 0;
+    } else if (side === "left") {
+      this.teamSelectionSide = "right";
+      this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+    } else {
+      this.teamSelectionSide = side;
+      this.teamSelectionSlot = START_SLOT;
+    }
+    return true;
+  }
+
+  handleTeamSelectPointer(point) {
+    const rosterHit = this.getRosterChoiceMenuHitRects().find((rect) => this.isPointInRect(point, rect));
+    if (rosterHit && this.rosterChoiceMenu) {
+      const menu = this.rosterChoiceMenu;
+      const team = this.getSelectedTeamForSide(menu.side);
+      this.applyRosterChoice(menu.side, menu.slot, rosterHit.value, team);
+      this.rosterChoiceMenu = null;
+      return true;
+    }
+    if (this.rosterChoiceMenu) {
+      this.rosterChoiceMenu = null;
+      return true;
+    }
+
+    if (this.isPointInRect(point, this.getMatchStartButtonRect())) {
+      this.activateTeamSelectSlot(this.teamSelectionSide || "left", START_SLOT);
+      return true;
+    }
+
+    for (const side of ["left", "right"]) {
+      const teamRow = this.getTeamChoiceListHitRects(side).find((rect) => this.isPointInRect(point, rect));
+      if (teamRow) {
+        this.setSelectedTeamIndex(side, teamRow.index);
+        this.setTeamSelectPointerSlot(side, CPU_OPPONENT_SLOT);
+        return true;
+      }
+    }
+
+    for (const side of ["left", "right"]) {
+      if (this.isPointInRect(point, this.getTeamChoicePanelRect(side))) {
+        return this.activateTeamSelectSlot(side, CPU_OPPONENT_SLOT);
+      }
+    }
+
+    for (const side of ["left", "right"]) {
+      const team = this.getSelectedTeamForSide(side);
+      if (this.isEditableRosterTeam(team) && this.teamSelectionConfirmed?.[side]) {
+        if (this.isPointInRect(point, this.getTeamRosterConfirmRect(side))) {
+          return this.activateTeamSelectSlot(side, CUSTOM_TEAM_CONFIRM_SLOT);
+        }
+        const card = this.getTeamCardHitRects(side).find((rect) => this.isPointInRect(point, rect));
+        if (card) {
+          return this.activateTeamSelectSlot(side, card.slot);
+        }
+      }
+    }
+
+    return false;
   }
 
   loop(time) {
