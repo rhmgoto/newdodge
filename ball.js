@@ -23,6 +23,7 @@ const LOCK_ROCKET_GUIDE_START_SPEED_SCALE = 1.35;
 const LOCK_ROCKET_GUIDE_SPEED_SCALE = 1.2;
 const LOCK_ROCKET_LEAD_TIME = 0.16;
 const DODGE_PASSTHROUGH_TIME = 0.52;
+const BOOST_AERIAL_MIN_FLIGHT_Z = 42;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
 const SHINING_PASS_SPEED_SCALE = 2.05;
@@ -321,6 +322,7 @@ class Ball {
     }
 
     const straightBoostFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost" && !this.aerialShot;
+    const aerialBoostSafetyFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "boost" && this.aerialShot;
     const straightSlapFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "slap" && !this.aerialShot;
     const straightKiaiFlight = this.isFlying && this.kind === "shoot" && (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") && !this.aerialShot;
     const straightUfoSpinFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "ufoSpin" && !this.aerialShot;
@@ -370,6 +372,10 @@ class Ball {
         this.vx *= Math.pow(airDrag, delta * 60);
         this.vy *= Math.pow(airDrag, delta * 60);
         this.vz -= this.config.gravity * delta;
+        if (aerialBoostSafetyFlight && this.z < this.boostFlightZ) {
+          this.z = this.boostFlightZ;
+          this.vz = Math.max(0, this.vz);
+        }
       } else {
         this.vz -= this.config.gravity * delta;
       }
@@ -839,6 +845,9 @@ class Ball {
       const targetZ = lowAimSpecial
         ? (this.aerialShot ? (target.jumpZ || 0) + 40 : 26)
         : (target.jumpZ || 0) + 22;
+      if (this.specialShotType === "boost" && this.aerialShot) {
+        this.boostFlightZ = Math.max(BOOST_AERIAL_MIN_FLIGHT_Z, Math.min(this.z, targetZ));
+      }
       const solvedVz = (targetZ - this.z + 0.5 * this.config.gravity * flightTime * flightTime) / flightTime;
       const baseArcLift = lowAimSpecial
         ? 0

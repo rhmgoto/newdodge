@@ -7575,13 +7575,16 @@ class DodgeballGame {
       style?.uniformEmblem === "witch" ||
       style?.uniformEmblem === "shieldDevil" ||
       style?.uniformEmblem === "miniDevil" ||
+      style?.uniformEmblem === "galactako" ||
+      style?.uniformEmblem === "galactakoCaptain" ||
       String(style?.uniformEmblem || "").startsWith("braves-") ||
       type === "demon" ||
       type === "lavaGolem" ||
       type === "vampire" ||
       type === "witch" ||
       type === "shieldDevil" ||
-      type === "miniDevil"
+      type === "miniDevil" ||
+      type === "alien"
     ) {
       this.drawPlayerModelPreview(x, y, side, type, style, scale);
       return;
@@ -7894,7 +7897,9 @@ class DodgeballGame {
               ? scale * 0.95
               : (type === "witch" || style?.uniformEmblem === "witch")
                 ? scale * 0.94
-                : scale;
+                : (type === "alien" || style?.uniformEmblem === "galactako" || style?.uniformEmblem === "galactakoCaptain")
+                  ? scale * 0.9
+                  : scale;
     const previewConfig = {
       ...GAME_CONFIG.battle,
       depthTop: y - 120,
