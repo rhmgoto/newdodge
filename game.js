@@ -4670,7 +4670,19 @@ class DodgeballGame {
   }
 
   endShotAfterDodge(target) {
+    this.ball.isFlying = true;
+    this.ball.isLoose = false;
+    this.ball.catchable = false;
+    this.ball.target = null;
+    this.ball.z = Math.max(this.ball.z || 0, 32);
+    this.ball.vz = Math.max(this.ball.vz || 0, -10);
+    this.ball.dodgePassThroughTimer = 0.52;
     this.ball.hitPlayerIds?.add(target.id);
+    for (const member of this.players) {
+      if (member.team === target.team) {
+        member.pickupLockTimer = Math.max(member.pickupLockTimer || 0, 0.6);
+      }
+    }
     target.hitRecoveryTimer = Math.max(target.hitRecoveryTimer || 0, GAME_CONFIG.battle.dodgeSuccessRecovery);
     this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "dodge");
   }

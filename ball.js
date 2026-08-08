@@ -8,13 +8,21 @@ const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
 const CLOCK_STOP_DURATION = 0.8;
-const CLOCK_STOP_REAIM_LEAD_TIME = 0.14;
-const LOCK_ROCKET_ESCAPE_TIME = 1;
-const LOCK_ROCKET_TURN_TIME = 0.7;
+const CLOCK_STOP_REAIM_LEAD_TIME = 0.24;
+const CLOCK_STOP_BURST_SPEED_SCALE = 1.2;
+const LOCK_ROCKET_ESCAPE_TIME = 0.8;
+const LOCK_ROCKET_TURN_TIME = 0.6;
 const LOCK_ROCKET_GUIDE_TIME = 3.0;
 const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
 const LOCK_ROCKET_TERMINAL_TURN_RATE = Math.PI * 42 / 180;
+const LOCK_ROCKET_ESCAPE_BASE_ANGLE = Math.PI * 70 / 180;
+const LOCK_ROCKET_ESCAPE_RANDOM_ANGLE = Math.PI * 20 / 180;
+const LOCK_ROCKET_GUIDE_START_BOOST_TIME = 0.38;
+const LOCK_ROCKET_GUIDE_START_SPEED_SCALE = 1.35;
+const LOCK_ROCKET_GUIDE_SPEED_SCALE = 1.2;
+const LOCK_ROCKET_LEAD_TIME = 0.16;
+const DODGE_PASSTHROUGH_TIME = 0.52;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
 const SHINING_PASS_SPEED_SCALE = 2.05;
@@ -168,6 +176,7 @@ class Ball {
     this.lightningImpactPending = false;
     this.lightningTrail = [];
     this.hitPlayerIds = new Set();
+    this.dodgePassThroughTimer = 0;
     this.flightSerial = 0;
     this.isFlying = false;
     this.isLoose = true;
@@ -251,6 +260,21 @@ class Ball {
     this.travelDistance += Math.hypot(this.x - lastX, this.y - lastY);
     this.z += this.vz * delta;
     this.spin += Math.hypot(this.vx, this.vy) * delta * 0.025;
+    if (this.dodgePassThroughTimer > 0) {
+      this.dodgePassThroughTimer = Math.max(0, this.dodgePassThroughTimer - delta);
+      this.catchable = false;
+      this.target = null;
+      this.isFlying = true;
+      this.isLoose = false;
+      if (this.z < 28) {
+        this.z = 28;
+        this.vz = Math.max(this.vz, 0);
+      }
+      if (this.dodgePassThroughTimer <= 0) {
+        this.drop();
+        return;
+      }
+    }
     if (this.isFlying && this.kind === "shoot" && this.specialShotType === "braveSlash") {
       this.braveSlashSurgeTimer = Math.max(0, this.braveSlashSurgeTimer - delta);
       if (!this.braveSlashSurged && this.travelDistance >= 560) {
@@ -465,6 +489,7 @@ class Ball {
     this.clearTsutenkakuDrop();
     this.clearMeteorCrash();
     this.clearLightningZigzag();
+    this.dodgePassThroughTimer = 0;
     this.hitPlayerIds.clear();
     player.hasBall = true;
   }
@@ -638,6 +663,7 @@ class Ball {
     this.clearTsutenkakuDrop();
     this.clearMeteorCrash();
     this.clearLightningZigzag();
+    this.dodgePassThroughTimer = 0;
     this.hitPlayerIds.clear();
 
     if (kind === "pass") {
@@ -779,11 +805,16 @@ class Ball {
       this.lockRocketTargetX = targetX;
       this.lockRocketTargetY = targetY;
       const escapeSide = ((actor.id?.length || 0) % 2 === 0 ? 1 : -1) * (actor.team === "left" ? 1 : -1);
-      const escapeX = -directX * 0.78 + -directY * escapeSide * 0.62;
-      const escapeY = -directY * 0.78 + directX * escapeSide * 0.62;
-      const escapeLength = Math.hypot(escapeX, escapeY) || 1;
-      this.vx = escapeX / escapeLength * this.lockRocketBaseSpeed * 0.58;
-      this.vy = escapeY / escapeLength * this.lockRocketBaseSpeed * 0.58;
+      const escapeAngle = escapeSide * (
+        LOCK_ROCKET_ESCAPE_BASE_ANGLE +
+        (Math.random() * 2 - 1) * LOCK_ROCKET_ESCAPE_RANDOM_ANGLE
+      );
+      const cos = Math.cos(escapeAngle);
+      const sin = Math.sin(escapeAngle);
+      const escapeX = directX * cos - directY * sin;
+      const escapeY = directX * sin + directY * cos;
+      this.vx = escapeX * this.lockRocketBaseSpeed * 0.58;
+      this.vy = escapeY * this.lockRocketBaseSpeed * 0.58;
       this.vz = 0;
       this.catchable = true;
       return true;
@@ -1300,7 +1331,7 @@ class Ball {
       const dx = this.clockBurstTargetX - this.x;
       const dy = this.clockBurstTargetY - this.y;
       const length = Math.hypot(dx, dy) || 1;
-      const burstSpeed = this.clockBurstSpeed;
+      const burstSpeed = this.clockBurstSpeed * CLOCK_STOP_BURST_SPEED_SCALE;
       this.vx = dx / length * burstSpeed;
       this.vy = dy / length * burstSpeed;
       this.vz = 0;
@@ -1345,8 +1376,9 @@ class Ball {
 
     if (this.lockRocketPhase === "turn" || this.lockRocketPhase === "guide") {
       const targetAvailable = this.target && !this.target.defeated;
-      const targetX = targetAvailable ? this.target.x : this.lockRocketTargetX;
-      const targetY = targetAvailable ? this.target.y - 38 : this.lockRocketTargetY;
+      const leadTime = this.lockRocketPhase === "guide" ? LOCK_ROCKET_LEAD_TIME : LOCK_ROCKET_LEAD_TIME * 0.45;
+      const targetX = targetAvailable ? this.target.x + (this.target.vx || 0) * leadTime : this.lockRocketTargetX;
+      const targetY = targetAvailable ? this.target.y - 38 + (this.target.vy || 0) * leadTime : this.lockRocketTargetY;
       const currentAngle = Math.atan2(this.vy, this.vx);
       const desiredAngle = Math.atan2(targetY - this.y, targetX - this.x);
       let angleDifference = desiredAngle - currentAngle;
@@ -1354,12 +1386,23 @@ class Ball {
       while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
       const maxTurn = (this.lockRocketPhase === "turn" ? LOCK_ROCKET_TURN_RATE : LOCK_ROCKET_MAX_TURN_RATE) * delta;
       const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
-      const guideSpeed = this.lockRocketBaseSpeed * (this.lockRocketPhase === "turn" ? 0.72 : 1.2);
+      const guideSpeedScale = this.lockRocketPhase === "turn"
+        ? 0.58
+        : this.lockRocketElapsed < LOCK_ROCKET_GUIDE_START_BOOST_TIME
+          ? LOCK_ROCKET_GUIDE_START_SPEED_SCALE
+          : LOCK_ROCKET_GUIDE_SPEED_SCALE;
+      const guideSpeed = this.lockRocketBaseSpeed * guideSpeedScale;
       this.vx = Math.cos(nextAngle) * guideSpeed;
       this.vy = Math.sin(nextAngle) * guideSpeed;
 
       if (this.lockRocketPhase === "turn") {
         if (this.lockRocketElapsed < LOCK_ROCKET_TURN_TIME) return;
+        const snapDx = targetX - this.x;
+        const snapDy = targetY - this.y;
+        const snapLength = Math.hypot(snapDx, snapDy) || 1;
+        const snapSpeed = this.lockRocketBaseSpeed * LOCK_ROCKET_GUIDE_START_SPEED_SCALE;
+        this.vx = snapDx / snapLength * snapSpeed;
+        this.vy = snapDy / snapLength * snapSpeed;
         this.lockRocketPhase = "guide";
         this.lockRocketElapsed = 0;
         return;
@@ -1391,7 +1434,10 @@ class Ball {
       const terminalSpeed = this.lockRocketBaseSpeed * 0.9;
       if (this.target && !this.target.defeated) {
         const currentAngle = Math.atan2(this.vy, this.vx);
-        const desiredAngle = Math.atan2(this.target.y - 38 - this.y, this.target.x - this.x);
+        const desiredAngle = Math.atan2(
+          this.target.y - 38 + (this.target.vy || 0) * LOCK_ROCKET_LEAD_TIME * 0.6 - this.y,
+          this.target.x + (this.target.vx || 0) * LOCK_ROCKET_LEAD_TIME * 0.6 - this.x
+        );
         let angleDifference = desiredAngle - currentAngle;
         while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
         while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
@@ -1647,6 +1693,7 @@ class Ball {
     this.clearTsutenkakuDrop();
     this.clearMeteorCrash();
     this.clearLightningZigzag();
+    this.dodgePassThroughTimer = 0;
     this.hitPlayerIds.clear();
   }
 
