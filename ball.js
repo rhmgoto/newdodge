@@ -8,11 +8,13 @@ const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
 const CLOCK_STOP_DURATION = 0.8;
+const CLOCK_STOP_REAIM_LEAD_TIME = 0.14;
 const LOCK_ROCKET_ESCAPE_TIME = 1;
 const LOCK_ROCKET_TURN_TIME = 0.7;
-const LOCK_ROCKET_GUIDE_TIME = 2.5;
+const LOCK_ROCKET_GUIDE_TIME = 3.0;
 const LOCK_ROCKET_MAX_TURN_RATE = Math.PI * 70 / 180;
 const LOCK_ROCKET_TURN_RATE = Math.PI * 190 / 180;
+const LOCK_ROCKET_TERMINAL_TURN_RATE = Math.PI * 42 / 180;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
 const PASS_SPEED_SCALE = 1.2;
 const SHINING_PASS_SPEED_SCALE = 2.05;
@@ -1290,15 +1292,15 @@ class Ball {
       if (this.clockStopElapsed < CLOCK_STOP_DURATION) return;
 
       this.clockBurstTargetX = this.target && !this.target.defeated
-        ? this.target.x
+        ? this.target.x + (this.target.vx || 0) * CLOCK_STOP_REAIM_LEAD_TIME
         : this.clockStopX + (this.thrower?.team === "left" ? 900 : -900);
       this.clockBurstTargetY = this.target && !this.target.defeated
-        ? this.target.y - 38
+        ? this.target.y - 38 + (this.target.vy || 0) * CLOCK_STOP_REAIM_LEAD_TIME
         : this.clockStopY;
       const dx = this.clockBurstTargetX - this.x;
       const dy = this.clockBurstTargetY - this.y;
       const length = Math.hypot(dx, dy) || 1;
-      const burstSpeed = this.clockBurstSpeed * 0.7;
+      const burstSpeed = this.clockBurstSpeed;
       this.vx = dx / length * burstSpeed;
       this.vy = dy / length * burstSpeed;
       this.vz = 0;
@@ -1352,7 +1354,7 @@ class Ball {
       while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
       const maxTurn = (this.lockRocketPhase === "turn" ? LOCK_ROCKET_TURN_RATE : LOCK_ROCKET_MAX_TURN_RATE) * delta;
       const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
-      const guideSpeed = this.lockRocketBaseSpeed * (this.lockRocketPhase === "turn" ? 0.72 : 0.7);
+      const guideSpeed = this.lockRocketBaseSpeed * (this.lockRocketPhase === "turn" ? 0.72 : 1.2);
       this.vx = Math.cos(nextAngle) * guideSpeed;
       this.vy = Math.sin(nextAngle) * guideSpeed;
 
@@ -1387,6 +1389,18 @@ class Ball {
     if (this.lockRocketPhase === "terminal") {
       const speed = Math.hypot(this.vx, this.vy) || 1;
       const terminalSpeed = this.lockRocketBaseSpeed * 0.9;
+      if (this.target && !this.target.defeated) {
+        const currentAngle = Math.atan2(this.vy, this.vx);
+        const desiredAngle = Math.atan2(this.target.y - 38 - this.y, this.target.x - this.x);
+        let angleDifference = desiredAngle - currentAngle;
+        while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
+        while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
+        const maxTurn = LOCK_ROCKET_TERMINAL_TURN_RATE * delta;
+        const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
+        this.vx = Math.cos(nextAngle) * terminalSpeed;
+        this.vy = Math.sin(nextAngle) * terminalSpeed;
+        return;
+      }
       this.vx = this.vx / speed * terminalSpeed;
       this.vy = this.vy / speed * terminalSpeed;
     }
@@ -3403,6 +3417,43 @@ class Ball {
     context.beginPath();
     context.ellipse(this.x + 3, this.y + 10, this.radius * 1.2, this.radius * 0.42, 0, 0, Math.PI * 2);
     context.fill();
+
+    if (holding && this.target && !this.target.defeated) {
+      const targetY = this.target.y - (this.target.jumpZ || 0) - 52;
+      const progress = Math.max(0, Math.min(1, this.clockStopElapsed / CLOCK_STOP_DURATION));
+      const radius = 42 + progress * 24 + pulse * 8;
+      context.save();
+      context.translate(this.target.x, targetY);
+      context.globalCompositeOperation = "lighter";
+      context.strokeStyle = progress > 0.66 ? "rgba(255, 76, 62, 0.96)" : "rgba(255, 241, 94, 0.88)";
+      context.fillStyle = "rgba(255, 76, 62, 0.14)";
+      context.lineWidth = 5 + progress * 3;
+      context.setLineDash([10, 7]);
+      context.rotate(-this.spin * 0.42);
+      context.beginPath();
+      context.arc(0, 0, radius, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.setLineDash([]);
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(-radius - 16, 0);
+      context.lineTo(-radius * 0.45, 0);
+      context.moveTo(radius + 16, 0);
+      context.lineTo(radius * 0.45, 0);
+      context.moveTo(0, -radius - 16);
+      context.lineTo(0, -radius * 0.45);
+      context.moveTo(0, radius + 16);
+      context.lineTo(0, radius * 0.45);
+      context.stroke();
+      context.rotate(this.spin * 0.42);
+      context.font = "bold 15px Consolas, monospace";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillStyle = progress > 0.66 ? "#ffeb79" : "#ffffff";
+      context.fillText("LOCK", 0, -radius - 26);
+      context.restore();
+    }
 
     if (!holding) {
       context.save();

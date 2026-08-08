@@ -207,3 +207,15 @@ body {
     transform-origin: right bottom;
   }
 }
+
+@media (pointer: coarse) and (orientation: landscape) and (min-height: 600px) {
+  .touch-stick {
+    left: max(36px, calc(env(safe-area-inset-left) + 36px));
+    bottom: max(52px, calc(env(safe-area-inset-bottom) + 52px));
+  }
+
+  .touch-buttons {
+    right: max(76px, calc(env(safe-area-inset-right) + 76px));
+    bottom: max(44px, calc(env(safe-area-inset-bottom) + 44px));
+  }
+}

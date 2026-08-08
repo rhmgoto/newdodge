@@ -288,6 +288,7 @@ class Player {
     this.counterThrowTimer = 0;
     this.counterThrowIntensity = 0;
     this.dodgeTimer = 0;
+    this.dodgeCooldownTimer = 0;
     this.pickupLockTimer = 0;
     this.dodgeType = "none";
     this.downTimer = 0;
@@ -408,6 +409,7 @@ class Player {
       this.clearCounterOpportunity();
     }
     this.dodgeTimer = Math.max(0, this.dodgeTimer - delta);
+    this.dodgeCooldownTimer = Math.max(0, this.dodgeCooldownTimer - delta);
     this.pickupLockTimer = Math.max(0, this.pickupLockTimer - delta);
     this.updateTurn(delta);
     this.updateRobotVisualState(delta, catchTimerBeforeUpdate);
@@ -485,13 +487,7 @@ class Player {
     }
 
     const airborne = this.jumpZ > 0 || this.jumpVelocity > 0;
-    const wantsDash = Boolean(controls.dash && moving && this.dodgeTimer <= 0);
-    this.isDashing = wantsDash && (this.cpuControlled || this.stamina > 0);
-    if (this.isDashing && !this.cpuControlled) {
-      this.drainStamina(config.stamina.dashDrainPerSecond * delta, config.stamina.recoveryDelay);
-    } else if (this.staminaRecoveryDelay <= 0 && this.dodgeTimer <= 0) {
-      this.stamina = Math.min(this.maxStamina, this.stamina + config.stamina.recoveryPerSecond * delta);
-    }
+    this.isDashing = Boolean(controls.dash && moving && this.dodgeTimer <= 0);
 
     const duckSlow = this.dodgeType === "duck" && this.dodgeTimer > 0 ? 0.08 : 1;
     const turnSlow = this.turnTimer > 0 ? config.turnSpeedMultiplier : 1;
@@ -649,15 +645,14 @@ class Player {
   }
 
   startDodge(moveX, moveY, config) {
-    if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.dodgeTimer > 0) return false;
+    if (this.defeated || this.downTimer > 0 || this.hitRecoveryTimer > 0 || this.dodgeTimer > 0 || this.dodgeCooldownTimer > 0) return false;
     if (this.reflectChantTimer > 0) return false;
-    const cost = config.stamina.duckCost;
-    if (!this.consumeStamina(cost, config.stamina.recoveryDelay)) return false;
 
     this.catchTimer = 0;
     this.catchSuccessTimer = 0;
     this.dodgeType = "duck";
     this.dodgeTimer = config.duckDuration;
+    this.dodgeCooldownTimer = config.dodgeCooldown;
     this.pickupLockTimer = Math.max(this.pickupLockTimer || 0, config.duckDuration + 0.25);
     this.robotDodgeDirection = Math.abs(moveX) > 0.08 ? Math.sign(moveX) : this.facing;
     this.state = "dodging";
@@ -754,17 +749,14 @@ class Player {
   }
 
   consumeStamina(amount, recoveryDelay) {
-    if (this.cpuControlled) return true;
-    if (this.stamina < amount) return false;
-    this.stamina = Math.max(0, this.stamina - amount);
-    this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
+    this.stamina = this.maxStamina;
+    this.staminaRecoveryDelay = 0;
     return true;
   }
 
   drainStamina(amount, recoveryDelay) {
-    if (this.cpuControlled) return;
-    this.stamina = Math.max(0, this.stamina - amount);
-    this.staminaRecoveryDelay = Math.max(this.staminaRecoveryDelay, recoveryDelay);
+    this.stamina = this.maxStamina;
+    this.staminaRecoveryDelay = 0;
   }
 
   markThrowing(duration, kind = "shoot") {
@@ -4983,7 +4975,6 @@ class Player {
     const arkmaLord = this.uniformEmblem === "arkmaLord";
     const width = arkmaLord ? 86 : 58;
     const y = this.getVisualTop() - (arkmaLord ? 76 : this.isDemonStyle() ? 46 : 10);
-    let staminaY = y;
 
     if (this.role === "inner") {
       const hpRatio = Math.max(0, this.hp / this.maxHp);
@@ -4992,17 +4983,6 @@ class Player {
       context.fill();
       context.fillStyle = this.team === "left" ? "#49d36e" : "#ffdf5d";
       this.roundRect(context, this.x - width / 2 + 2, y + 2, (width - 4) * hpRatio, 4, 2);
-      context.fill();
-      staminaY += 11;
-    }
-
-    if (!this.cpuControlled || arkmaLord) {
-      const staminaRatio = Math.max(0, this.stamina / this.maxStamina);
-      context.fillStyle = "rgba(25,25,32,0.72)";
-      this.roundRect(context, this.x - width / 2, staminaY, width, 7, 3);
-      context.fill();
-      context.fillStyle = staminaRatio > 0.3 ? "#35d7e8" : "#ff765f";
-      this.roundRect(context, this.x - width / 2 + 2, staminaY + 2, (width - 4) * staminaRatio, 3, 2);
       context.fill();
     }
   }

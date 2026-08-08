@@ -587,6 +587,8 @@ const GAME_CONFIG = {
     jumpVelocity: 630,
     jumpGravity: 920,
     dashSpeedMultiplier: 3.2,
+    dodgeCooldown: 0.55,
+    dodgeSuccessRecovery: 0.1,
     turnDuration: 0,
     turnSpeedMultiplier: 1,
     depthTop: 140,
@@ -655,6 +657,7 @@ class DodgeballGame {
     this.meteorLavaZones = [];
     this.audio = this.createAudioState();
     this.installAudioUnlockHandlers();
+    this.installPointerHandlers();
     this.screenShakeTimer = 0;
     this.screenShakeDuration = 0;
     this.screenShakeStrength = 0;
@@ -745,6 +748,89 @@ class DodgeballGame {
     window.addEventListener("pointerdown", unlock, { passive: true });
     window.addEventListener("keydown", unlock, { passive: true });
     window.addEventListener("gamepadconnected", unlock, { passive: true });
+  }
+
+  installPointerHandlers() {
+    if (!this.canvas?.addEventListener) return;
+    this.canvas.addEventListener("pointerdown", (event) => this.handleCanvasPointerDown(event));
+  }
+
+  getCanvasPointerPosition(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = GAME_CONFIG.width / Math.max(1, rect.width);
+    const scaleY = GAME_CONFIG.height / Math.max(1, rect.height);
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY
+    };
+  }
+
+  isPointInRect(point, rect) {
+    return (
+      point.x >= rect.x &&
+      point.x <= rect.x + rect.w &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.h
+    );
+  }
+
+  getModeSelectHitRects() {
+    return [0, 1, 2].map((index) => ({
+      index,
+      x: 310 + index * 410 - 140,
+      y: 275,
+      w: 280,
+      h: 140
+    }));
+  }
+
+  getPauseMenuHitRects() {
+    const centerX = GAME_CONFIG.width * 0.5;
+    return [0, 1].map((index) => ({
+      index,
+      x: centerX - 180,
+      y: 330 + index * 72 - 34,
+      w: 360,
+      h: 54
+    }));
+  }
+
+  getMatchTitleButtonRect() {
+    return { x: 18, y: 58, w: 126, h: 34 };
+  }
+
+  handleCanvasPointerDown(event) {
+    const point = this.getCanvasPointerPosition(event);
+
+    if (this.state === "modeSelect") {
+      const hit = this.getModeSelectHitRects().find((rect) => this.isPointInRect(point, rect));
+      if (hit) {
+        event.preventDefault();
+        this.modeIndex = hit.index;
+        this.confirmModeSelection();
+      }
+      return;
+    }
+
+    if (this.state === "paused") {
+      const hit = this.getPauseMenuHitRects().find((rect) => this.isPointInRect(point, rect));
+      if (hit) {
+        event.preventDefault();
+        if (hit.index === 0) {
+          this.state = "playing";
+        } else {
+          this.enterModeSelectState();
+          this.pauseMenuIndex = 0;
+        }
+      }
+      return;
+    }
+
+    if (this.state === "playing" && this.isPointInRect(point, this.getMatchTitleButtonRect())) {
+      event.preventDefault();
+      this.enterModeSelectState();
+      this.pauseMenuIndex = 0;
+    }
   }
 
   stopBgm() {
@@ -1776,6 +1862,27 @@ class DodgeballGame {
     }
   }
 
+  confirmModeSelection() {
+    this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
+    this.state = "teamSelect";
+    this.teamSelectionSide = "left";
+    this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+    this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
+    this.teamSelectionConfirmed = { left: false, right: false };
+    this.teamRosterConfirmed = { left: false, right: false };
+    this.watchSelectionSlot = 0;
+    if (this.gameMode === "single") {
+      this.selectedTeamIndices = { left: 0, right: 2 };
+      this.cpuOpponentIndex = 2;
+    } else if (this.gameMode === "versus") {
+      this.selectedTeamIndices = { left: 0, right: 1 };
+    } else {
+      this.selectedTeamIndices = { left: 2, right: 3 };
+      this.watchCpuLeftIndex = 2;
+      this.watchCpuRightIndex = 3;
+    }
+  }
+
   updateModeSelect() {
     if (this.input.wasPressed("button0")) {
       this.toggleAudioEnabled();
@@ -1787,24 +1894,7 @@ class DodgeballGame {
       this.modeIndex = Math.min(2, this.modeIndex + 1);
     }
     if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
-      this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
-      this.state = "teamSelect";
-      this.teamSelectionSide = "left";
-      this.teamSelectionSlot = CPU_OPPONENT_SLOT;
-      this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
-      this.teamSelectionConfirmed = { left: false, right: false };
-      this.teamRosterConfirmed = { left: false, right: false };
-      this.watchSelectionSlot = 0;
-      if (this.gameMode === "single") {
-        this.selectedTeamIndices = { left: 0, right: 2 };
-        this.cpuOpponentIndex = 2;
-      } else if (this.gameMode === "versus") {
-        this.selectedTeamIndices = { left: 0, right: 1 };
-      } else {
-        this.selectedTeamIndices = { left: 2, right: 3 };
-        this.watchCpuLeftIndex = 2;
-        this.watchCpuRightIndex = 3;
-      }
+      this.confirmModeSelection();
     }
   }
 
@@ -3624,10 +3714,6 @@ class DodgeballGame {
         this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
         return;
       }
-      if (!charged.cpuControlled && charged.actor.stamina <= 0) {
-        this.releaseChargedThrow(charged.actor, "shoot", charged.playerIndex);
-        return;
-      }
     } else {
       const selection = this.getPassSelection(charged.actor, charged.playerIndex);
       charged.target = selection.target;
@@ -4585,6 +4671,7 @@ class DodgeballGame {
 
   endShotAfterDodge(target) {
     this.ball.hitPlayerIds?.add(target.id);
+    target.hitRecoveryTimer = Math.max(target.hitRecoveryTimer || 0, GAME_CONFIG.battle.dodgeSuccessRecovery);
     this.spawnEffect(target.x, target.y - target.jumpZ - 64, "#bdf8ff", "dodge");
   }
 
@@ -4682,7 +4769,6 @@ class DodgeballGame {
           !member.defeated &&
           member.hp > 0 &&
           member.role === "inner" &&
-          member.stamina >= staminaCost &&
           !this.ball.hitPlayerIds?.has(member.id) &&
           (member === target || Math.hypot(member.x - target.x, member.y - target.y) <= GUARDIAN_SHIELD_CONFIG.range)
         ))
@@ -4699,7 +4785,6 @@ class DodgeballGame {
 
     const special = Boolean(this.ball.specialShotType);
     const staminaCost = special ? GUARDIAN_SHIELD_CONFIG.specialStaminaCost : GUARDIAN_SHIELD_CONFIG.normalStaminaCost;
-    if (protector.stamina < staminaCost) return false;
     protector.drainStamina?.(staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay * 0.55);
     const direction = this.ball.vx >= 0 ? 1 : -1;
     if (protector !== target) {
@@ -4811,7 +4896,7 @@ class DodgeballGame {
 
   tryMoonBarrier(target, ballY, damage, direction) {
     if (!this.isLunaPlayer(target)) return false;
-    if (target.moonBarrierCooldownTimer > 0 || target.stamina < MOON_BARRIER_CONFIG.staminaCost) return false;
+    if (target.moonBarrierCooldownTimer > 0) return false;
     if (Math.random() >= MOON_BARRIER_CONFIG.chance) return false;
     target.drainStamina?.(MOON_BARRIER_CONFIG.staminaCost, GAME_CONFIG.battle.stamina.recoveryDelay * 0.65);
     target.moonBarrierTimer = MOON_BARRIER_CONFIG.timer;
@@ -6492,6 +6577,7 @@ class DodgeballGame {
     this.drawHellfireFlash();
     this.drawTeamHpAdvantageGraph();
     this.drawSpiritGauges();
+    if (this.state === "playing") this.drawMatchTitleButton();
     this.drawGamepadButtonMonitor();
     this.drawShotMultiplierDebug();
 
@@ -8817,6 +8903,24 @@ class DodgeballGame {
     context.fillText(`1P ${left.current}/${left.max}`, barX + 12, barY + barH / 2);
     context.textAlign = "right";
     context.fillText(`${this.gameMode === "single" ? "CPU" : "2P"} ${right.current}/${right.max}`, barX + barW - 12, barY + barH / 2);
+    context.restore();
+  }
+
+  drawMatchTitleButton() {
+    const context = this.context;
+    const rect = this.getMatchTitleButtonRect();
+    context.save();
+    context.fillStyle = "rgba(31, 38, 36, 0.82)";
+    context.strokeStyle = "rgba(255, 247, 188, 0.9)";
+    context.lineWidth = 3;
+    this.roundRect(context, rect.x, rect.y, rect.w, rect.h, 8);
+    context.fill();
+    context.stroke();
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillStyle = "#fff7d7";
+    context.font = "bold 15px Meiryo, sans-serif";
+    context.fillText("TITLE", rect.x + rect.w * 0.5, rect.y + rect.h * 0.5);
     context.restore();
   }
 
