@@ -18,6 +18,13 @@ class InputManager {
     this.current = this.createEmptyState();
     this.previousP2 = this.createEmptyState();
     this.currentP2 = this.createEmptyState();
+    this.touch = this.createEmptyState();
+    this.touchStickPointerId = null;
+    this.touchButtonPointers = new Map();
+    this.touchStickCenter = { x: 0, y: 0 };
+    this.touchStickRadius = 72;
+    this.touchStickElement = null;
+    this.touchStickKnob = null;
     this.gamepadName = "未接続";
     this.gamepadConnected = false;
     this.pressedGamepadButtons = [];
@@ -45,6 +52,8 @@ class InputManager {
       this.gamepadName = "未接続";
       this.gamepadConnected = false;
     });
+
+    this.setupTouchControls();
   }
 
   createEmptyState() {
@@ -70,26 +79,27 @@ class InputManager {
     this.previous = { ...this.current };
     const keyboard = this.readKeyboard();
     const gamepad = this.readGamepad(0);
+    const touch = this.readTouch();
     const gamepadP2 = this.readGamepad(1);
     this.updateDoubleTapDash(keyboard, gamepad);
-    const dodgeDown = keyboard.avoid || keyboard.button1 || gamepad.avoid || gamepad.button1;
+    const dodgeDown = keyboard.avoid || keyboard.button1 || gamepad.avoid || gamepad.button1 || touch.avoid || touch.button1;
     const p2DodgeDown = gamepadP2.avoid || gamepadP2.button1;
 
     this.current = {
-      moveX: this.clampAxis(keyboard.moveX || gamepad.moveX),
-      moveY: this.clampAxis(keyboard.moveY || gamepad.moveY),
+      moveX: this.clampAxis(keyboard.moveX || gamepad.moveX || touch.moveX),
+      moveY: this.clampAxis(keyboard.moveY || gamepad.moveY || touch.moveY),
       rightX: this.clampAxis(gamepad.rightX),
       rightY: this.clampAxis(gamepad.rightY),
-      button0: keyboard.button0 || gamepad.button0,
-      button1: keyboard.button1 || gamepad.button1,
-      button2: keyboard.button2 || gamepad.button2,
-      catch: (keyboard.catch || gamepad.catch) && !dodgeDown,
-      button3: keyboard.button3 || gamepad.button3,
+      button0: keyboard.button0 || gamepad.button0 || touch.button0,
+      button1: keyboard.button1 || gamepad.button1 || touch.button1,
+      button2: keyboard.button2 || gamepad.button2 || touch.button2,
+      catch: (keyboard.catch || gamepad.catch || touch.catch) && !dodgeDown,
+      button3: keyboard.button3 || gamepad.button3 || touch.button3,
       button4: keyboard.button4 || gamepad.button4,
       avoid: dodgeDown,
       dash: keyboard.dash || gamepad.dash || this.isDoubleTapDashHeld(),
       pause: keyboard.pause || gamepad.pause,
-      rawButtons: gamepad.rawButtons || []
+      rawButtons: [...new Set([...(gamepad.rawButtons || []), ...(touch.rawButtons || [])])]
     };
     this.previousP2 = { ...this.currentP2 };
     this.currentP2 = {
@@ -121,6 +131,140 @@ class InputManager {
       dash: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"),
       pause: this.keys.has("Escape")
     };
+  }
+
+  setupTouchControls() {
+    const controls = document.getElementById("touchControls");
+    const stick = document.getElementById("touchStick");
+    const knob = document.getElementById("touchStickKnob");
+    if (!controls || !stick || !knob) return;
+
+    this.touchStickElement = stick;
+    this.touchStickKnob = knob;
+    const prevent = (event) => event.preventDefault();
+    controls.addEventListener("contextmenu", prevent);
+    controls.addEventListener("touchstart", prevent, { passive: false });
+    controls.addEventListener("touchmove", prevent, { passive: false });
+
+    stick.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      this.touchStickPointerId = event.pointerId;
+      stick.setPointerCapture?.(event.pointerId);
+      stick.classList.add("is-active");
+      this.updateTouchStickCenter();
+      this.updateTouchStick(event.clientX, event.clientY);
+    });
+
+    stick.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== this.touchStickPointerId) return;
+      event.preventDefault();
+      this.updateTouchStick(event.clientX, event.clientY);
+    });
+
+    const releaseStick = (event) => {
+      if (event.pointerId !== this.touchStickPointerId) return;
+      event.preventDefault();
+      this.touchStickPointerId = null;
+      this.touch.moveX = 0;
+      this.touch.moveY = 0;
+      stick.classList.remove("is-active");
+      this.setTouchStickKnob(0, 0);
+    };
+    stick.addEventListener("pointerup", releaseStick);
+    stick.addEventListener("pointercancel", releaseStick);
+    stick.addEventListener("lostpointercapture", () => {
+      this.touchStickPointerId = null;
+      this.touch.moveX = 0;
+      this.touch.moveY = 0;
+      stick.classList.remove("is-active");
+      this.setTouchStickKnob(0, 0);
+    });
+
+    document.querySelectorAll("[data-touch-action]").forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        const action = button.dataset.touchAction;
+        this.touchButtonPointers.set(event.pointerId, action);
+        button.setPointerCapture?.(event.pointerId);
+        button.classList.add("is-active");
+        this.setTouchAction(action, true);
+      });
+
+      const releaseButton = (event) => {
+        const action = this.touchButtonPointers.get(event.pointerId);
+        if (!action) return;
+        event.preventDefault();
+        this.touchButtonPointers.delete(event.pointerId);
+        button.classList.remove("is-active");
+        this.setTouchAction(action, false);
+      };
+      button.addEventListener("pointerup", releaseButton);
+      button.addEventListener("pointercancel", releaseButton);
+      button.addEventListener("lostpointercapture", (event) => {
+        const action = this.touchButtonPointers.get(event.pointerId);
+        if (!action) return;
+        this.touchButtonPointers.delete(event.pointerId);
+        button.classList.remove("is-active");
+        this.setTouchAction(action, false);
+      });
+    });
+  }
+
+  updateTouchStickCenter() {
+    if (!this.touchStickElement) return;
+    const rect = this.touchStickElement.getBoundingClientRect();
+    this.touchStickCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+    this.touchStickRadius = Math.max(42, Math.min(rect.width, rect.height) * 0.43);
+  }
+
+  updateTouchStick(clientX, clientY) {
+    const dx = clientX - this.touchStickCenter.x;
+    const dy = clientY - this.touchStickCenter.y;
+    const distance = Math.hypot(dx, dy);
+    const limit = this.touchStickRadius || 72;
+    const ratio = distance > limit ? limit / distance : 1;
+    const knobX = dx * ratio;
+    const knobY = dy * ratio;
+    this.touch.moveX = this.clampAxis(knobX / limit);
+    this.touch.moveY = this.clampAxis(knobY / limit);
+    this.setTouchStickKnob(knobX, knobY);
+  }
+
+  setTouchStickKnob(x, y) {
+    if (!this.touchStickKnob) return;
+    this.touchStickKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+  }
+
+  setTouchAction(action, pressed) {
+    if (action === "special") {
+      this.touch.button0 = pressed;
+    } else if (action === "shoot") {
+      this.touch.button2 = pressed;
+      this.touch.catch = pressed;
+    } else if (action === "pass") {
+      this.touch.button1 = pressed;
+      this.touch.avoid = pressed;
+    } else if (action === "jump") {
+      this.touch.button3 = pressed;
+    }
+    this.touch.rawButtons = this.getTouchRawButtons();
+  }
+
+  getTouchRawButtons() {
+    const buttons = [];
+    if (this.touch.button0) buttons.push(0);
+    if (this.touch.button1) buttons.push(1);
+    if (this.touch.button2 || this.touch.catch) buttons.push(2);
+    if (this.touch.button3) buttons.push(3);
+    return buttons;
+  }
+
+  readTouch() {
+    this.touch.rawButtons = this.getTouchRawButtons();
+    return this.touch;
   }
 
   readGamepad(playerIndex = 0) {

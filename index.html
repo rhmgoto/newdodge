@@ -2,13 +2,26 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>ぶっとびドッジーズ</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="game-shell">
     <canvas id="gameCanvas" width="1440" height="720" aria-label="ぶっとびドッジーズ"></canvas>
+    <div id="touchControls" class="touch-controls" aria-hidden="true">
+      <div id="touchStick" class="touch-stick">
+        <div class="touch-stick__base"></div>
+        <div id="touchStickKnob" class="touch-stick__knob"></div>
+      </div>
+      <div class="touch-buttons">
+        <button class="touch-button touch-button--special" data-touch-action="special" type="button">特殊</button>
+        <button class="touch-button touch-button--shoot" data-touch-action="shoot" type="button">シュート<br><span>キャッチ</span></button>
+        <button class="touch-button touch-button--pass" data-touch-action="pass" type="button">パス<br><span>回避</span></button>
+        <button class="touch-button touch-button--jump" data-touch-action="jump" type="button">ジャンプ</button>
+      </div>
+      <div class="touch-orientation-message">横向きにすると遊べます</div>
+    </div>
   </main>
 
   <script src="input.js"></script>
