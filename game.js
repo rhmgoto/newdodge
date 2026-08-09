@@ -856,14 +856,11 @@ class DodgeballGame {
   getTeamChoiceListHitRects(side) {
     if (!this.isTeamSelectSlotSelected(side, CPU_OPPONENT_SLOT)) return [];
     const teams = this.getSelectableTeams();
-    const selectedIndex = this.selectedTeamIndices?.[side] ?? 0;
-    const visibleCount = Math.min(5, teams.length);
-    const start = Math.max(0, Math.min(selectedIndex - 2, teams.length - visibleCount));
     const panel = this.getTeamChoicePanelRect(side);
     const listY = panel.y + 64;
-    const rowHeight = 38;
-    return Array.from({ length: visibleCount }, (_, row) => ({
-      index: start + row,
+    const rowHeight = 34;
+    return teams.map((team, row) => ({
+      index: row,
       x: panel.x,
       y: listY + 10 + row * rowHeight,
       w: panel.w,
@@ -2023,45 +2020,46 @@ class DodgeballGame {
 
     if (slot !== CPU_OPPONENT_SLOT) return false;
 
-    if (this.gameMode === "versus") {
-      if (!this.teamSelectionConfirmed[side]) {
-        this.teamSelectionConfirmed[side] = true;
-        if (this.isEditableRosterTeam(selectedTeam)) {
-          this.teamSelectionSlots[side] = 0;
-        } else {
-          this.teamRosterConfirmed[side] = true;
-          this.teamSelectionSlots[side] = START_SLOT;
-        }
+    return this.completeTeamChoice(side);
+  }
+
+  completeTeamChoice(side) {
+    const selectedTeam = this.getSelectedTeamForSide(side);
+    this.rosterChoiceMenu = null;
+    this.teamSelectionConfirmed[side] = true;
+
+    if (this.isEditableRosterTeam(selectedTeam)) {
+      this.teamRosterConfirmed[side] = false;
+      if (this.gameMode === "versus") {
+        this.teamSelectionSlots[side] = 0;
       } else {
-        this.teamSelectionSlots[side] = this.isEditableRosterTeam(selectedTeam) ? 0 : START_SLOT;
+        this.teamSelectionSide = side;
+        this.teamSelectionSlot = 0;
       }
       return true;
     }
 
-    if (!this.teamSelectionConfirmed[side]) {
-      this.teamSelectionConfirmed[side] = true;
-      if (this.isEditableRosterTeam(selectedTeam)) {
-        this.teamSelectionSide = side;
-        this.teamSelectionSlot = 0;
-      } else if (side === "left") {
-        this.teamRosterConfirmed[side] = true;
-        this.teamSelectionSide = "right";
-        this.teamSelectionSlot = CPU_OPPONENT_SLOT;
-      } else {
-        this.teamRosterConfirmed[side] = true;
-        this.teamSelectionSide = side;
-        this.teamSelectionSlot = START_SLOT;
-      }
-    } else if (this.isEditableRosterTeam(selectedTeam)) {
-      this.teamSelectionSide = side;
-      this.teamSelectionSlot = 0;
-    } else if (side === "left") {
+    this.teamRosterConfirmed[side] = true;
+    if (this.gameMode === "versus") {
+      this.teamSelectionSlots[side] = START_SLOT;
+      return true;
+    }
+
+    if (side === "left") {
       this.teamSelectionSide = "right";
       this.teamSelectionSlot = CPU_OPPONENT_SLOT;
     } else {
       this.teamSelectionSide = side;
       this.teamSelectionSlot = START_SLOT;
     }
+    return true;
+  }
+
+  openTeamChoiceList(side) {
+    this.rosterChoiceMenu = null;
+    this.setTeamSelectPointerSlot(side, CPU_OPPONENT_SLOT);
+    this.teamSelectionConfirmed[side] = false;
+    this.teamRosterConfirmed[side] = false;
     return true;
   }
 
@@ -2088,14 +2086,13 @@ class DodgeballGame {
       const teamRow = this.getTeamChoiceListHitRects(side).find((rect) => this.isPointInRect(point, rect));
       if (teamRow) {
         this.setSelectedTeamIndex(side, teamRow.index);
-        this.setTeamSelectPointerSlot(side, CPU_OPPONENT_SLOT);
-        return true;
+        return this.completeTeamChoice(side);
       }
     }
 
     for (const side of ["left", "right"]) {
       if (this.isPointInRect(point, this.getTeamChoicePanelRect(side))) {
-        return this.activateTeamSelectSlot(side, CPU_OPPONENT_SLOT);
+        return this.openTeamChoiceList(side);
       }
     }
 
@@ -2276,24 +2273,7 @@ class DodgeballGame {
       return;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === CPU_OPPONENT_SLOT) {
-      if (!this.teamSelectionConfirmed[this.teamSelectionSide]) {
-        this.teamSelectionConfirmed[this.teamSelectionSide] = true;
-        if (this.isEditableRosterTeam(selectedTeam)) {
-          this.teamSelectionSlot = 0;
-        } else if (this.teamSelectionSide === "left") {
-          this.teamRosterConfirmed[this.teamSelectionSide] = true;
-          this.teamSelectionSide = "right";
-        } else {
-          this.teamRosterConfirmed[this.teamSelectionSide] = true;
-          this.teamSelectionSlot = START_SLOT;
-        }
-      } else if (this.isEditableRosterTeam(selectedTeam)) {
-        this.teamSelectionSlot = 0;
-      } else if (this.teamSelectionSide === "left") {
-        this.teamSelectionSide = "right";
-      } else {
-        this.teamSelectionSlot = START_SLOT;
-      }
+      this.completeTeamChoice(this.teamSelectionSide);
       return;
     }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot === START_SLOT) {
@@ -2406,17 +2386,7 @@ class DodgeballGame {
       return;
     }
     if (this.input.wasPressed("button2", playerIndex) && slot === CPU_OPPONENT_SLOT) {
-      if (!this.teamSelectionConfirmed[side]) {
-        this.teamSelectionConfirmed[side] = true;
-        if (this.isEditableRosterTeam(selectedTeam)) {
-          this.teamSelectionSlots[side] = 0;
-        } else {
-          this.teamRosterConfirmed[side] = true;
-          this.teamSelectionSlots[side] = START_SLOT;
-        }
-      } else {
-        this.teamSelectionSlots[side] = this.isEditableRosterTeam(selectedTeam) ? 0 : START_SLOT;
-      }
+      this.completeTeamChoice(side);
     }
     if (this.input.wasPressed("button2", playerIndex) && slot === START_SLOT) {
       if (this.canStartSelectedMatch()) {
@@ -7571,19 +7541,16 @@ class DodgeballGame {
 
     if (active) {
       const listY = y + 64;
-      const rowHeight = 38;
-      const visibleCount = Math.min(5, teams.length);
-      const start = Math.max(0, Math.min(selectedIndex - 2, teams.length - visibleCount));
+      const rowHeight = 34;
       context.textAlign = "left";
       context.fillStyle = "rgba(255,255,255,0.94)";
       context.strokeStyle = "#263241";
       context.lineWidth = 3;
-      this.roundRect(context, x, listY, width, visibleCount * rowHeight + 12, 8);
+      this.roundRect(context, x, listY, width, teams.length * rowHeight + 12, 8);
       context.fill();
       context.stroke();
-      for (let n = 0; n < visibleCount; n += 1) {
-        const i = start + n;
-        const rowY = listY + 10 + n * rowHeight;
+      for (let i = 0; i < teams.length; i += 1) {
+        const rowY = listY + 10 + i * rowHeight;
         const rowSelected = i === selectedIndex;
         if (rowSelected) {
           context.fillStyle = "rgba(255,216,61,0.9)";
@@ -7591,7 +7558,7 @@ class DodgeballGame {
           context.fill();
         }
         context.fillStyle = "#263241";
-        drawFittedName(teams[i].name, x + 24, rowY + 25, width - 48, 22, 18);
+        drawFittedName(teams[i].name, x + 24, rowY + 23, width - 48, 21, 17);
       }
     }
     context.restore();
