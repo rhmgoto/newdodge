@@ -37,6 +37,20 @@ const CPU_ATTACK_TACTIC_WEIGHTS = {
   shotFeint: 1
 };
 
+const CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT = {
+  minBallZ: 112,
+  maxGroundDistance: 430,
+  jumpDistance: 240,
+  catchHandDistance: 104,
+  catchBodyDistance: 165,
+  baseChance: 0.11,
+  jumpChanceBonus: 0.006,
+  techniqueChanceBonus: 0.004,
+  maxChance: 0.16,
+  devilTriangleScale: 0.25,
+  leadTime: 0.14
+};
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -60,6 +74,7 @@ class CPUController {
     this.specialAttackState = null;
     this.catchDelayPlans = new Map();
     this.paladinCoverRolls = new Map();
+    this.martialArtistAerialPassCutRolls = new Map();
   }
 
   update(delta) {
@@ -2195,12 +2210,69 @@ class CPUController {
       const ballInFront = (this.ball.x - member.x) * member.facing > 0;
       const veryClose = handDistance < 46 && bodyDistance < 76;
       const technique = member.stats?.technique || 5;
+      if (this.tryMartialArtistAerialPassCut(command, member, handDistance, bodyDistance, ballInFront)) continue;
       const cutChanceBase = Math.max(0.16, Math.min(0.72, 0.22 + (technique - 5) * 0.045));
       const cutChance = this.ball.devilTrianglePass ? cutChanceBase * 0.08 : cutChanceBase;
       if (!ballInFront || !veryClose || Math.random() > cutChance) continue;
       command.catch = true;
       if (this.ball.z > 120 && handDistance < 42 && member.jumpZ <= 0 && member.jumpVelocity <= 0 && Math.random() < 0.25) command.jump = true;
     }
+  }
+
+  tryMartialArtistAerialPassCut(command, member, handDistance, bodyDistance, ballInFront) {
+    if (!command || !member || member.uniformEmblem !== "braves-martialArtist") return false;
+    if (this.ball.z < CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.minBallZ) return false;
+    if (member.downTimer > 0 || member.hitRecoveryTimer > 0 || member.stunTimer > 0) return false;
+
+    const serial = this.ball.flightSerial || 0;
+    const key = `${serial}:${member.id}`;
+    let roll = this.martialArtistAerialPassCutRolls.get(key);
+    if (roll === undefined) {
+      if (this.martialArtistAerialPassCutRolls.size > 40) this.martialArtistAerialPassCutRolls.clear();
+      roll = Math.random();
+      this.martialArtistAerialPassCutRolls.set(key, roll);
+    }
+
+    const jump = member.stats?.jump || 5;
+    const technique = member.stats?.technique || 5;
+    let chance = CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.baseChance +
+      Math.max(0, jump - 12) * CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.jumpChanceBonus +
+      Math.max(0, technique - 10) * CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.techniqueChanceBonus;
+    chance = Math.min(CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.maxChance, chance);
+    if (this.ball.devilTrianglePass) chance *= CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.devilTriangleScale;
+    if (roll > chance) return false;
+
+    const area = this.config.areas?.[member.zone];
+    const lead = CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.leadTime;
+    const intercept = this.clampPointToArea({
+      x: this.ball.x + this.ball.vx * lead,
+      y: this.ball.y + this.ball.vy * lead
+    }, area, member.radius);
+    const groundDistance = Math.hypot(member.x - intercept.x, member.y - intercept.y);
+    if (groundDistance > CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.maxGroundDistance) return false;
+
+    this.moveToward(command, member, intercept.x, intercept.y);
+    command.dash = groundDistance > 80;
+
+    const grounded = member.jumpZ <= 0 && member.jumpVelocity <= 0;
+    if (
+      grounded &&
+      groundDistance < CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.jumpDistance &&
+      this.ball.z > CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.minBallZ + 18
+    ) {
+      command.jump = true;
+    }
+
+    const catchReady = (
+      ballInFront &&
+      handDistance < CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.catchHandDistance &&
+      bodyDistance < CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT.catchBodyDistance
+    );
+    if (catchReady) {
+      command.catch = true;
+      command.dash = false;
+    }
+    return true;
   }
 
   faceNearestThreat(command, member) {

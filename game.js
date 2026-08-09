@@ -1,6 +1,6 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
-const LAST_UPDATED_AT = "2026/08/09 19:15";
+const LAST_UPDATED_AT = "2026/08/09 20:42";
 const TITLE_BACKGROUND_IMAGE_PATH = "assets/title/title.png";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
@@ -64,7 +64,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "normal",
     maxHp: 350,
     maxStamina: 130,
-    stats: { power: 15, speed: 13, jump: 13, technique: 13, defense: 12, pass: 11 },
+    stats: { power: 16, speed: 13, jump: 13, technique: 13, defense: 12, pass: 11 },
     specialShotType: "braveSlash",
     uniformColor: "#2f73e8",
     pantsColor: "#243a68",
@@ -76,9 +76,9 @@ const BRAVES_JOB_DEFINITIONS = {
   warrior: {
     label: "戦士",
     characterType: "power",
-    maxHp: 280,
+    maxHp: 300,
     maxStamina: 115,
-    stats: { power: 20, speed: 7, jump: 7, technique: 10, defense: 11, pass: 8 },
+    stats: { power: 18, speed: 7, jump: 7, technique: 10, defense: 11, pass: 8 },
     specialShotType: "gigaBreak",
     uniformColor: "#8f3b25",
     pantsColor: "#3a2a22",
@@ -132,7 +132,7 @@ const BRAVES_JOB_DEFINITIONS = {
   mage: {
     label: "魔法使い",
     characterType: "mage",
-    maxHp: 200,
+    maxHp: 210,
     maxStamina: 150,
     stats: { power: 13, speed: 8, jump: 8, technique: 9, defense: 7, pass: 8 },
     specialShotType: "lunaticMirage",
@@ -176,7 +176,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "jump",
     maxHp: 230,
     maxStamina: 135,
-    stats: { power: 12, speed: 20, jump: 20, technique: 14, defense: 9, pass: 14 },
+    stats: { power: 12, speed: 20, jump: 20, technique: 12, defense: 9, pass: 14 },
     specialShotType: "hundredRush",
     uniformColor: "#f7f3e7",
     pantsColor: "#f7f3e7",
@@ -281,10 +281,10 @@ const STATUS_DEFENSE_PASS_OVERRIDES = new Map([
   ["レーダー", { defense: 9, pass: 7 }],
   ["コイル", { defense: 9, pass: 7 }],
   ["ビット", { defense: 9, pass: 7 }],
-  ["大魔王アークマ", { defense: 12, pass: 10 }],
-  ["溶岩ゴーレム", { defense: 12, pass: 6 }],
-  ["吸血鬼ヴァルド", { defense: 10, pass: 7 }],
-  ["シールドデビル", { defense: 13, pass: 16 }],
+  ["大魔王アークマ", { defense: 13, pass: 10 }],
+  ["溶岩ゴーレム", { defense: 14, pass: 6 }],
+  ["吸血鬼ヴァルド", { defense: 10, pass: 8 }],
+  ["シールドデビル", { defense: 15, pass: 16 }],
   ["魔女メルティ", { defense: 6, pass: 8 }],
   ["ピコ|devilClaw", { defense: 6, pass: 16 }],
   ["ペコ", { defense: 6, pass: 16 }],
@@ -297,14 +297,14 @@ const STATUS_DEFENSE_PASS_OVERRIDES = new Map([
   ["ポル", { defense: 7, pass: 7 }],
   ["ニュル", { defense: 7, pass: 7 }],
   ["モニョ", { defense: 7, pass: 7 }],
-  ["勇者", { defense: 11, pass: 11 }],
-  ["戦士", { defense: 9, pass: 8 }],
+  ["勇者", { defense: 12, pass: 11 }],
+  ["戦士", { defense: 11, pass: 8 }],
   ["魔法使い", { defense: 7, pass: 8 }],
-  ["聖騎士", { defense: 13, pass: 7 }],
+  ["聖騎士", { defense: 15, pass: 7 }],
   ["僧侶", { defense: 8, pass: 9 }],
   ["弓使い", { defense: 6, pass: 14 }],
-  ["武闘家", { defense: 8, pass: 9 }],
-  ["吟遊詩人", { defense: 7, pass: 11 }],
+  ["武闘家", { defense: 9, pass: 14 }],
+  ["吟遊詩人", { defense: 7, pass: 9 }],
 ]);
 
 function getStatusDefensePassOverride(name, specialShotType) {
@@ -441,6 +441,7 @@ const AUDIO_CONFIG = {
   damageCooldown: 0.12,
   catchCooldown: 0.08,
   paths: {
+    main: "music/main.mp3",
     select: "music/select.mp3",
     koutei: "music/koutei.mp3",
     daimao: "music/daimao.mp3",
@@ -623,7 +624,7 @@ class DodgeballGame {
     this.canvas = document.getElementById("gameCanvas");
     this.context = this.canvas.getContext("2d");
     this.input = new InputManager();
-    this.state = "modeSelect";
+    this.state = "pressStart";
     this.gameMode = "single";
     this.modeIndex = 0;
     this.typeOrder = ["normal", "power", "speed", "jump", "mage"];
@@ -725,7 +726,7 @@ class DodgeballGame {
     const bgm = {};
     const sfxPools = {};
     if (supported) {
-      for (const key of ["select", "koutei", "daimao"]) {
+      for (const key of ["main", "select", "koutei", "daimao"]) {
         const audio = new Audio(AUDIO_CONFIG.paths[key]);
         audio.loop = true;
         audio.volume = AUDIO_CONFIG.bgmVolume;
@@ -766,7 +767,7 @@ class DodgeballGame {
     }
     this.unlockAudio();
     if (this.state === "playing") this.startMatchBgm();
-    if (this.state === "modeSelect" || this.state === "teamSelect") this.startMenuBgm();
+    if (this.state === "modeSelect" || this.state === "teamSelect") this.startScreenBgm();
   }
 
   unlockAudio() {
@@ -776,14 +777,22 @@ class DodgeballGame {
       audio.load?.();
     }
     if (this.state === "playing") this.startMatchBgm();
-    if (this.state === "modeSelect" || this.state === "teamSelect") this.startMenuBgm();
+    if (this.state === "modeSelect" || this.state === "teamSelect") this.startScreenBgm();
   }
 
   installAudioUnlockHandlers() {
     if (!this.audio?.supported || typeof window === "undefined") return;
     const unlock = () => this.unlockAudio();
-    window.addEventListener("pointerdown", unlock, { passive: true });
-    window.addEventListener("keydown", unlock, { passive: true });
+    const startFromInitialInput = () => {
+      if (this.state === "pressStart") {
+        this.unlockAudio();
+        this.enterModeSelectState();
+        return;
+      }
+      this.unlockAudio();
+    };
+    window.addEventListener("pointerdown", startFromInitialInput, { passive: true });
+    window.addEventListener("keydown", startFromInitialInput, { passive: true });
     window.addEventListener("gamepadconnected", unlock, { passive: true });
   }
 
@@ -914,6 +923,12 @@ class DodgeballGame {
   handleCanvasPointerDown(event) {
     const point = this.getCanvasPointerPosition(event);
 
+    if (this.state === "pressStart") {
+      event.preventDefault();
+      this.enterModeSelectState();
+      return;
+    }
+
     if (this.state === "modeSelect") {
       const hit = this.getModeSelectHitRects().find((rect) => this.isPointInRect(point, rect));
       if (hit) {
@@ -1005,9 +1020,16 @@ class DodgeballGame {
     }
   }
 
-  startMenuBgm() {
-    if (!this.isAudioEnabled() || !this.audio.unlocked) return;
-    const key = "select";
+  startScreenBgm() {
+    if (this.state === "teamSelect") {
+      this.startMenuBgm("select");
+      return;
+    }
+    this.startMenuBgm("main");
+  }
+
+  startMenuBgm(key = "main") {
+    if (!this.isAudioEnabled()) return;
     if (this.audio.currentBgm === key && !this.audio.bgm[key]?.paused) return;
     for (const [name, audio] of Object.entries(this.audio.bgm)) {
       if (name === key) continue;
@@ -1030,7 +1052,7 @@ class DodgeballGame {
 
   enterModeSelectState() {
     this.state = "modeSelect";
-    this.startMenuBgm();
+    this.startMenuBgm("main");
   }
 
   isArkmazMatch() {
@@ -1628,7 +1650,7 @@ class DodgeballGame {
         stats: { power: 7, speed: 7, jump: 7, technique: 7 },
         cpuProfile: "arkmaz",
         players: [
-          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 400, 200, 20, 13, 13, 13, "hellfire", {
+          player("\u5927\u9b54\u738b\u30a2\u30fc\u30af\u30de", "inner", "demon", 450, 200, 20, 13, 13, 14, "hellfire", {
             captain: true,
             uniformEmblem: "arkmaLord",
             uniformColor: "#161018",
@@ -1637,10 +1659,10 @@ class DodgeballGame {
             hairColor: "#09070d",
             faceColor: "#43205f",
             eyeColor: "#ff304a",
-            defense: 12,
+            defense: 13,
             pass: 10
           }),
-          player("\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "inner", "lavaGolem", 300, 150, 16, 5, 4, 9, "meteorCrash", {
+          player("\u6eb6\u5ca9\u30b4\u30fc\u30ec\u30e0", "inner", "lavaGolem", 300, 150, 17, 5, 4, 9, "meteorCrash", {
             uniformEmblem: "lavaGolem",
             radius: 66,
             uniformColor: "#4a3024",
@@ -1653,7 +1675,7 @@ class DodgeballGame {
             defense: 14,
             pass: 6
           }),
-          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 230, 150, 12, 11, 9, 11, "bloodDrain", {
+          player("\u5438\u8840\u9b3c\u30f4\u30a1\u30eb\u30c9", "inner", "vampire", 250, 150, 12, 15, 12, 11, "bloodDrain", {
             uniformEmblem: "vampire",
             uniformColor: "#7a1630",
             pantsColor: "#361227",
@@ -1662,7 +1684,7 @@ class DodgeballGame {
             faceColor: "#d8edf6",
             eyeColor: "#d81942",
             defense: 10,
-            pass: 7
+            pass: 8
           }),
           player("\u30b7\u30fc\u30eb\u30c9\u30c7\u30d3\u30eb", "inner", "shieldDevil", 250, 150, 10, 12, 8, 13, "devilShield", {
             uniformEmblem: "shieldDevil",
@@ -1673,7 +1695,7 @@ class DodgeballGame {
             faceColor: "#c8d0dc",
             eyeColor: "#56eaff",
             cpuProfile: "arkmaGuard",
-            defense: 13,
+            defense: 15,
             pass: 16
           }),
           player("\u9b54\u5973\u30e1\u30eb\u30c6\u30a3", "inner", "witch", 230, 150, 14, 10, 9, 11, "arcanaSphere", {
@@ -2127,6 +2149,11 @@ class DodgeballGame {
   }
 
   update(delta) {
+    if (this.state === "pressStart") {
+      this.updatePressStart();
+      return;
+    }
+
     if (this.state === "modeSelect") {
       this.updateModeSelect();
       return;
@@ -2156,6 +2183,18 @@ class DodgeballGame {
     this.updatePlaying(delta);
   }
 
+  updatePressStart() {
+    if (
+      this.input.wasPressed("button0") ||
+      this.input.wasPressed("button1") ||
+      this.input.wasPressed("button2") ||
+      this.input.wasPressed("button3") ||
+      this.input.wasPressed("pause")
+    ) {
+      this.enterModeSelectState();
+    }
+  }
+
   updatePauseMenu() {
     if (this.wasMenuDirectionPressed("up") || this.wasMenuDirectionPressed("down")) {
       this.pauseMenuIndex = this.pauseMenuIndex === 0 ? 1 : 0;
@@ -2173,7 +2212,7 @@ class DodgeballGame {
   confirmModeSelection() {
     this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
     this.state = "teamSelect";
-    this.startMenuBgm();
+    this.startMenuBgm("select");
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = CPU_OPPONENT_SLOT;
     this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
@@ -2193,6 +2232,7 @@ class DodgeballGame {
   }
 
   updateModeSelect() {
+    this.startMenuBgm("main");
     if (this.input.wasPressed("button0")) {
       this.toggleAudioEnabled();
     }
@@ -6947,7 +6987,12 @@ class DodgeballGame {
 
   draw() {
     const context = this.context;
+    document.body?.classList.toggle("is-press-start", this.state === "pressStart");
     context.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    if (this.state === "pressStart") {
+      this.drawPressStart();
+      return;
+    }
     if (this.state === "modeSelect") {
       this.drawModeSelect();
       this.drawModeSelectOverlay();
@@ -7026,6 +7071,22 @@ class DodgeballGame {
     } else if (this.state === "gameOver") {
       this.drawOverlay(this.message, "ボタン1またはSpaceでモード選択へ");
     }
+  }
+
+  drawPressStart() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const centerY = GAME_CONFIG.height * 0.5;
+    const pulse = 0.62 + Math.sin(performance.now() / 420) * 0.38;
+    context.save();
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = "bold 54px Arial, sans-serif";
+    context.fillStyle = `rgba(255, 255, 255, ${0.55 + pulse * 0.45})`;
+    context.fillText("PRESS BUTTON", centerX, centerY);
+    context.restore();
   }
 
   drawSpecialShotTargetWarning(context) {

@@ -50,6 +50,10 @@ body {
 }
 
 @media (pointer: coarse) {
+  body.is-press-start .touch-controls {
+    display: none;
+  }
+
   .touch-controls {
     position: fixed;
     inset: 0;
