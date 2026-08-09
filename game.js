@@ -6958,6 +6958,7 @@ class DodgeballGame {
   draw() {
     const context = this.context;
     document.body?.classList.toggle("is-press-start", this.state === "pressStart");
+    document.body?.classList.toggle("is-playing", this.state === "playing");
     context.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
     if (this.state === "pressStart") {
       this.drawPressStart();
