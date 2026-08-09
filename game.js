@@ -1,6 +1,7 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
-const LAST_UPDATED_AT = "2026/08/08 20:47";
+const LAST_UPDATED_AT = "2026/08/09 19:15";
+const TITLE_BACKGROUND_IMAGE_PATH = "assets/title/title.png";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
 const CPU_OPPONENT_SLOT = TEAM_SELECTION_COUNT;
@@ -21,6 +22,7 @@ const BRAVES_JOB_NAMES = {
 };
 const BRAVES_OUTFIELD_ARCHER_NAMES = ["ロイ", "レイ", "ルイ"];
 const GRAND_HEAL_CONFIG = {
+  maxUses: 3,
   duration: 2.6,
   tickInterval: 0.26,
   healRatioPerTick: 0.015,
@@ -76,7 +78,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "power",
     maxHp: 280,
     maxStamina: 115,
-    stats: { power: 18, speed: 7, jump: 7, technique: 8, defense: 10, pass: 8 },
+    stats: { power: 20, speed: 7, jump: 7, technique: 10, defense: 11, pass: 8 },
     specialShotType: "gigaBreak",
     uniformColor: "#8f3b25",
     pantsColor: "#3a2a22",
@@ -174,7 +176,7 @@ const BRAVES_JOB_DEFINITIONS = {
     characterType: "jump",
     maxHp: 230,
     maxStamina: 135,
-    stats: { power: 14, speed: 18, jump: 18, technique: 13, defense: 9, pass: 12 },
+    stats: { power: 12, speed: 20, jump: 20, technique: 14, defense: 9, pass: 14 },
     specialShotType: "hundredRush",
     uniformColor: "#f7f3e7",
     pantsColor: "#f7f3e7",
@@ -336,7 +338,13 @@ const HUNDRED_RUSH_CONFIG = {
   baseDamageScale: 2.28,
   closeDamageScale: 1.12,
   catchWindowScale: 0.82,
-  catchAreaScale: 0.72
+  catchAreaScale: 0.72,
+  stepTriggerDistance: 220,
+  stepMinDistance: 90,
+  stepMaxDistance: 300,
+  stepStopDistance: 185,
+  stepDistanceScale: 1.5,
+  stepVelocityScale: 0.7
 };
 const CATCH_DIFFICULTY = {
   normal: { duration: 0.2, areaScale: 1 },
@@ -433,6 +441,7 @@ const AUDIO_CONFIG = {
   damageCooldown: 0.12,
   catchCooldown: 0.08,
   paths: {
+    select: "music/select.mp3",
     koutei: "music/koutei.mp3",
     daimao: "music/daimao.mp3",
     pass: "music/pass.mp3",
@@ -656,6 +665,7 @@ class DodgeballGame {
     this.effects = [];
     this.hellfireZones = [];
     this.meteorLavaZones = [];
+    this.titleBackgroundImage = this.loadTitleBackgroundImage();
     this.audio = this.createAudioState();
     this.installAudioUnlockHandlers();
     this.installPointerHandlers();
@@ -686,12 +696,36 @@ class DodgeballGame {
     return [...BRAVES_DEFAULT_SELECTION];
   }
 
+  loadTitleBackgroundImage() {
+    if (typeof Image === "undefined") return null;
+    const image = new Image();
+    image.src = TITLE_BACKGROUND_IMAGE_PATH;
+    return image;
+  }
+
+  drawTitleBackgroundImage() {
+    const image = this.titleBackgroundImage;
+    if (!image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+      this.drawMenuBackground();
+      return;
+    }
+    const context = this.context;
+    const scale = Math.max(GAME_CONFIG.width / image.naturalWidth, GAME_CONFIG.height / image.naturalHeight);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    const x = (GAME_CONFIG.width - drawWidth) * 0.5;
+    const y = (GAME_CONFIG.height - drawHeight) * 0.5;
+    context.drawImage(image, x, y, drawWidth, drawHeight);
+    context.fillStyle = "rgba(0, 0, 0, 0.18)";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+  }
+
   createAudioState() {
     const supported = typeof Audio !== "undefined";
     const bgm = {};
     const sfxPools = {};
     if (supported) {
-      for (const key of ["koutei", "daimao"]) {
+      for (const key of ["select", "koutei", "daimao"]) {
         const audio = new Audio(AUDIO_CONFIG.paths[key]);
         audio.loop = true;
         audio.volume = AUDIO_CONFIG.bgmVolume;
@@ -732,6 +766,7 @@ class DodgeballGame {
     }
     this.unlockAudio();
     if (this.state === "playing") this.startMatchBgm();
+    if (this.state === "modeSelect" || this.state === "teamSelect") this.startMenuBgm();
   }
 
   unlockAudio() {
@@ -741,6 +776,7 @@ class DodgeballGame {
       audio.load?.();
     }
     if (this.state === "playing") this.startMatchBgm();
+    if (this.state === "modeSelect" || this.state === "teamSelect") this.startMenuBgm();
   }
 
   installAudioUnlockHandlers() {
@@ -969,6 +1005,24 @@ class DodgeballGame {
     }
   }
 
+  startMenuBgm() {
+    if (!this.isAudioEnabled() || !this.audio.unlocked) return;
+    const key = "select";
+    if (this.audio.currentBgm === key && !this.audio.bgm[key]?.paused) return;
+    for (const [name, audio] of Object.entries(this.audio.bgm)) {
+      if (name === key) continue;
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    const bgm = this.audio.bgm[key];
+    if (!bgm) return;
+    bgm.volume = AUDIO_CONFIG.bgmVolume;
+    bgm.currentTime = bgm.currentTime || 0;
+    const playPromise = bgm.play();
+    if (playPromise?.catch) playPromise.catch(() => {});
+    this.audio.currentBgm = key;
+  }
+
   enterPlayingState() {
     this.state = "playing";
     this.startMatchBgm();
@@ -976,7 +1030,7 @@ class DodgeballGame {
 
   enterModeSelectState() {
     this.state = "modeSelect";
-    this.stopBgm();
+    this.startMenuBgm();
   }
 
   isArkmazMatch() {
@@ -1734,18 +1788,18 @@ class DodgeballGame {
         pantsColor: "#f01818",
         trimColor: "#fff0cf",
         hairColor: "#f2c14e",
-        maxHp: 80,
+        maxHp: 130,
         maxStamina: GAME_CONFIG.player.maxStamina,
-        stats: GAME_CONFIG.player.stats,
+        stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 },
         players: [
-          { name: "あか", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "しんく", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "もみじ", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "れっか", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "ほむら", position: "inner", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "ぐれん", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "べに", position: "out", maxHp: 80, maxStamina: 100, stats: { defense: 6, pass: 6 } },
-          { name: "かえん", position: "out", maxHp: 60, maxStamina: 100, stats: { defense: 6, pass: 6 } }
+          { name: "\u3042\u304b", position: "inner", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u3057\u3093\u304f", position: "inner", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u3082\u307f\u3058", position: "inner", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u308c\u3063\u304b", position: "inner", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u307b\u3080\u3089", position: "inner", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u3050\u308c\u3093", position: "out", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u3079\u306b", position: "out", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } },
+          { name: "\u304b\u3048\u3093", position: "out", maxHp: 130, maxStamina: 100, stats: { power: 8, speed: 8, jump: 8, technique: 8, defense: 8, pass: 8 } }
         ]
       }
     ];
@@ -2119,6 +2173,7 @@ class DodgeballGame {
   confirmModeSelection() {
     this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
     this.state = "teamSelect";
+    this.startMenuBgm();
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = CPU_OPPONENT_SLOT;
     this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
@@ -2563,6 +2618,7 @@ class DodgeballGame {
     this.resolvePlayerCollisions();
     this.autoPickupLooseBall();
     this.ball.update(delta, this.ballBounds);
+    this.handleUfoSpinOutfieldCarry();
     this.updateBoostPresentation();
     this.updateBoomerangPresentation();
     this.updateTripleBalls(delta);
@@ -3348,6 +3404,47 @@ class DodgeballGame {
     return best;
   }
 
+  prepareHundredRushStepIn(actor, target) {
+    if (!actor || !target || actor.defeated || target.defeated || actor.specialShotType !== "hundredRush") return false;
+
+    const targetX = target.x;
+    const targetY = target.y - 20;
+    const dx = targetX - actor.x;
+    const dy = targetY - actor.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < HUNDRED_RUSH_CONFIG.stepTriggerDistance) return false;
+
+    const baseStepDistance = Math.max(
+      HUNDRED_RUSH_CONFIG.stepMinDistance,
+      Math.min(HUNDRED_RUSH_CONFIG.stepMaxDistance, distance - HUNDRED_RUSH_CONFIG.stepStopDistance)
+    );
+    const stepDistance = baseStepDistance * HUNDRED_RUSH_CONFIG.stepDistanceScale;
+    if (stepDistance <= 8) return false;
+
+    const oldX = actor.x;
+    const oldY = actor.y;
+    const directionX = dx / distance;
+    const directionY = dy / distance;
+    const area = this.getMoveArea(actor, false);
+    const point = this.clampPointToArea({
+      x: actor.x + directionX * stepDistance,
+      y: actor.y + directionY * stepDistance
+    }, area, actor.radius + 8);
+    const moved = Math.hypot(point.x - oldX, point.y - oldY);
+    if (moved < 10) return false;
+
+    actor.x = point.x;
+    actor.y = point.y;
+    actor.vx = directionX * 90 * HUNDRED_RUSH_CONFIG.stepVelocityScale;
+    actor.vy = directionY * 70 * HUNDRED_RUSH_CONFIG.stepVelocityScale;
+    actor.facing = target.x >= actor.x ? 1 : -1;
+    actor.throwLockTimer = Math.max(actor.throwLockTimer, 0.28);
+
+    this.spawnEffect(oldX, oldY - actor.jumpZ - 54, "#bdf8ff", "dodge", 1.15);
+    this.spawnEffect(actor.x, actor.y - actor.jumpZ - 62, "#ffffff", "qigongShotImpact", Math.min(1.25, 0.72 + moved / 360));
+    return true;
+  }
+
   ensureBallIsPlayable() {
     if (!this.ball) return;
 
@@ -3519,6 +3616,7 @@ class DodgeballGame {
     const counterChainCount = actor.counterChainCount || 0;
     const counterDamage = sourceDamage * (galeCounter ? 2 : COUNTER_CONFIG.damageScale) / SHOT_DAMAGE_SCALE;
     const counterIntensity = (actor.counterVisualIntensity || 1) * (galeCounter ? 1.25 : 1);
+    const battlefieldTuningCounter = this.hasBattlefieldTuning(actor.team);
     const windupScale = this.getThrowWindupScale(actor);
     actor.clearCounterOpportunity();
     actor.counterThrowTimer = 0.34;
@@ -3535,6 +3633,7 @@ class DodgeballGame {
       counterIntensity,
       counterChainCount,
       galeCounter,
+      battlefieldTuningCounter,
       timer: COUNTER_CONFIG.releaseDelay * windupScale
     };
     actor.markThrowing(0.34 * windupScale, "shoot");
@@ -3691,6 +3790,9 @@ class DodgeballGame {
       return true;
     }
     this.updateHeroBondIntensityFor(actor);
+    if (specialType === "hundredRush") {
+      this.prepareHundredRushStepIn(actor, charged.target);
+    }
     if (this.ball.launch(actor, charged.target, kind, charged.aim, multiplier, specialType)) {
       if (specialType) this.consumeSpirit(actor.team);
       this.addSpiritForShotFire({ actor, kind, specialType, shotMultiplier: multiplier, aerialCombo: charged.aerialCombo });
@@ -3832,6 +3934,9 @@ class DodgeballGame {
       return;
     }
     this.updateHeroBondIntensityFor(pending.actor);
+    if (specialType === "hundredRush") {
+      this.prepareHundredRushStepIn(pending.actor, launchTarget);
+    }
     if (this.ball.launch(pending.actor, launchTarget, pending.kind, pending.aim, launchMultiplier, specialType)) {
       if (!specialType) this.addSpiritForShotFire(pending);
       this.playThrowSound(pending.kind, specialType, Boolean(pending.counter));
@@ -3872,6 +3977,7 @@ class DodgeballGame {
         this.ball.shotMultiplier = COUNTER_CONFIG.speedScale;
         this.ball.counterShot = true;
         this.ball.galeCounter = Boolean(pending.galeCounter);
+        this.ball.battlefieldTuningCounter = Boolean(pending.battlefieldTuningCounter);
         this.ball.counterChainCount = pending.counterChainCount || 0;
         this.ball.radius = this.ball.baseRadius * 1.5;
         this.ball.counterFlightZ = this.ball.z;
@@ -3891,6 +3997,17 @@ class DodgeballGame {
             "galeCounterLaunch",
             pending.counterIntensity || 1.2
           );
+        }
+        if (pending.battlefieldTuningCounter) {
+          for (let note = 0; note < 5; note += 1) {
+            this.spawnEffect(
+              pending.actor.x + pending.actor.facing * (20 + note * 12),
+              pending.actor.y - pending.actor.jumpZ - 74 - note * 8,
+              note % 2 === 0 ? "#ffd83d" : "#8ffcff",
+              "musicNote",
+              0.55 + note * 0.08
+            );
+          }
         }
         this.startScreenShake(7 + (pending.counterIntensity || 1) * 2, 0.1);
         this.spawnCatchResultLabel(pending.actor, pending.galeCounter ? "疾風連撃!" : "COUNTER!", pending.galeCounter ? "#dffcff" : "#fff36a");
@@ -4234,7 +4351,10 @@ class DodgeballGame {
   canUseSpiritSpecial(actor) {
     if (!actor || actor.role === "out" || !this.hasFullSpirit(actor.team)) return false;
     const specialType = this.getSpecialShotType(actor);
-    if (specialType === "grandHeal" && (actor.grandHealCooldownTimer || 0) > 0) return false;
+    if (specialType === "grandHeal") {
+      if ((actor.grandHealCooldownTimer || 0) > 0) return false;
+      if ((actor.grandHealUsesRemaining ?? GRAND_HEAL_CONFIG.maxUses) <= 0) return false;
+    }
     return true;
   }
 
@@ -4606,6 +4726,16 @@ class DodgeballGame {
 
   isBardPlayer(player) {
     return Boolean(player && player.uniformEmblem === "braves-bard");
+  }
+
+  hasBattlefieldTuning(teamName) {
+    const team = teamName === "left" ? this.leftTeam : this.rightTeam;
+    return team.some((member) => (
+      this.isBardPlayer(member) &&
+      !member.defeated &&
+      member.hp > 0 &&
+      member.downTimer <= 0
+    ));
   }
 
   isHeroRoyalStraightBall(ball = this.ball) {
@@ -5407,6 +5537,9 @@ class DodgeballGame {
         }
         if (this.ball.counterShot) {
           this.startScreenShake(10 + (this.ball.counterIntensity || 1) * 3, 0.14);
+          if (this.ball.battlefieldTuningCounter) {
+            this.spawnEffect(this.ball.x, ballY, "#ffd83d", "melodyShotImpact", 0.75);
+          }
         }
         this.spawnDamageNumber(target, damage);
         this.spillHitBallInDefenderCourt(target, direction, damage);
@@ -5602,6 +5735,35 @@ class DodgeballGame {
     this.releaseBallAt(GAME_CONFIG.court.centerX, GAME_CONFIG.court.y + GAME_CONFIG.court.h * 0.55, "loose");
   }
 
+  handleUfoSpinOutfieldCarry() {
+    if (!this.ball.ufoSpinOutfieldCarryPending) return;
+    this.ball.ufoSpinOutfieldCarryPending = false;
+
+    const thrower = this.ball.thrower;
+    const throwerTeam = thrower?.team;
+    const receiver = throwerTeam ? this.findNearestOutfielder(throwerTeam, this.ball.x, this.ball.y) : null;
+    if (!thrower || !receiver) {
+      this.ball.drop();
+      return;
+    }
+
+    this.ball.kind = "pass";
+    this.ball.target = receiver;
+    this.ball.isFlying = true;
+    this.ball.isLoose = false;
+    this.ball.catchable = false;
+    this.ball.hasBounced = false;
+    this.ball.specialShot = false;
+    this.ball.demonShot = false;
+    this.ball.counterShot = false;
+    this.ball.devilTrianglePass = false;
+    this.ball.passTime = 0;
+    this.ball.passDuration = 0;
+    this.ball.z = Math.max(48, this.ball.z);
+    this.ball.launchPassArc(thrower, receiver, 1.35);
+    this.spawnEffect(this.ball.x, this.ball.y - this.ball.z, "#7cffcb", "pass");
+  }
+
   handleLockRocketExit() {
     if (
       !this.ball.isFlying ||
@@ -5787,6 +5949,12 @@ class DodgeballGame {
 
   applyGrandHeal(actor) {
     if (!actor) return;
+    const usesRemaining = actor.grandHealUsesRemaining ?? GRAND_HEAL_CONFIG.maxUses;
+    if (usesRemaining <= 0) {
+      this.spawnCatchResultLabel(actor, "NO HEAL", "#bfc3c9");
+      return;
+    }
+    actor.grandHealUsesRemaining = Math.max(0, usesRemaining - 1);
     actor.grandHealCooldownTimer = GRAND_HEAL_CONFIG.cooldown;
     const team = actor.team === "left" ? this.leftTeam : this.rightTeam;
     this.effects.push({
@@ -6550,6 +6718,12 @@ class DodgeballGame {
       this.startScreenShake(22, 0.18);
       return;
     }
+    if (specialType === "hundredRush") {
+      this.spawnEffect(actor.x + actor.facing * 48, actor.y - actor.jumpZ - 60, "#ffffff", "qigongShotImpact", 1);
+      this.spawnEffect(actor.x - actor.facing * 24, actor.y - actor.jumpZ - 50, "#bdf8ff", "dodge", 0.9);
+      this.startScreenShake(8, 0.09);
+      return;
+    }
     if (specialType === "lunaticMirage") {
       this.spawnEffect(actor.x + actor.facing * 34, actor.y - actor.jumpZ - 72, "#b98cff", "lunaticMirageLaunch", 1.1);
     }
@@ -6686,7 +6860,7 @@ class DodgeballGame {
     if (specialType === "fireball") return "ファイアボール";
     if (specialType === "holyLance") return "ホーリーランス";
     if (specialType === "shiningArrow") return "シャイニングアロー";
-    if (specialType === "hundredRush") return "百裂気功弾";
+    if (specialType === "hundredRush") return "瞬歩連撃";
     if (specialType === "lunaticMirage") return "ルナティックミラージュ";
     if (specialType === "victoryMarch") return "勝利の行進曲";
     if (specialType === "grandHeal") return "グランドヒール";
@@ -6952,15 +7126,15 @@ class DodgeballGame {
   drawModeSelect() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
-    this.drawMenuBackground();
+    this.drawTitleBackgroundImage();
     context.save();
     context.textAlign = "center";
     context.fillStyle = "#fff7df";
     context.strokeStyle = "#27324a";
     context.lineWidth = 6;
     context.font = "bold 58px Meiryo, sans-serif";
-    context.strokeText("モードセレクト", centerX, 155);
-    context.fillText("モードセレクト", centerX, 155);
+    context.strokeText("ぶっとびドッジーズ", centerX, 155);
+    context.fillText("ぶっとびドッジーズ", centerX, 155);
 
     const modes = [
       { label: "一人用", note: "1P vs CPU" },
@@ -8367,6 +8541,14 @@ class DodgeballGame {
     context.lineJoin = "round";
 
     if (captain) {
+      context.fillStyle = "#394850";
+      context.strokeStyle = "#1f2a30";
+      context.lineWidth = 3;
+      for (const side of [-1, 1]) {
+        this.roundRect(context, side * 35 - 8, -89, 16, 42, 6);
+        context.fill();
+        context.stroke();
+      }
       context.fillStyle = "#b9272f";
       context.strokeStyle = "#68141a";
       context.lineWidth = 4;
@@ -8380,19 +8562,19 @@ class DodgeballGame {
     }
 
     context.strokeStyle = "#1d2428";
-    context.lineWidth = 18;
+    context.lineWidth = captain ? 22 : 18;
     context.beginPath();
     context.moveTo(-13, -34);
     context.lineTo(-20, 15);
     context.moveTo(13, -34);
     context.lineTo(20, 15);
-    context.moveTo(-26, -75);
+    context.moveTo(captain ? -32 : -26, -75);
     context.lineTo(-43, -30);
-    context.moveTo(26, -75);
+    context.moveTo(captain ? 32 : 26, -75);
     context.lineTo(43, -30);
     context.stroke();
     context.strokeStyle = "#aeb9bf";
-    context.lineWidth = 10;
+    context.lineWidth = captain ? 12 : 10;
     context.stroke();
 
     const metal = context.createLinearGradient(-34, -108, 34, -22);
@@ -8408,11 +8590,21 @@ class DodgeballGame {
     context.fillStyle = "#263139";
     this.roundRect(context, -18, -79, 36, 27, 4);
     context.fill();
+    if (captain) {
+      context.save();
+      context.strokeStyle = "#f1c33d";
+      context.shadowColor = "#f1c33d";
+      context.shadowBlur = 7;
+      context.lineWidth = 4;
+      this.roundRect(context, -23, -84, 46, 36, 6);
+      context.stroke();
+      context.restore();
+    }
     context.fillStyle = "#dffefa";
     context.font = "bold 17px Consolas, monospace";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(robotNumbers[style?.name] || "99", 0, -65);
+    context.fillText(captain ? "00" : robotNumbers[style?.name] || "99", 0, -65);
 
     context.fillStyle = metal;
     this.roundRect(context, -36, -151, 72, 54, 22);
@@ -8428,19 +8620,38 @@ class DodgeballGame {
     context.fill();
     context.shadowBlur = 0;
 
-    context.strokeStyle = "#56636b";
-    context.lineWidth = 5;
+    context.strokeStyle = captain ? "#9d7411" : "#56636b";
+    context.lineWidth = captain ? 7 : 5;
     context.beginPath();
     context.moveTo(0, -151);
-    context.lineTo(0, -168);
+    context.lineTo(0, captain ? -177 : -168);
     context.stroke();
     context.fillStyle = captain ? "#f1c33d" : "#829099";
     context.strokeStyle = captain ? "#9d7411" : "#46525a";
     context.lineWidth = 3;
     context.beginPath();
-    context.arc(0, -173, captain ? 9 : 7, 0, Math.PI * 2);
+    context.arc(0, captain ? -184 : -173, captain ? 12 : 7, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+    if (captain) {
+      context.fillStyle = "#fff2a5";
+      context.beginPath();
+      context.arc(0, -184, 5, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#9d7411";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-20, -151);
+      context.lineTo(-31, -169);
+      context.moveTo(20, -151);
+      context.lineTo(31, -169);
+      context.stroke();
+      context.fillStyle = "#f1c33d";
+      context.beginPath();
+      context.arc(-33, -172, 5, 0, Math.PI * 2);
+      context.arc(33, -172, 5, 0, Math.PI * 2);
+      context.fill();
+    }
     context.restore();
   }
 
@@ -9435,17 +9646,17 @@ class DodgeballGame {
           }
         }
 
-        const batCount = Math.max(2, Math.round(3 + intensity * 3));
+        const batCount = Math.max(4, Math.round(5 + intensity * 5));
         context.globalCompositeOperation = "source-over";
         for (let bat = 0; bat < batCount; bat += 1) {
           const seed = bat * 1.31;
           const t = (flow * 0.72 + bat / batCount + 0.12) % 1;
           const lane = ((bat % 5) - 2) / 2;
-          const arc = Math.sin(t * Math.PI) * (44 + bat * 5) * intensity;
-          const wingWave = Math.sin(progress * 12 + seed) * 6;
-          const px = fromX + dx * t + sideX * (arc * lane + Math.sin(progress * 6 + seed) * 16);
+          const arc = Math.sin(t * Math.PI) * (50 + bat * 5) * intensity;
+          const wingWave = Math.sin(progress * 16 + seed) * 7;
+          const px = fromX + dx * t + sideX * (arc * lane + Math.sin(progress * 8 + seed) * 20);
           const py = fromY + dy * t + sideY * (arc * lane) - Math.sin(t * Math.PI) * (24 + bat * 3);
-          const size = (0.68 + (bat % 3) * 0.12) * intensity;
+          const size = (0.78 + (bat % 3) * 0.14) * intensity;
           context.save();
           context.translate(px, py);
           context.rotate(Math.atan2(dy, dx) + Math.sin(progress * 4 + seed) * 0.35);

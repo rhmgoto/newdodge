@@ -252,6 +252,7 @@ class Player {
     this.rhythmStepTimer = 0;
     this.rhythmStepCooldownTimer = 1 + Math.random() * 1.8;
     this.grandHealCooldownTimer = 0;
+    this.grandHealUsesRemaining = this.specialShotType === "grandHeal" ? 3 : null;
     this.clockStopAnticipation = false;
     this.hasBall = false;
     this.facing = this.team === "left" ? 1 : -1;
@@ -1465,7 +1466,7 @@ class Player {
     if (this.isBravesStyle()) {
       if (this.uniformEmblem === "braves-hero") return 1.1;
       if (this.uniformEmblem === "braves-paladin") return 1.15;
-      if (this.uniformEmblem === "braves-warrior") return 1.44;
+      if (this.uniformEmblem === "braves-warrior") return 1.66;
       if (this.uniformEmblem === "braves-mage") return 0.9;
     }
     return this.isDemonStyle()
@@ -1475,6 +1476,20 @@ class Player {
         : this.isAlienStyle() && (this.isCaptain || this.uniformEmblem === "galactakoCaptain")
           ? 1.16
           : 1;
+  }
+
+  getGrandHealGemStyle() {
+    const uses = this.grandHealUsesRemaining ?? 3;
+    if (uses >= 3) {
+      return { core: "#fffdf0", edge: "#ffd96a", glow: "#ffffff", glowAlpha: 0.72, glowRadius: 23, starScale: 1 };
+    }
+    if (uses === 2) {
+      return { core: "#ffe082", edge: "#d8a933", glow: "#ffd96a", glowAlpha: 0.48, glowRadius: 18, starScale: 0.88 };
+    }
+    if (uses === 1) {
+      return { core: "#fff1a6", edge: "#c9a64a", glow: "#fff1a6", glowAlpha: 0.28, glowRadius: 12, starScale: 0.72 };
+    }
+    return { core: "#8d9298", edge: "#62666c", glow: "#000000", glowAlpha: 0, glowRadius: 8, starScale: 0.58 };
   }
 
   drawBravesCharacter(context, scale, drawY, motionTime) {
@@ -2219,11 +2234,20 @@ class Player {
       context.lineTo(staffX, -14 + rootY);
       context.stroke();
       if (job === "cleric") {
-        context.fillStyle = "rgba(152,217,242,0.42)";
+        const gemStyle = this.getGrandHealGemStyle();
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = gemStyle.glowAlpha;
+        context.fillStyle = gemStyle.glow;
+        context.beginPath();
+        context.arc(staffX, -92 + rootY, gemStyle.glowRadius, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+        context.fillStyle = "rgba(152,217,242,0.28)";
         context.beginPath();
         context.arc(staffX, -92 + rootY, 17, 0, Math.PI * 2);
         context.fill();
-        drawSmallStar(staffX, -92 + rootY, 12, 5, palette.symbol, "#d5a427");
+        drawSmallStar(staffX, -92 + rootY, 12 * gemStyle.starScale, 5, gemStyle.core, gemStyle.edge);
       } else {
         softStroke(3, palette.accent);
         context.beginPath();
@@ -4105,6 +4129,7 @@ class Player {
   }
 
   getRobotManufacturingNumber() {
+    if (this.uniformEmblem === "robotCaptain") return "00";
     const numbers = {
       "ゼロ": "00",
       "ボルト": "01",
@@ -4119,6 +4144,7 @@ class Player {
   }
 
   drawRobotCharacter(context, scale, drawY, motionTime, config) {
+    const captain = this.uniformEmblem === "robotCaptain";
     const visualTurning = this.robotVisualTurnTimer > 0;
     const moving = Math.hypot(this.vx, this.vy) > 15 && !visualTurning;
     const cadence = this.isDashing ? 34 : 92;
@@ -4186,6 +4212,9 @@ class Player {
     if (overdrive) {
       this.drawRobotOverdriveEffects(context, motionTime, moving, bodyY, headY);
     }
+    if (captain && (throwWindup || throwRelease) && this.throwKind === "shoot") {
+      this.drawRobotCaptainGearAura(context, motionTime, bodyY, headY);
+    }
 
     if (moving && this.jumpZ <= 0) {
       context.save();
@@ -4247,7 +4276,8 @@ class Player {
       context.scale(1 - Math.sin(turnProgress * Math.PI) * 0.28, 1);
     }
 
-    if (this.uniformEmblem === "robotCaptain") {
+    if (captain) {
+      this.drawRobotCaptainBoosters(context, motionTime, bodyY, rootY);
       context.fillStyle = "#b9272f";
       context.strokeStyle = "#68141a";
       context.lineWidth = 3;
@@ -4260,7 +4290,8 @@ class Player {
       context.stroke();
     }
 
-    this.drawRobotLimb(context, { x: -25, y: shoulderY }, { x: -35, y: -62 + rootY }, backHand, 10);
+    const shoulderSpread = captain ? 32 : 25;
+    this.drawRobotLimb(context, { x: -shoulderSpread, y: shoulderY }, { x: -39, y: -62 + rootY }, backHand, captain ? 13 : 10);
 
     const metal = context.createLinearGradient(-32, bodyY - 40, 32, bodyY + 38);
     metal.addColorStop(0, "#f4f7f8");
@@ -4272,6 +4303,16 @@ class Player {
     this.roundRect(context, -32, bodyY - 38, 64, 76, 18);
     context.fill();
     context.stroke();
+    if (captain) {
+      context.save();
+      context.strokeStyle = "#f1c33d";
+      context.shadowColor = "#f1c33d";
+      context.shadowBlur = 8;
+      context.lineWidth = 4;
+      this.roundRect(context, -24, bodyY - 19, 48, 39, 7);
+      context.stroke();
+      context.restore();
+    }
 
     const clockStopGlow = this.clockStopAnticipation && this.uniformEmblem === "robotCaptain";
     context.fillStyle = clockStopGlow ? "#6d1018" : "#263139";
@@ -4294,7 +4335,7 @@ class Player {
     context.fillText(this.getRobotManufacturingNumber(), 0, bodyY + 1);
     context.restore();
 
-    this.drawRobotLimb(context, { x: 25, y: shoulderY }, { x: 35, y: -62 + rootY }, frontHand, 11);
+    this.drawRobotLimb(context, { x: shoulderSpread, y: shoulderY }, { x: 39, y: -62 + rootY }, frontHand, captain ? 14 : 11);
 
     if (throwWindup || throwRelease) {
       const servoStep = Math.floor(motionTime / 55) % 4;
@@ -4401,19 +4442,38 @@ class Player {
       context.restore();
     }
 
-    context.strokeStyle = "#56636b";
-    context.lineWidth = 5;
+    context.strokeStyle = captain ? "#9d7411" : "#56636b";
+    context.lineWidth = captain ? 7 : 5;
     context.beginPath();
     context.moveTo(0, headY - 29);
-    context.lineTo(0, headY - 48);
+    context.lineTo(0, headY - (captain ? 56 : 48));
     context.stroke();
-    context.fillStyle = this.uniformEmblem === "robotCaptain" ? "#f1c33d" : "#829099";
-    context.strokeStyle = this.uniformEmblem === "robotCaptain" ? "#9d7411" : "#46525a";
+    context.fillStyle = captain ? "#f1c33d" : "#829099";
+    context.strokeStyle = captain ? "#9d7411" : "#46525a";
     context.lineWidth = 3;
     context.beginPath();
-    context.arc(0, headY - 52, this.uniformEmblem === "robotCaptain" ? 9 : 7, 0, Math.PI * 2);
+    context.arc(0, headY - (captain ? 62 : 52), captain ? 12 : 7, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+    if (captain) {
+      context.fillStyle = "#fff2a5";
+      context.beginPath();
+      context.arc(0, headY - 62, 5, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#9d7411";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-19, headY - 40);
+      context.lineTo(-29, headY - 55);
+      context.moveTo(19, headY - 40);
+      context.lineTo(29, headY - 55);
+      context.stroke();
+      context.fillStyle = "#f1c33d";
+      context.beginPath();
+      context.arc(-31, headY - 58, 5, 0, Math.PI * 2);
+      context.arc(31, headY - 58, 5, 0, Math.PI * 2);
+      context.fill();
+    }
     context.restore();
 
     if (idle) {
@@ -4451,6 +4511,70 @@ class Player {
       context.beginPath();
       context.arc(22, headY - 43, 15, 0, Math.PI * 2);
       context.arc(35, headY - 58, 11, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
+    context.restore();
+  }
+
+  drawRobotCaptainGearAura(context, motionTime, bodyY, headY) {
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    const pulse = 0.55 + Math.sin(motionTime / 95) * 0.18;
+    const gears = [
+      { x: -46, y: bodyY - 18, r: 30, spin: 1 },
+      { x: 47, y: bodyY - 22, r: 25, spin: -1 },
+      { x: 0, y: headY + 4, r: 38, spin: -1 }
+    ];
+    for (const gear of gears) {
+      context.save();
+      context.translate(gear.x, gear.y);
+      context.rotate(motionTime / 360 * gear.spin);
+      context.globalAlpha = pulse * 0.35;
+      context.strokeStyle = "#f1c33d";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.arc(0, 0, gear.r, 0, Math.PI * 2);
+      context.stroke();
+      context.lineWidth = 3;
+      for (let tooth = 0; tooth < 12; tooth += 1) {
+        const angle = tooth * Math.PI * 2 / 12;
+        context.beginPath();
+        context.moveTo(Math.cos(angle) * (gear.r - 2), Math.sin(angle) * (gear.r - 2));
+        context.lineTo(Math.cos(angle) * (gear.r + 8), Math.sin(angle) * (gear.r + 8));
+        context.stroke();
+      }
+      context.beginPath();
+      context.arc(0, 0, gear.r * 0.42, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+    }
+    context.restore();
+  }
+
+  drawRobotCaptainBoosters(context, motionTime, bodyY, rootY) {
+    context.save();
+    const flame = 0.5 + Math.sin(motionTime / 70) * 0.18;
+    for (const side of [-1, 1]) {
+      const x = side * 37;
+      const y = bodyY + 8;
+      context.fillStyle = "#394850";
+      context.strokeStyle = "#1f2a30";
+      context.lineWidth = 3;
+      this.roundRect(context, x - 9, y - 22, 18, 48, 7);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#6b7b83";
+      this.roundRect(context, x - 5, y - 12, 10, 24, 4);
+      context.fill();
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.3 + flame * 0.28;
+      context.fillStyle = side < 0 ? "#55f0dd" : "#f1c33d";
+      context.beginPath();
+      context.moveTo(x - 7, y + 25);
+      context.quadraticCurveTo(x, y + 48 + flame * 10, x + 7, y + 25);
+      context.closePath();
       context.fill();
       context.restore();
     }

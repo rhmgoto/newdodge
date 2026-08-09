@@ -66,6 +66,7 @@ class Ball {
     this.demonShot = false;
     this.counterShot = false;
     this.galeCounter = false;
+    this.battlefieldTuningCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -116,6 +117,7 @@ class Ball {
     this.ufoSpinBaseDirX = 0;
     this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
+    this.ufoSpinOutfieldCarryPending = false;
     this.clearArcanaSphere();
     this.hellfireElapsed = 0;
     this.hellfireBaseDirX = 0;
@@ -407,21 +409,25 @@ class Ball {
     if (straightBoostFlight || straightLockRocketFlight) return;
 
     if (this.x < bounds.x + this.radius) {
+      if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + this.radius;
       this.vx = Math.abs(this.vx) * 0.55;
       this.drop();
     }
     if (this.x > bounds.x + bounds.w - this.radius) {
+      if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + bounds.w - this.radius;
       this.vx = -Math.abs(this.vx) * 0.55;
       this.drop();
     }
     if (this.y < bounds.y + this.radius) {
+      if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + this.radius;
       this.vy = Math.abs(this.vy) * 0.55;
       this.drop();
     }
     if (this.y > bounds.y + bounds.h - this.radius) {
+      if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + bounds.h - this.radius;
       this.vy = -Math.abs(this.vy) * 0.55;
       this.drop();
@@ -449,6 +455,7 @@ class Ball {
     this.demonShot = false;
     this.counterShot = false;
     this.galeCounter = false;
+    this.battlefieldTuningCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -480,6 +487,7 @@ class Ball {
     this.ufoSpinBaseDirX = 0;
     this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
+    this.ufoSpinOutfieldCarryPending = false;
     this.clearArcanaSphere();
     this.hellfireElapsed = 0;
     this.hellfireBaseDirX = 0;
@@ -514,6 +522,7 @@ class Ball {
     this.specialShot = Boolean(this.specialShotType);
     this.demonShot = kind === "shoot" && !this.specialShotType && Boolean(actor.isDemonStyle?.());
     this.counterShot = false;
+    this.battlefieldTuningCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -712,7 +721,7 @@ class Ball {
                         : this.specialShotType === "shiningArrow"
                           ? 1.42
                           : this.specialShotType === "hundredRush"
-                            ? 1.3
+                            ? 1.34
                             : this.specialShotType === "lunaticMirage"
                               ? 1.18
                               : this.specialShotType === "devilShield"
@@ -880,7 +889,7 @@ class Ball {
       const directionY = this.vy / directionLength;
       this.kiaiCruiseSpeed = speed;
       this.kiaiFlightZ = this.z;
-      const launchScale = this.specialShotType === "devilClaw" ? 1.22 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.18 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.32 : this.specialShotType === "shiningArrow" ? 1.46 : this.specialShotType === "hundredRush" ? 1.36 : this.specialShotType === "lunaticMirage" ? 1.2 : 1.16;
+      const launchScale = this.specialShotType === "devilClaw" ? 1.22 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.18 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.32 : this.specialShotType === "shiningArrow" ? 1.46 : this.specialShotType === "hundredRush" ? 1.42 : this.specialShotType === "lunaticMirage" ? 1.2 : 1.16;
       this.vx = directionX * speed * launchScale;
       this.vy = directionY * speed * launchScale;
       if (!this.aerialShot) this.vz = 0;
@@ -1566,7 +1575,7 @@ class Ball {
       return 1 + t * 0.24;
     }
     if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
-      return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.36 : this.specialShotType === "lunaticMirage" ? 1.28 : 1.22);
+      return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.42 : this.specialShotType === "lunaticMirage" ? 1.28 : 1.22);
     }
     if (this.specialShotType === "boost") {
       return 0.35;
@@ -1663,6 +1672,7 @@ class Ball {
     this.specialShotType = null;
     this.demonShot = false;
     this.counterShot = false;
+    this.battlefieldTuningCounter = false;
     this.counterFlightZ = 0;
     this.counterIntensity = 1;
     this.counterChainCount = 0;
@@ -1752,6 +1762,7 @@ class Ball {
     this.ufoSpinBaseDirX = 0;
     this.ufoSpinBaseDirY = 0;
     this.ufoSpinTrail = [];
+    this.ufoSpinOutfieldCarryPending = false;
     this.clearArcanaSphere();
     this.clearClockStop();
     this.clearLockRocket();
@@ -1759,6 +1770,25 @@ class Ball {
     this.clearMeteorCrash();
     this.clearLightningZigzag();
     this.hitPlayerIds.clear();
+  }
+
+  markUfoSpinOutfieldCarry() {
+    if (!this.isFlying || this.kind !== "shoot" || this.specialShotType !== "ufoSpin") return false;
+    this.ufoSpinOutfieldCarryPending = true;
+    this.kind = "pass";
+    this.target = null;
+    this.specialShot = false;
+    this.demonShot = false;
+    this.counterShot = false;
+    this.battlefieldTuningCounter = false;
+    this.catchable = false;
+    this.hasBounced = false;
+    this.passTime = 0;
+    this.passDuration = 0;
+    this.z = Math.max(42, this.z);
+    this.vz = 0;
+    this.hitPlayerIds.clear();
+    return true;
   }
 
   isBoomerangStyleShot() {
@@ -2140,14 +2170,14 @@ class Ball {
         }
 
         context.globalCompositeOperation = "source-over";
-        for (let bat = 0; bat < 6; bat += 1) {
+        for (let bat = 0; bat < 10; bat += 1) {
           const phase = time / 150 + bat * 0.83;
-          const back = 28 + bat * 28;
-          const side = Math.sin(phase * 1.7) * (22 + (bat % 3) * 8);
+          const back = 22 + bat * 22;
+          const side = Math.sin(phase * 1.7) * (26 + (bat % 3) * 10);
           const bx = this.x + tailX * back + tailY * side;
           const by = drawY + tailY * back - tailX * side;
-          const size = 0.72 + (bat % 3) * 0.11 + intensity * 0.08;
-          const flap = Math.sin(time / 58 + bat) * 6;
+          const size = 0.76 + (bat % 3) * 0.14 + intensity * 0.1;
+          const flap = Math.sin(time / 48 + bat) * 7;
           context.save();
           context.translate(bx, by);
           context.rotate(Math.atan2(this.vy, this.vx) + Math.sin(phase) * 0.22);
@@ -2162,6 +2192,34 @@ class Ball {
           context.quadraticCurveTo(-13, 7, 0, 3);
           context.quadraticCurveTo(13, 7, 25, 2);
           context.quadraticCurveTo(11, -8 + flap, 0, 0);
+          context.closePath();
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+
+        for (let bat = 0; bat < 5; bat += 1) {
+          const phase = time / 92 + bat * 1.07;
+          const ahead = 18 + bat * 13 + Math.sin(phase) * 6;
+          const side = Math.sin(phase * 1.5) * (20 + bat * 5);
+          const bx = this.x - tailX * ahead + tailY * side;
+          const by = drawY - tailY * ahead - tailX * side;
+          const size = 0.62 + bat * 0.08 + intensity * 0.12;
+          const flap = Math.sin(time / 42 + bat) * 8;
+          context.save();
+          context.translate(bx, by);
+          context.rotate(Math.atan2(this.vy, this.vx) + Math.sin(phase) * 0.42);
+          context.scale(size, size);
+          context.globalAlpha = 0.82;
+          context.fillStyle = "#09000b";
+          context.strokeStyle = "#ff315d";
+          context.lineWidth = 1.5;
+          context.beginPath();
+          context.moveTo(0, 0);
+          context.quadraticCurveTo(-10, -9 - flap, -24, 1);
+          context.quadraticCurveTo(-13, 8, 0, 4);
+          context.quadraticCurveTo(13, 8, 24, 1);
+          context.quadraticCurveTo(10, -9 + flap, 0, 0);
           context.closePath();
           context.fill();
           context.stroke();
@@ -2313,6 +2371,23 @@ class Ball {
           );
           context.stroke();
         }
+      }
+      if (this.battlefieldTuningCounter) {
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.font = `bold ${18 + counterPower * 2}px Meiryo, sans-serif`;
+        for (let index = 0; index < 7; index += 1) {
+          const distance = 24 + index * 24;
+          const wave = Math.sin(this.spin * 0.9 + index * 1.3) * (24 + counterPower * 5);
+          const px = this.x + tailX * distance + sideX * wave;
+          const py = drawY + tailY * distance + sideY * wave;
+          context.globalAlpha = 0.34 + (index % 3) * 0.14;
+          context.fillStyle = index % 2 === 0 ? "#ffd83d" : "#8ffcff";
+          context.shadowColor = context.fillStyle;
+          context.shadowBlur = 9;
+          context.fillText(index % 2 === 0 ? "\u266a" : "\u266b", px, py);
+        }
+        context.shadowBlur = 0;
       }
       context.restore();
     }
