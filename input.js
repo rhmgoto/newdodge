@@ -28,9 +28,12 @@ class InputManager {
     this.gamepadName = "未接続";
     this.gamepadConnected = false;
     this.pressedGamepadButtons = [];
-    this.lastTap = { x: 0, y: 0, time: 0 };
+    this.lastTap = { axis: null, direction: 0, time: 0 };
+    this.lastTapP2 = { axis: null, direction: 0, time: 0 };
     this.dashHold = { active: false, axis: null, direction: 0 };
+    this.dashHoldP2 = { active: false, axis: null, direction: 0 };
     this.doubleTapDashPressed = false;
+    this.doubleTapDashPressedP2 = false;
 
     window.addEventListener("keydown", (event) => {
       this.keys.add(event.code);
@@ -77,17 +80,23 @@ class InputManager {
 
   update() {
     this.previous = { ...this.current };
+    this.previousP2 = { ...this.currentP2 };
     const keyboard = this.readKeyboard();
     const gamepad = this.readGamepad(0);
     const touch = this.readTouch();
     const gamepadP2 = this.readGamepad(1);
-    this.updateDoubleTapDash(keyboard, gamepad);
+    const p1MoveX = this.clampAxis(keyboard.moveX || gamepad.moveX || touch.moveX);
+    const p1MoveY = this.clampAxis(keyboard.moveY || gamepad.moveY || touch.moveY);
+    const p2MoveX = this.clampAxis(gamepadP2.moveX);
+    const p2MoveY = this.clampAxis(gamepadP2.moveY);
+    this.updateDoubleTapDash(p1MoveX, p1MoveY, this.previous, 1);
+    this.updateDoubleTapDash(p2MoveX, p2MoveY, this.previousP2, 2);
     const dodgeDown = keyboard.avoid || keyboard.button1 || gamepad.avoid || gamepad.button1 || touch.avoid || touch.button1;
     const p2DodgeDown = gamepadP2.avoid || gamepadP2.button1;
 
     this.current = {
-      moveX: this.clampAxis(keyboard.moveX || gamepad.moveX || touch.moveX),
-      moveY: this.clampAxis(keyboard.moveY || gamepad.moveY || touch.moveY),
+      moveX: p1MoveX,
+      moveY: p1MoveY,
       rightX: this.clampAxis(gamepad.rightX),
       rightY: this.clampAxis(gamepad.rightY),
       button0: keyboard.button0 || gamepad.button0 || touch.button0,
@@ -101,11 +110,11 @@ class InputManager {
       pause: keyboard.pause || gamepad.pause,
       rawButtons: [...new Set([...(gamepad.rawButtons || []), ...(touch.rawButtons || [])])]
     };
-    this.previousP2 = { ...this.currentP2 };
     this.currentP2 = {
       ...gamepadP2,
       avoid: p2DodgeDown,
       catch: gamepadP2.catch && !p2DodgeDown,
+      dash: gamepadP2.dash || this.isDoubleTapDashHeld(2),
       rawButtons: gamepadP2.rawButtons || []
     };
   }
@@ -361,37 +370,38 @@ class InputManager {
     return Math.max(-1, Math.min(1, value));
   }
 
-  updateDoubleTapDash(keyboard, gamepad) {
+  updateDoubleTapDash(moveX, moveY, previous, playerIndex = 1) {
     const now = performance.now();
-    const moveX = this.clampAxis(keyboard.moveX || gamepad.moveX);
-    const moveY = this.clampAxis(keyboard.moveY || gamepad.moveY);
-    const previousX = this.previous.moveX || 0;
-    const previousY = this.previous.moveY || 0;
+    const previousX = previous?.moveX || 0;
+    const previousY = previous?.moveY || 0;
     const axis = Math.abs(moveX) >= Math.abs(moveY) ? "x" : "y";
     const value = axis === "x" ? moveX : moveY;
     const previousValue = axis === "x" ? previousX : previousY;
-    this.doubleTapDashPressed = false;
+    const holdKey = playerIndex === 2 ? "dashHoldP2" : "dashHold";
+    const tapKey = playerIndex === 2 ? "lastTapP2" : "lastTap";
+    const pressedKey = playerIndex === 2 ? "doubleTapDashPressedP2" : "doubleTapDashPressed";
+    this[pressedKey] = false;
 
-    if (this.dashHold.active) {
-      const heldValue = this.dashHold.axis === "x" ? moveX : moveY;
-      if (Math.sign(heldValue) !== this.dashHold.direction || Math.abs(heldValue) < 0.55) {
-        this.dashHold = { active: false, axis: null, direction: 0 };
+    if (this[holdKey].active) {
+      const heldValue = this[holdKey].axis === "x" ? moveX : moveY;
+      if (Math.sign(heldValue) !== this[holdKey].direction || Math.abs(heldValue) < 0.55) {
+        this[holdKey] = { active: false, axis: null, direction: 0 };
       }
-      this.doubleTapDashPressed = this.dashHold.active;
+      this[pressedKey] = this[holdKey].active;
     }
 
     if (Math.abs(value) > 0.72 && Math.abs(previousValue) <= 0.35) {
       const direction = Math.sign(value);
-      if (this.lastTap.axis === axis && this.lastTap.direction === direction && now - this.lastTap.time <= 280) {
-        this.dashHold = { active: true, axis, direction };
-        this.doubleTapDashPressed = true;
+      if (this[tapKey].axis === axis && this[tapKey].direction === direction && now - this[tapKey].time <= 280) {
+        this[holdKey] = { active: true, axis, direction };
+        this[pressedKey] = true;
       }
-      this.lastTap = { axis, direction, time: now };
+      this[tapKey] = { axis, direction, time: now };
     }
   }
 
-  isDoubleTapDashHeld() {
-    return this.doubleTapDashPressed;
+  isDoubleTapDashHeld(playerIndex = 1) {
+    return playerIndex === 2 ? this.doubleTapDashPressedP2 : this.doubleTapDashPressed;
   }
 
   getAimVector(defaultX, playerIndex = 1) {
