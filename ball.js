@@ -45,8 +45,8 @@ const DISSONANCE_FEINT_DAMAGE_SCALE = 0.9;
 const WITCH_SPARK_DAMAGE_SCALE = 1.12;
 const HELLFIRE_SPEED_SCALE = 1.38;
 const ARCANA_SPHERE_CONFIG = {
-  initialSpeedScale: 1.1,
-  maxSpeedScale: 2,
+  initialSpeedScale: 1.2,
+  maxSpeedScale: 2.3,
   maxChargeDistance: 600,
   wobbleForce: 34,
   trailLimit: 36,
@@ -1636,7 +1636,7 @@ class Ball {
   getShootSpeedRatio(throwMultiplier = 1) {
     const t = Math.max(0, Math.min(1, ((throwMultiplier || 0.7) - 0.7) / 1.45));
     if (!this.specialShotType) {
-      return 1 + t * 0.24;
+      return (1 + t * 0.24) * 1.15;
     }
     if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
       return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.42 : this.specialShotType === "lunaticMirage" ? 1.28 : 1.22);
@@ -3850,12 +3850,21 @@ class Ball {
     if (braveSlash) {
       const sideGap = this.radius * 0.62;
       for (let lane = -1; lane <= 1; lane += 2) {
-        context.globalAlpha = 0.76;
+        context.globalAlpha = 0.9;
         context.strokeStyle = lane < 0 ? "#fffdf1" : "#8fd8ff";
-        context.lineWidth = this.radius * 0.16;
+        context.lineWidth = this.radius * 0.2;
         context.beginPath();
         context.moveTo(this.x + tailX * 18 + -directionY * sideGap * lane, drawY + tailY * 18 + directionX * sideGap * lane);
-        context.lineTo(this.x + tailX * 180 + -directionY * sideGap * lane * 0.38, drawY + tailY * 180 + directionX * sideGap * lane * 0.38);
+        context.lineTo(this.x + tailX * 230 + -directionY * sideGap * lane * 0.3, drawY + tailY * 230 + directionX * sideGap * lane * 0.3);
+        context.stroke();
+      }
+      for (let lane = -1; lane <= 1; lane += 2) {
+        context.globalAlpha = 0.48;
+        context.strokeStyle = "#ffd83d";
+        context.lineWidth = this.radius * 0.34;
+        context.beginPath();
+        context.moveTo(this.x + tailX * 10 + -directionY * sideGap * 1.55 * lane, drawY + tailY * 10 + directionX * sideGap * 1.55 * lane);
+        context.lineTo(this.x + tailX * 165 + -directionY * sideGap * 0.55 * lane, drawY + tailY * 165 + directionX * sideGap * 0.55 * lane);
         context.stroke();
       }
     } else {
@@ -3889,13 +3898,32 @@ class Ball {
       context.lineWidth = 4;
       context.globalAlpha = 0.82;
       context.stroke();
+      context.save();
+      context.translate(this.x, drawY);
+      context.rotate(this.spin * 0.16);
+      context.scale(1, 0.46);
+      context.globalCompositeOperation = "lighter";
+      context.strokeStyle = "#fffdf1";
+      context.lineWidth = 4;
+      context.globalAlpha = 0.72;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.4, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = "#8fd8ff";
+      context.lineWidth = 3;
+      context.globalAlpha = 0.52;
+      context.beginPath();
+      context.arc(0, 0, this.radius * 1.55, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
       context.fillStyle = "#8fd8ff";
-      context.globalAlpha = 0.7;
-      for (let i = 0; i < 14; i += 1) {
-        const distance = 20 + i * 17;
-        const side = Math.sin(this.spin * 0.18 + i * 1.6) * 26;
+      for (let i = 0; i < 28; i += 1) {
+        const distance = 16 + i * 11;
+        const side = Math.sin(this.spin * 0.2 + i * 1.4) * (24 + (i % 5) * 4);
+        context.globalAlpha = 0.46 + (i % 4) * 0.1;
+        context.fillStyle = i % 3 === 0 ? "#fffdf1" : i % 3 === 1 ? "#ffd83d" : "#8fd8ff";
         context.beginPath();
-        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, 2 + i % 2, 0, Math.PI * 2);
+        context.arc(this.x + tailX * distance + -directionY * side, drawY + tailY * distance + directionX * side, 2 + i % 3, 0, Math.PI * 2);
         context.fill();
       }
       if (this.braveSlashSurgeTimer > 0) {
@@ -3919,6 +3947,68 @@ class Ball {
       }
     }
     if (gigaBreak) {
+      const axeAngle = this.spin * 1.28;
+      context.save();
+      context.translate(this.x, drawY);
+      context.rotate(axeAngle);
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 0.86;
+      context.lineCap = "round";
+      context.strokeStyle = "#241713";
+      context.lineWidth = Math.max(7, this.radius * 0.26);
+      context.beginPath();
+      context.moveTo(-this.radius * 2.35, 0);
+      context.lineTo(this.radius * 2.35, 0);
+      context.stroke();
+      context.strokeStyle = "#8a4d22";
+      context.lineWidth = Math.max(4, this.radius * 0.13);
+      context.beginPath();
+      context.moveTo(-this.radius * 2.08, 0);
+      context.lineTo(this.radius * 2.08, 0);
+      context.stroke();
+      for (let side = -1; side <= 1; side += 2) {
+        context.save();
+        context.scale(side, 1);
+        const bladeGradient = context.createLinearGradient(this.radius * 0.52, -this.radius * 1.18, this.radius * 1.95, this.radius * 1.18);
+        bladeGradient.addColorStop(0, "#fff0c0");
+        bladeGradient.addColorStop(0.42, "#c9ccd4");
+        bladeGradient.addColorStop(1, "#515760");
+        context.fillStyle = bladeGradient;
+        context.strokeStyle = "#191d22";
+        context.lineWidth = 4;
+        context.beginPath();
+        context.moveTo(this.radius * 0.34, -this.radius * 0.2);
+        context.quadraticCurveTo(this.radius * 1.02, -this.radius * 1.36, this.radius * 2.08, -this.radius * 1.12);
+        context.quadraticCurveTo(this.radius * 1.72, -this.radius * 0.22, this.radius * 0.72, 0);
+        context.quadraticCurveTo(this.radius * 1.72, this.radius * 0.22, this.radius * 2.08, this.radius * 1.12);
+        context.quadraticCurveTo(this.radius * 1.02, this.radius * 1.36, this.radius * 0.34, this.radius * 0.2);
+        context.closePath();
+        context.fill();
+        context.stroke();
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = 0.42;
+        context.strokeStyle = "#ffb347";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.moveTo(this.radius * 0.82, -this.radius * 0.72);
+        context.quadraticCurveTo(this.radius * 1.32, -this.radius * 0.98, this.radius * 1.82, -this.radius * 0.78);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(this.radius * 0.82, this.radius * 0.72);
+        context.quadraticCurveTo(this.radius * 1.32, this.radius * 0.98, this.radius * 1.82, this.radius * 0.78);
+        context.stroke();
+        context.restore();
+      }
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.62;
+      context.strokeStyle = "#ff6244";
+      context.lineWidth = 6;
+      context.scale(1, 0.58);
+      context.beginPath();
+      context.arc(0, 0, this.radius * 2.72, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+
       context.globalAlpha = 0.76;
       context.strokeStyle = "#1b1110";
       context.lineWidth = 16;

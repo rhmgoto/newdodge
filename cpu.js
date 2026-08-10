@@ -64,6 +64,11 @@ const CPU_GROUNDED_SPECIAL_SHOTS = new Set([
   "shiningArrow"
 ]);
 
+const CPU_BACKLINE_SPECIAL_SHOTS = new Set([
+  "arcanaSphere",
+  "boost"
+]);
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -411,6 +416,9 @@ class CPUController {
       plan.type = plan.type === "jump-shot" ? "dash-shot" : "dash-strong-shot";
       plan.jumpAttempted = false;
       plan.jumpStartedAt = 0;
+    }
+    if (this.shouldUseBacklineSpecial(holder) && this.isShotPlanType(plan.type)) {
+      plan.x = this.getBackAttackLineX(holder);
     }
     if (plan.type === "special-pass-wait") {
       this.stop(command);
@@ -924,6 +932,9 @@ class CPUController {
       !groundedSpecial && jumpReady ? "dash-jump-strong-shot" : "dash-strong-shot",
       0.92
     );
+    if (this.shouldUseBacklineSpecial(shooter)) {
+      shotPlan.x = this.getBackAttackLineX(shooter);
+    }
     shotPlan.specialAttackPlan = true;
     if (this.attackTactic) this.attackTactic.finished = true;
     return shotPlan;
@@ -1245,6 +1256,27 @@ class CPUController {
     if (!member || member.role === "out") return false;
     if (!this.config.isSpiritReady?.(this.teamName)) return false;
     return CPU_GROUNDED_SPECIAL_SHOTS.has(this.getCpuSpecialShotType(member));
+  }
+
+  shouldUseBacklineSpecial(member) {
+    if (!member || member.role === "out") return false;
+    if (!this.config.isSpiritReady?.(this.teamName)) return false;
+    return CPU_BACKLINE_SPECIAL_SHOTS.has(this.getCpuSpecialShotType(member));
+  }
+
+  isShotPlanType(type) {
+    return (
+      type === "normal-shot" ||
+      type === "center-shot" ||
+      type === "dash-shot" ||
+      type === "charge-shot" ||
+      type === "dash-strong-shot" ||
+      type === "charge-dash-shot" ||
+      type === "jump-shot" ||
+      type === "jump-strong-shot" ||
+      type === "charge-jump-shot" ||
+      type === "dash-jump-strong-shot"
+    );
   }
 
   getActiveTeammates() {
@@ -1585,6 +1617,25 @@ class CPUController {
         : area.x + margin;
     }
     return this.config.court.centerX + (holder.team === "left" ? -82 : 82);
+  }
+
+  getBackAttackLineX(holder) {
+    const area = this.config.areas ? this.config.areas[holder.zone] : null;
+    const margin = Math.max(holder.radius || 36, 72);
+    if (area?.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, holder.y);
+      if (bounds) {
+        return holder.team === "left"
+          ? bounds.left + margin
+          : bounds.right - margin;
+      }
+    }
+    if (area) {
+      return holder.team === "left"
+        ? area.x + margin
+        : area.x + area.w - margin;
+    }
+    return holder.homeX;
   }
 
   getLooseBallChaser() {

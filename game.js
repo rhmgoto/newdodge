@@ -316,7 +316,8 @@ function getStatusDefensePassOverride(name, specialShotType) {
 const MAX_SHOT_CHARGE_TIME = 1.5;
 const SPECIAL_SHOT_ANTICIPATION_TIME = 0.15;
 const SPECIAL_SHOT_ANTICIPATION_TIMES = {
-  slap: 0.5
+  slap: 0.5,
+  arcanaSphere: 0.5
 };
 const SHOT_WINDUP_TIME = 0.38 * 1.3;
 const SHOT_DAMAGE_SCALE = 1.69;
@@ -463,8 +464,8 @@ const BLOOD_DRAIN_CONFIG = {
   lightWeaknessScale: 1.35
 };
 const ARCANA_SPHERE_DAMAGE_CONFIG = {
-  minDamageScale: 0.8,
-  maxDamageScale: 1.8,
+  minDamageScale: 1,
+  maxDamageScale: 2.2,
   maxChargeDistance: 600,
   maxKnockbackScale: 1.4
 };
@@ -482,7 +483,7 @@ const COUNTER_CONFIG = {
 };
 const SPECIAL_SHOT_DAMAGE_RULES = {
   kiai: 1.7,
-  braveSlash: 1.95,
+  braveSlash: 2.5,
   gigaBreak: 2.55,
   fireball: 2.15,
   holyLance: 2.25,
@@ -509,7 +510,7 @@ const SPECIAL_SHOT_DAMAGE_RULES = {
   clockStop: 2.2,
   lockRocket: 2.415,
   ufoSpin: 2,
-  hellfire: () => HELLFIRE_CONFIG.damageScale,
+  hellfire: () => 2.7,
   meteorCrash: () => METEOR_CRASH_CONFIG.damageScale,
   bloodDrain: () => BLOOD_DRAIN_CONFIG.damageScale,
   arcanaSphere: (travelDistance = 0) => {
@@ -4330,7 +4331,7 @@ class DodgeballGame {
   getShotMultiplier(actor, aim, chargeRatio = 0, aerialCombo = false) {
     const movingTowardThrow = actor.vx * aim.x + actor.vy * aim.y > actor.speed * 0.35;
     const dashBonus = actor.isDashing && movingTowardThrow ? 0.22 * 0.8 : 0;
-    const powerBonus = ((actor.stats?.power || 5) - 5) * 0.04;
+    const powerBonus = ((actor.stats?.power || 5) - 5) * 0.07;
     const speedBonus = ((actor.stats?.speed || 5) - 5) * 0.025;
     const jumpStatBonus = actor.jumpZ > 0 ? ((actor.stats?.jump || 5) - 5) * 0.035 : 0;
     const jumpBonus = actor.jumpZ > 0 ? Math.min(0.3, actor.jumpZ / 430 + jumpStatBonus * 0.55) * 0.7 : 0;
@@ -10362,25 +10363,36 @@ class DodgeballGame {
         context.globalAlpha = Math.max(0, 1 - progress);
         context.translate(effect.x, effect.y);
         context.globalCompositeOperation = "lighter";
+        context.fillStyle = "rgba(255, 253, 241, 0.24)";
+        context.beginPath();
+        context.ellipse(0, 0, radius * 0.78, radius * 0.18, 0, 0, Math.PI * 2);
+        context.fill();
         context.strokeStyle = "#ffd83d";
-        context.lineWidth = 8 - progress * 4;
+        context.lineWidth = 11 - progress * 5;
         context.beginPath();
         context.ellipse(0, 0, radius, radius * 0.26, 0, 0, Math.PI * 2);
         context.stroke();
+        context.strokeStyle = "#8fd8ff";
+        context.lineWidth = 5 - progress * 2;
+        context.beginPath();
+        context.ellipse(0, 0, radius * 0.66, radius * 0.18, 0, 0, Math.PI * 2);
+        context.stroke();
         context.strokeStyle = "#fffdf1";
-        context.lineWidth = 5;
-        for (let index = -2; index <= 2; index += 1) {
+        context.lineWidth = 6;
+        for (let index = -3; index <= 3; index += 1) {
           context.beginPath();
-          context.moveTo(-radius * 0.45, index * 12);
-          context.lineTo(radius * (0.55 + progress * 0.2), index * 5);
+          context.moveTo(-radius * 0.62, index * 10);
+          context.lineTo(radius * (0.72 + progress * 0.24), index * 4);
           context.stroke();
         }
-        context.fillStyle = "#8fd8ff";
-        for (let index = 0; index < 10; index += 1) {
-          const angle = -0.3 + index * Math.PI * 1.55 / 9;
-          const dist = radius * (0.35 + (index % 3) * 0.16);
+        const launchColors = ["#fffdf1", "#ffd83d", "#8fd8ff"];
+        for (let index = 0; index < 22; index += 1) {
+          const angle = -0.45 + index * Math.PI * 1.75 / 21 + progress * 0.7;
+          const dist = radius * (0.26 + (index % 5) * 0.115);
+          context.fillStyle = launchColors[index % launchColors.length];
+          context.globalAlpha = Math.max(0, 0.9 - progress * 0.45) * (0.62 + (index % 3) * 0.14);
           context.beginPath();
-          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist * 0.28, 3, 0, Math.PI * 2);
+          context.arc(Math.cos(angle) * dist, Math.sin(angle) * dist * 0.38, 3 + (index % 3) + progress * 2, 0, Math.PI * 2);
           context.fill();
         }
         context.restore();
@@ -12126,20 +12138,22 @@ class DodgeballGame {
 
       context.strokeStyle = "#ffd83d";
       context.lineWidth = 4 + progress * 3;
-      for (let ring = 0; ring < 2; ring += 1) {
+      for (let ring = 0; ring < 3; ring += 1) {
         context.save();
         context.translate(actor.x, groundY);
         context.rotate((ring % 2 === 0 ? 1 : -1) * time / (360 + ring * 120));
         context.scale(1, 0.36);
-        context.globalAlpha = 0.86 - ring * 0.2;
+        context.globalAlpha = 0.9 - ring * 0.17;
         context.beginPath();
-        context.arc(0, 0, 46 + progress * 32 + ring * 17, 0, Math.PI * 2);
+        context.arc(0, 0, 46 + progress * 42 + ring * 16, 0, Math.PI * 2);
         context.stroke();
-        for (let mark = 0; mark < 8; mark += 1) {
-          const angle = mark * Math.PI * 2 / 8;
+        for (let mark = 0; mark < 12; mark += 1) {
+          const angle = mark * Math.PI * 2 / 12;
+          const inner = 22 + ring * 4;
+          const outer = 48 + progress * 32 + ring * 8;
           context.beginPath();
-          context.moveTo(Math.cos(angle) * 24, Math.sin(angle) * 24);
-          context.lineTo(Math.cos(angle) * (42 + progress * 24), Math.sin(angle) * (42 + progress * 24));
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
           context.stroke();
         }
         context.restore();
@@ -12166,6 +12180,30 @@ class DodgeballGame {
         context.beginPath();
         context.arc(allyX, allyY, 5 + progress * 5, 0, Math.PI * 2);
         context.fill();
+      }
+
+      const gatherColors = ["#fffdf1", "#ffd83d", "#8fd8ff"];
+      for (let index = 0; index < 34; index += 1) {
+        const angle = time / (150 + (index % 5) * 22) + index * Math.PI * 2 / 34;
+        const startDist = 122 + (index % 7) * 18;
+        const endDist = 34 + (index % 4) * 8;
+        const dist = startDist + (endDist - startDist) * progress;
+        const px = actor.x + Math.cos(angle) * dist;
+        const py = actor.y - actor.jumpZ - 78 + Math.sin(angle) * dist * 0.62;
+        context.globalAlpha = 0.34 + progress * 0.52;
+        context.fillStyle = gatherColors[index % gatherColors.length];
+        context.beginPath();
+        context.arc(px, py, 2.5 + (index % 3) + progress * 2.5, 0, Math.PI * 2);
+        context.fill();
+        if (index % 3 === 0) {
+          context.strokeStyle = gatherColors[(index + 1) % gatherColors.length];
+          context.lineWidth = 2 + progress * 2;
+          context.globalAlpha = 0.22 + progress * 0.36;
+          context.beginPath();
+          context.moveTo(px, py);
+          context.lineTo(actor.x + actor.facing * 10, actor.y - actor.jumpZ - 78);
+          context.stroke();
+        }
       }
 
       const ballX = actor.x + actor.facing * 12;
@@ -12233,14 +12271,15 @@ class DodgeballGame {
 
       context.fillStyle = "#ffd83d";
       context.globalAlpha = 0.72;
-      for (let index = 0; index < 12; index += 1) {
-        const angle = time / 90 + index * Math.PI / 6;
-        const distance = 42 + progress * 54 + (index % 3) * 8;
+      for (let index = 0; index < 22; index += 1) {
+        const angle = time / 86 + index * Math.PI * 2 / 22;
+        const distance = 38 + progress * 68 + (index % 4) * 9;
+        context.fillStyle = index % 3 === 0 ? "#8fd8ff" : index % 3 === 1 ? "#fffdf1" : "#ffd83d";
         context.beginPath();
         context.arc(
           swordX + Math.cos(angle) * distance,
           swordY + Math.sin(angle) * distance * 0.72,
-          3 + progress * 3,
+          3 + (index % 3) + progress * 3,
           0,
           Math.PI * 2
         );
