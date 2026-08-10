@@ -7,9 +7,13 @@ const METEOR_CRASH_PEAK_Z = 920;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
-const CLOCK_STOP_DURATION = 0.8;
-const CLOCK_STOP_REAIM_LEAD_TIME = 0.24;
+const CLOCK_STOP_DURATION = 0.32;
+const CLOCK_STOP_REAIM_LEAD_TIME = 0.4;
 const CLOCK_STOP_BURST_SPEED_SCALE = 1.2;
+const CLOCK_STOP_BURST_HOMING_TIME = 0.85;
+const CLOCK_STOP_BURST_HOMING_RATE = 1.15;
+const CLOCK_STOP_AERIAL_HOMING_RATE = 2.2;
+const CLOCK_STOP_AERIAL_Z_RATE = 7.5;
 const LOCK_ROCKET_ESCAPE_TIME = 0.8;
 const LOCK_ROCKET_TURN_TIME = 0.6;
 const LOCK_ROCKET_GUIDE_TIME = 3.0;
@@ -24,7 +28,17 @@ const LOCK_ROCKET_GUIDE_SPEED_SCALE = 1.2;
 const LOCK_ROCKET_LEAD_TIME = 0.16;
 const DODGE_PASSTHROUGH_TIME = 0.52;
 const BOOST_AERIAL_MIN_FLIGHT_Z = 42;
+const BOOST_AERIAL_Z_TRACK_RATE = 5.5;
+const BOOST_INITIAL_SPEED_SCALE = 0.35 * 1.15;
+const BOOST_SPEED_STAGES = [
+  { time: 0.9, scale: 2.25 },
+  { time: 0.55, scale: 1.85 },
+  { time: 0.25, scale: 1.45 }
+];
+const BOOST_MAX_SPEED_SCALE = 2.5;
 const UFO_SPIN_WOBBLE_FORCE = 1320;
+const UFO_SPIN_HOMING_RATE = 0.75;
+const UFO_SPIN_AERIAL_HOMING_RATE = 1.65;
 const PASS_SPEED_SCALE = 1.2;
 const SHINING_PASS_SPEED_SCALE = 2.05;
 const DISSONANCE_FEINT_DAMAGE_SCALE = 0.9;
@@ -137,6 +151,7 @@ class Ball {
     this.clockBurstTargetX = 0;
     this.clockBurstTargetY = 0;
     this.clockBurstSpeed = 0;
+    this.clockBurstElapsed = 0;
     this.lockRocketPhase = "none";
     this.lockRocketElapsed = 0;
     this.lockRocketFlightZ = 0;
@@ -800,14 +815,15 @@ class Ball {
     if (this.specialShotType === "clockStop") {
       this.clockStopPhase = "approach";
       this.clockStopElapsed = 0;
+      this.clockBurstElapsed = 0;
       this.clockStopX = this.x + dx * 0.5;
       this.clockStopY = this.y + dy * 0.5;
       this.clockStopZ = this.z;
       this.clockApproachDistance = Math.hypot(this.clockStopX - this.x, this.clockStopY - this.y);
       const normalSpeedRatio = 1 + Math.max(0, Math.min(1, (throwMultiplier - 0.7) / 1.45)) * 0.24;
       this.clockBurstSpeed = this.config.shootSpeed * normalSpeedRatio * 1.8;
-      this.vx = directX * speed * 0.7 + actor.vx * moveBonus;
-      this.vy = directY * speed * 0.7 + actor.vy * moveBonus;
+      this.vx = directX * speed * 0.9 + actor.vx * moveBonus;
+      this.vy = directY * speed * 0.9 + actor.vy * moveBonus;
       this.vz = 0;
       this.catchable = true;
       return true;
@@ -899,8 +915,8 @@ class Ball {
       this.ufoSpinFlightZ = this.z;
       this.ufoSpinBaseDirX = this.vx / directionLength;
       this.ufoSpinBaseDirY = this.vy / directionLength;
-      this.vx = this.ufoSpinBaseDirX * speed * 1.06;
-      this.vy = this.ufoSpinBaseDirY * speed * 1.06;
+      this.vx = this.ufoSpinBaseDirX * speed * 1.272;
+      this.vy = this.ufoSpinBaseDirY * speed * 1.272;
       if (!this.aerialShot) this.vz = 0;
     }
     if (this.specialShotType === "hellfire") {
@@ -1052,20 +1068,25 @@ class Ball {
       const directionX = this.vx / currentSpeed;
       const directionY = this.vy / currentSpeed;
       const baseSpeed = this.config.specialShootSpeed || this.config.shootSpeed;
-      let gearMultiplier = 0.35;
-      if (this.boostElapsed >= 0.95) {
-        gearMultiplier = 1.8;
-      } else if (this.boostElapsed >= 0.68) {
-        gearMultiplier = 1.35;
-      } else if (this.boostElapsed >= 0.42) {
-        gearMultiplier = 0.95;
-      } else if (this.boostElapsed >= 0.2) {
-        gearMultiplier = 0.6;
+      let gearMultiplier = BOOST_INITIAL_SPEED_SCALE;
+      for (const stage of BOOST_SPEED_STAGES) {
+        if (this.boostElapsed >= stage.time) {
+          gearMultiplier = stage.scale;
+          break;
+        }
       }
+      if (this.boostElapsed >= 1.18) gearMultiplier = BOOST_MAX_SPEED_SCALE;
       const targetSpeed = baseSpeed * gearMultiplier;
       if (Math.abs(currentSpeed - targetSpeed) > 1) {
         this.vx = directionX * targetSpeed;
         this.vy = directionY * targetSpeed;
+      }
+      if (this.aerialShot && this.target && !this.target.defeated) {
+        const targetZ = Math.max(BOOST_AERIAL_MIN_FLIGHT_Z, (this.target.jumpZ || 0) + 40);
+        const blend = Math.min(1, delta * BOOST_AERIAL_Z_TRACK_RATE);
+        this.boostFlightZ += (targetZ - this.boostFlightZ) * blend;
+        this.z += (targetZ - this.z) * Math.min(1, delta * BOOST_AERIAL_Z_TRACK_RATE * 0.75);
+        this.vz = 0;
       }
     }
     if (this.specialShotType === "kiai" || this.specialShotType === "devilClaw" || this.specialShotType === "braveSlash" || this.specialShotType === "gigaBreak" || this.specialShotType === "fireball" || this.specialShotType === "holyLance" || this.specialShotType === "shiningArrow" || this.specialShotType === "hundredRush" || this.specialShotType === "lunaticMirage") {
@@ -1158,12 +1179,30 @@ class Ball {
       this.ufoSpinElapsed += delta;
       const storedLength = Math.hypot(this.ufoSpinBaseDirX, this.ufoSpinBaseDirY);
       const currentSpeed = Math.hypot(this.vx, this.vy) || 1;
-      const dirX = storedLength > 0.001 ? this.ufoSpinBaseDirX / storedLength : this.vx / currentSpeed;
-      const dirY = storedLength > 0.001 ? this.ufoSpinBaseDirY / storedLength : this.vy / currentSpeed;
+      let dirX = storedLength > 0.001 ? this.ufoSpinBaseDirX / storedLength : this.vx / currentSpeed;
+      let dirY = storedLength > 0.001 ? this.ufoSpinBaseDirY / storedLength : this.vy / currentSpeed;
+      if (this.target && !this.target.defeated) {
+        const targetX = this.target.x;
+        const targetY = this.target.y - 38;
+        const desiredX = targetX - this.x;
+        const desiredY = targetY - this.y;
+        const desiredLength = Math.hypot(desiredX, desiredY);
+        if (desiredLength > 0.001) {
+          const homingRate = this.aerialShot ? UFO_SPIN_AERIAL_HOMING_RATE : UFO_SPIN_HOMING_RATE;
+          const blend = Math.min(this.aerialShot ? 0.045 : 0.024, delta * homingRate);
+          const mixedX = dirX * (1 - blend) + desiredX / desiredLength * blend;
+          const mixedY = dirY * (1 - blend) + desiredY / desiredLength * blend;
+          const mixedLength = Math.hypot(mixedX, mixedY) || 1;
+          dirX = mixedX / mixedLength;
+          dirY = mixedY / mixedLength;
+          this.ufoSpinBaseDirX = dirX;
+          this.ufoSpinBaseDirY = dirY;
+        }
+      }
       const sideX = -dirY;
       const sideY = dirX;
       const wobble = Math.sin(this.ufoSpinElapsed * 10.5) * UFO_SPIN_WOBBLE_FORCE;
-      const baseSpeed = (this.config.specialShootSpeed || this.config.shootSpeed) * 1.18;
+      const baseSpeed = (this.config.specialShootSpeed || this.config.shootSpeed) * 1.416;
       this.vx = dirX * baseSpeed + sideX * wobble;
       this.vy = dirY * baseSpeed + sideY * wobble;
       if (!this.aerialShot) {
@@ -1355,12 +1394,36 @@ class Ball {
       this.vz = 0;
       this.clockStopPhase = "burst";
       this.clockStopElapsed = 0;
+      this.clockBurstElapsed = 0;
       this.catchable = true;
       return;
     }
 
     if (this.clockStopPhase === "burst") {
-      this.z = this.clockStopZ;
+      this.clockBurstElapsed += delta;
+      if (this.target && !this.target.defeated && this.clockBurstElapsed <= CLOCK_STOP_BURST_HOMING_TIME) {
+        const currentSpeed = Math.hypot(this.vx, this.vy) || Math.max(1, this.clockBurstSpeed);
+        const targetX = this.target.x + (this.target.vx || 0) * CLOCK_STOP_REAIM_LEAD_TIME;
+        const targetY = this.target.y - 38 + (this.target.vy || 0) * CLOCK_STOP_REAIM_LEAD_TIME;
+        const desiredX = targetX - this.x;
+        const desiredY = targetY - this.y;
+        const desiredLength = Math.hypot(desiredX, desiredY) || 1;
+        const homingRate = this.aerialShot ? CLOCK_STOP_AERIAL_HOMING_RATE : CLOCK_STOP_BURST_HOMING_RATE;
+        const blend = Math.min(this.aerialShot ? 0.06 : 0.035, delta * homingRate);
+        const currentX = this.vx / currentSpeed;
+        const currentY = this.vy / currentSpeed;
+        const mixedX = currentX * (1 - blend) + desiredX / desiredLength * blend;
+        const mixedY = currentY * (1 - blend) + desiredY / desiredLength * blend;
+        const mixedLength = Math.hypot(mixedX, mixedY) || 1;
+        this.vx = mixedX / mixedLength * currentSpeed;
+        this.vy = mixedY / mixedLength * currentSpeed;
+      }
+      if (this.target && !this.target.defeated) {
+        const targetZ = Math.max(34, (this.target.jumpZ || 0) + 40);
+        this.z += (targetZ - this.z) * Math.min(1, delta * CLOCK_STOP_AERIAL_Z_RATE);
+      } else {
+        this.z = this.clockStopZ;
+      }
       this.vz = 0;
     }
   }
@@ -1375,6 +1438,7 @@ class Ball {
     this.clockBurstTargetX = 0;
     this.clockBurstTargetY = 0;
     this.clockBurstSpeed = 0;
+    this.clockBurstElapsed = 0;
   }
 
   updateLockRocket(delta) {
@@ -1578,7 +1642,7 @@ class Ball {
       return (1 + t * 0.24) * (this.specialShotType === "devilClaw" ? 1.28 : this.specialShotType === "braveSlash" ? 1.24 : this.specialShotType === "gigaBreak" ? 1.2 : this.specialShotType === "fireball" ? 1.12 : this.specialShotType === "holyLance" ? 1.34 : this.specialShotType === "shiningArrow" ? 1.55 : this.specialShotType === "hundredRush" ? 1.42 : this.specialShotType === "lunaticMirage" ? 1.28 : 1.22);
     }
     if (this.specialShotType === "boost") {
-      return 0.35;
+      return BOOST_INITIAL_SPEED_SCALE;
     }
 
     if (this.specialShotType === "ufoSpin") {
@@ -1946,7 +2010,7 @@ class Ball {
       context.lineTo(this.x + tailX * (82 + intensity * 62), drawY + tailY * (82 + intensity * 62));
       context.stroke();
       if (this.specialShotType === "boost") {
-        const gear = this.boostElapsed >= 0.95 ? 4 : this.boostElapsed >= 0.68 ? 3 : this.boostElapsed >= 0.42 ? 2 : this.boostElapsed >= 0.2 ? 1 : 0;
+        const gear = this.boostElapsed >= 1.18 ? 4 : this.boostElapsed >= 0.9 ? 3 : this.boostElapsed >= 0.55 ? 2 : this.boostElapsed >= 0.25 ? 1 : 0;
         const flameLength = 90 + gear * 42 + Math.sin(performance.now() / 24) * 18;
         context.globalCompositeOperation = "lighter";
         context.globalAlpha = 0.82;

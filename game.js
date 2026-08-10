@@ -1,6 +1,6 @@
 const DEBUG_MODE = false;
 const SHOW_HITBOXES = false;
-const LAST_UPDATED_AT = "2026/08/09 20:42";
+const LAST_UPDATED_AT = "2026/08/11 04:55";
 const TITLE_BACKGROUND_IMAGE_PATH = "assets/title/title.png";
 const TEAM_SELECTION_COUNT = 8;
 const TEAM_SELECT_COLUMNS = 5;
@@ -508,7 +508,7 @@ const SPECIAL_SHOT_DAMAGE_RULES = {
   slap: (travelDistance = 0) => 2.8 - Math.min(1.75, Math.max(0, travelDistance) / 897),
   clockStop: 2.2,
   lockRocket: 2.415,
-  ufoSpin: 1.8,
+  ufoSpin: 2,
   hellfire: () => HELLFIRE_CONFIG.damageScale,
   meteorCrash: () => METEOR_CRASH_CONFIG.damageScale,
   bloodDrain: () => BLOOD_DRAIN_CONFIG.damageScale,
@@ -3730,6 +3730,13 @@ class DodgeballGame {
     const enemies = actor.team === "left" ? this.rightTeam : this.leftTeam;
     const aim = this.getDefaultShootAim(actor, enemies);
     const target = this.findShootTargetInAim(actor, enemies, aim);
+    const requestedSpecialType = specialRequested && this.canUseSpiritSpecial(actor)
+      ? this.getSpecialShotType(actor)
+      : null;
+    const airborne = actor.jumpZ > 0 || actor.jumpVelocity > 0;
+    const cpuGroundedSpecialBlocked = actor.cpuControlled &&
+      airborne &&
+      this.isCpuGroundedSpecialShot(requestedSpecialType);
     this.chargingThrow = {
       actor,
       kind: "shoot",
@@ -3738,7 +3745,7 @@ class DodgeballGame {
       playerIndex: 0,
       chargeTime: 0,
       cpuControlled: true,
-      specialRequested: specialRequested && this.canUseSpiritSpecial(actor),
+      specialRequested: Boolean(requestedSpecialType && !cpuGroundedSpecialBlocked),
       cpuReleaseTime: Math.max(0.35, Math.min(MAX_SHOT_CHARGE_TIME, chargeTime)),
       cpuReleaseMode: releaseMode,
       aerialCombo: actor.jumpZ > 0 && actor.aerialPassCatchTimer > 0
@@ -3766,7 +3773,15 @@ class DodgeballGame {
       : 1 + chargeRatio * 0.85;
     actor.throwLockTimer = Math.max(actor.throwLockTimer, (kind === "shoot" ? 0.3 : 0.18) * windupScale);
     actor.markThrowing((kind === "shoot" ? 0.32 : 0.22) * windupScale, kind);
-    const specialType = kind === "shoot" && charged.specialRequested ? this.getSpecialShotType(actor) : null;
+    let specialType = kind === "shoot" && charged.specialRequested ? this.getSpecialShotType(actor) : null;
+    if (
+      charged.cpuControlled &&
+      (actor.jumpZ > 0 || actor.jumpVelocity > 0) &&
+      this.isCpuGroundedSpecialShot(specialType)
+    ) {
+      specialType = null;
+      charged.specialRequested = false;
+    }
     const remainingWindup = kind === "shoot"
       ? Math.max(0, SHOT_WINDUP_TIME * windupScale - charged.chargeTime)
       : 0;
@@ -3879,7 +3894,15 @@ class DodgeballGame {
     };
     if (kind === "pass") actor.cpuDevilTrianglePass = false;
     if (kind === "shoot") {
-      this.pendingThrow.specialType = specialRequested ? this.getSpecialShotType(actor) : null;
+      this.pendingThrow.specialType = this.pendingThrow.specialRequested ? this.getSpecialShotType(actor) : null;
+      if (
+        actor.cpuControlled &&
+        (actor.jumpZ > 0 || actor.jumpVelocity > 0) &&
+        this.isCpuGroundedSpecialShot(this.pendingThrow.specialType)
+      ) {
+        this.pendingThrow.specialType = null;
+        this.pendingThrow.specialRequested = false;
+      }
       if (this.pendingThrow.specialType) {
         this.pendingThrow.timer += this.getSpecialAnticipationTime(this.pendingThrow.specialType);
         this.pendingThrow.anticipation = true;
@@ -4326,6 +4349,21 @@ class DodgeballGame {
     if (actor.characterType === "power") return "iron";
     if (actor.characterType === "speed") return "boomerang";
     return "lightning";
+  }
+
+  isCpuGroundedSpecialShot(specialType) {
+    return [
+      "ufoSpin",
+      "clockStop",
+      "lockRocket",
+      "boost",
+      "boomerang",
+      "devilShield",
+      "arcanaSphere",
+      "hellfire",
+      "bloodDrain",
+      "shiningArrow"
+    ].includes(specialType);
   }
 
   getSpecialAnticipationTime(specialType) {
@@ -5041,6 +5079,7 @@ class DodgeballGame {
   getShotHitRadius(shot, target = null) {
     const baseRadius = shot?.radius || 0;
     let radius = shot?.specialShotType ? baseRadius * 1.2 : baseRadius;
+    radius *= this.getSpecialShotHitRadiusScale(shot);
     radius *= this.getNoDamagePressureHitboxScale();
     if (!shot || shot.kind !== "shoot" || shot.counterShot || !this.isNoDefenseTarget(target)) {
       return radius;
@@ -5057,6 +5096,15 @@ class DodgeballGame {
     }
 
     return radius * NO_DEFENSE_HITBOX_CONFIG.normalScale;
+  }
+
+  getSpecialShotHitRadiusScale(shot) {
+    if (!shot?.specialShotType) return 1;
+    if (shot.specialShotType === "ufoSpin") return 1.15;
+    if (shot.specialShotType === "clockStop" && shot.clockStopPhase === "burst") return 1.15;
+    if (shot.specialShotType === "lockRocket" && shot.lockRocketPhase === "guide") return 1.15;
+    if (shot.specialShotType === "boost" && shot.aerialShot) return 1.15;
+    return 1;
   }
 
   isPiercingShot(specialType) {
@@ -6747,7 +6795,7 @@ class DodgeballGame {
     }
 
     const elapsed = this.ball.boostElapsed;
-    const stage = elapsed >= 0.95 ? 4 : elapsed >= 0.68 ? 3 : elapsed >= 0.42 ? 2 : elapsed >= 0.2 ? 1 : 0;
+    const stage = elapsed >= 1.18 ? 4 : elapsed >= 0.9 ? 3 : elapsed >= 0.55 ? 2 : elapsed >= 0.25 ? 1 : 0;
     if (stage <= this.boostEffectStage) return;
 
     this.boostEffectStage = stage;

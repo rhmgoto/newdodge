@@ -51,6 +51,19 @@ const CPU_MARTIAL_ARTIST_AERIAL_PASS_CUT = {
   leadTime: 0.14
 };
 
+const CPU_GROUNDED_SPECIAL_SHOTS = new Set([
+  "ufoSpin",
+  "clockStop",
+  "lockRocket",
+  "boost",
+  "boomerang",
+  "devilShield",
+  "arcanaSphere",
+  "hellfire",
+  "bloodDrain",
+  "shiningArrow"
+]);
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -386,6 +399,19 @@ class CPUController {
 
   controlHolder(command, holder) {
     const plan = this.getHolderPlan(holder);
+    if (
+      this.shouldKeepSpecialGrounded(holder) &&
+      (
+        plan.type === "jump-shot" ||
+        plan.type === "jump-strong-shot" ||
+        plan.type === "charge-jump-shot" ||
+        plan.type === "dash-jump-strong-shot"
+      )
+    ) {
+      plan.type = plan.type === "jump-shot" ? "dash-shot" : "dash-strong-shot";
+      plan.jumpAttempted = false;
+      plan.jumpStartedAt = 0;
+    }
     if (plan.type === "special-pass-wait") {
       this.stop(command);
       return;
@@ -393,6 +419,7 @@ class CPUController {
     if (plan.type === "lock-rocket-launch") {
       const now = Date.now();
       const grounded = holder.jumpZ <= 0 && holder.jumpVelocity <= 0;
+      const groundOnlySpecial = this.shouldKeepSpecialGrounded(holder);
       const reachedLaunchPoint = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 46;
       const approachTimedOut = now - plan.createdAt > 4000;
 
@@ -416,19 +443,24 @@ class CPUController {
         this.stop(command);
       }
 
-      if (this.hasStaleApexChargePlan(plan)) {
+      if (!groundOnlySpecial && this.hasStaleApexChargePlan(plan)) {
         this.resetHolderPlanSoon();
         return;
       }
       if (!plan.chargeStarted && this.throwTimer <= 0) {
         command.chargeShoot = true;
         command.chargeTime = plan.chargeTime;
-        command.chargeReleaseMode = "apex";
+        command.chargeReleaseMode = groundOnlySpecial ? "time" : "apex";
         plan.chargeStarted = true;
         plan.startedAt = now;
-        this.throwTimer = plan.chargeTime + 0.95;
+        this.throwTimer = plan.chargeTime + (groundOnlySpecial ? 0.55 : 0.95);
+        if (groundOnlySpecial) {
+          holder.cpuLockRocketLaunchCooldownUntil = now + 3000;
+          return;
+        }
       }
       if (
+        !groundOnlySpecial &&
         plan.chargeStarted &&
         grounded &&
         now - plan.startedAt > Math.max(220, (plan.chargeTime - 0.72) * 1000)
@@ -886,9 +918,10 @@ class CPUController {
     }
 
     const jumpReady = (shooter.cpuJumpAttackCooldownUntil || 0) <= Date.now();
+    const groundedSpecial = this.shouldKeepSpecialGrounded(shooter);
     const shotPlan = this.createHolderPlan(
       shooter,
-      jumpReady ? "dash-jump-strong-shot" : "dash-strong-shot",
+      !groundedSpecial && jumpReady ? "dash-jump-strong-shot" : "dash-strong-shot",
       0.92
     );
     shotPlan.specialAttackPlan = true;
@@ -1193,6 +1226,25 @@ class CPUController {
       jumpStartedAt: 0
     };
     return this.holderPlan;
+  }
+
+  getCpuSpecialShotType(member) {
+    if (!member) return null;
+    if (member.specialShotType === "none") return null;
+    if (member.specialShotType) return member.specialShotType;
+    if (member.characterType === "witch" || member.uniformEmblem === "witch") return "arcanaSphere";
+    if (member.characterType === "mage") return "soul";
+    if (member.characterType === "jump") return "boost";
+    if (member.characterType === "alien") return "ufoSpin";
+    if (member.characterType === "power") return "iron";
+    if (member.characterType === "speed") return "boomerang";
+    return "lightning";
+  }
+
+  shouldKeepSpecialGrounded(member) {
+    if (!member || member.role === "out") return false;
+    if (!this.config.isSpiritReady?.(this.teamName)) return false;
+    return CPU_GROUNDED_SPECIAL_SHOTS.has(this.getCpuSpecialShotType(member));
   }
 
   getActiveTeammates() {
