@@ -446,6 +446,7 @@ const AUDIO_CONFIG = {
     select: "music/select.mp3",
     koutei: "music/koutei.mp3",
     daimao: "music/daimao.mp3",
+    tenku: "music/tenku.mp3",
     pass: "music/pass.mp3",
     shoot: "music/shoot.mp3",
     special: "music/special.mp3",
@@ -628,6 +629,7 @@ class DodgeballGame {
     this.state = "pressStart";
     this.gameMode = "single";
     this.modeIndex = 0;
+    this.modeCategoryIndex = 0;
     this.typeOrder = ["normal", "power", "speed", "jump", "mage"];
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = 0;
@@ -687,6 +689,9 @@ class DodgeballGame {
     this.looseBallRecoveryTimer = 0;
     this.oneOnOneReturn = null;
     this.gameOverMenuIndex = 0;
+    this.openingCountdownTimer = 0;
+    this.openingGoTimer = 0;
+    this.openingBallDropReleased = false;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.heldBallWatchdog = { ownerId: null, timer: 0 };
@@ -732,7 +737,7 @@ class DodgeballGame {
     const bgm = {};
     const sfxPools = {};
     if (supported) {
-      for (const key of ["main", "select", "koutei", "daimao"]) {
+      for (const key of ["main", "select", "koutei", "daimao", "tenku"]) {
         const audio = new Audio(AUDIO_CONFIG.paths[key]);
         audio.loop = true;
         audio.volume = AUDIO_CONFIG.bgmVolume;
@@ -829,10 +834,10 @@ class DodgeballGame {
   getModeSelectHitRects() {
     return this.getModeOptions().map((mode, index) => ({
       index,
-      x: mode.x - 140,
-      y: mode.y - 58,
-      w: 280,
-      h: 112
+      x: mode.x - 150,
+      y: mode.y - 42,
+      w: 300,
+      h: 76
     }));
   }
 
@@ -1003,7 +1008,7 @@ class DodgeballGame {
 
   startMatchBgm() {
     if (!this.isAudioEnabled() || !this.audio.unlocked) return;
-    const key = this.isArkmazMatch() ? "daimao" : "koutei";
+    const key = this.isOneOnOneMode() ? "tenku" : this.isArkmazMatch() ? "daimao" : "koutei";
     if (this.audio.currentBgm === key && !this.audio.bgm[key].paused) return;
     for (const [name, audio] of Object.entries(this.audio.bgm)) {
       if (name === key) continue;
@@ -1106,8 +1111,7 @@ class DodgeballGame {
     this.looseBallRecoveryTimer = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
-    this.ball.x = court.centerX;
-    this.ball.y = court.y + court.h * 0.55;
+    this.startOpeningBallDrop(court);
     this.cpuControllerLeft = this.isWatchMode()
       ? new CPUController(this.leftTeam, this.rightTeam, this.ball, {
         ...GAME_CONFIG.battle,
@@ -1160,6 +1164,48 @@ class DodgeballGame {
     this.timeSinceLastDamage = 0;
   }
 
+  startOpeningBallDrop(court = this.getActiveCourt()) {
+    if (!this.ball) return;
+    this.ball.x = court.centerX;
+    this.ball.y = court.y + court.h * 0.5;
+    this.ball.z = this.isOneOnOneMode() ? 520 : 420;
+    this.ball.vx = 0;
+    this.ball.vy = 0;
+    this.ball.vz = 0;
+    this.ball.owner = null;
+    this.ball.thrower = null;
+    this.ball.target = null;
+    this.ball.kind = "loose";
+    this.ball.isFlying = false;
+    this.ball.isLoose = true;
+    this.ball.catchable = false;
+    this.ball.hasBounced = false;
+    this.ball.travelDistance = 0;
+    this.openingCountdownTimer = 3;
+    this.openingGoTimer = 0;
+    this.openingBallDropReleased = false;
+    for (const player of this.players || []) {
+      player.hasBall = false;
+      player.pickupLockTimer = Math.max(player.pickupLockTimer || 0, 3.1);
+    }
+    this.message = "DROP BALL";
+  }
+
+  releaseOpeningBallDrop() {
+    if (this.openingBallDropReleased) return;
+    this.openingBallDropReleased = true;
+    this.openingCountdownTimer = 0;
+    this.openingGoTimer = 0.45;
+    if (this.ball && !this.ball.owner && !this.ball.isFlying) {
+      this.ball.vz = -35;
+      this.ball.isLoose = true;
+      this.ball.catchable = false;
+    }
+    for (const player of this.players || []) {
+      player.pickupLockTimer = Math.min(player.pickupLockTimer || 0, 0.15);
+    }
+  }
+
   isOneOnOneMode() {
     return String(this.gameMode || "").startsWith("oneOnOne");
   }
@@ -1175,10 +1221,13 @@ class DodgeballGame {
   getActiveCourt() {
     if (!this.isOneOnOneMode()) return GAME_CONFIG.court;
     const base = GAME_CONFIG.court;
-    const height = base.h / 3;
+    const width = base.w * 0.9;
+    const height = (base.h / 3) * 0.7;
     return {
       ...base,
+      x: base.centerX - width / 2,
       y: base.y + (base.h - height) / 2,
+      w: width,
       h: height,
       centerX: base.centerX
     };
@@ -1435,8 +1484,14 @@ class DodgeballGame {
     player.id = `${team}-inner-1`;
     player.role = "inner";
     player.zone = innerZone;
-    player.x = innerArea.x + innerArea.w * (isLeft ? 0.42 : 0.58);
     player.y = innerArea.y + innerArea.h * 0.52;
+    const bounds = innerArea.trapezoid ? this.getTrapezoidBoundsAtY(innerArea.trapezoid, player.y) : null;
+    if (bounds) {
+      const edgeMargin = Math.max(96, (player.radius || 37) + 112);
+      player.x = isLeft ? bounds.left + edgeMargin : bounds.right - edgeMargin;
+    } else {
+      player.x = innerArea.x + innerArea.w * (isLeft ? 0.18 : 0.82);
+    }
     player.homeX = player.x;
     player.homeY = player.y;
     player.cpuPreferredPassTargetId = null;
@@ -2389,6 +2444,31 @@ class DodgeballGame {
     ];
   }
 
+  getModeOptions() {
+    return [
+      { mode: "single", category: "チーム対戦", label: "一人用", note: "1P vs CPU", x: 430, y: 342 },
+      { mode: "versus", category: "チーム対戦", label: "二人用", note: "1P vs 2P", x: 430, y: 442 },
+      { mode: "watch", category: "チーム対戦", label: "観戦", note: "CPU vs CPU", x: 430, y: 542 },
+      { mode: "oneOnOneSingle", category: "1 on 1", label: "一人用", note: "1P vs CPU", x: 1010, y: 342 },
+      { mode: "oneOnOneVersus", category: "1 on 1", label: "二人用", note: "1P vs 2P", x: 1010, y: 442 },
+      { mode: "oneOnOneWatch", category: "1 on 1", label: "観戦", note: "CPU vs CPU", x: 1010, y: 542 }
+    ];
+  }
+
+  getModeGridPosition(index = this.modeIndex) {
+    return {
+      category: index >= 3 ? 1 : 0,
+      row: ((index % 3) + 3) % 3
+    };
+  }
+
+  setModeIndexFromGrid(category, row) {
+    const nextCategory = Math.max(0, Math.min(1, category));
+    const nextRow = Math.max(0, Math.min(2, row));
+    this.modeCategoryIndex = nextCategory;
+    this.modeIndex = nextCategory * 3 + nextRow;
+  }
+
   confirmModeSelection() {
     const modeOption = this.getModeOptions()[this.modeIndex] || this.getModeOptions()[0];
     this.gameMode = modeOption.mode;
@@ -2417,11 +2497,19 @@ class DodgeballGame {
     if (this.input.wasPressed("button0")) {
       this.toggleAudioEnabled();
     }
-    if (this.wasMenuDirectionPressed("left") || this.wasMenuDirectionPressed("up")) {
-      this.modeIndex = Math.max(0, this.modeIndex - 1);
+    const grid = this.getModeGridPosition();
+    if (this.wasMenuDirectionPressed("left")) {
+      this.setModeIndexFromGrid(grid.category - 1, grid.row);
     }
-    if (this.wasMenuDirectionPressed("right") || this.wasMenuDirectionPressed("down")) {
-      this.modeIndex = Math.min(this.getModeOptions().length - 1, this.modeIndex + 1);
+    if (this.wasMenuDirectionPressed("right")) {
+      this.setModeIndexFromGrid(grid.category + 1, grid.row);
+    }
+    const movedGrid = this.getModeGridPosition();
+    if (this.wasMenuDirectionPressed("up")) {
+      this.setModeIndexFromGrid(movedGrid.category, movedGrid.row - 1);
+    }
+    if (this.wasMenuDirectionPressed("down")) {
+      this.setModeIndexFromGrid(movedGrid.category, movedGrid.row + 1);
     }
     if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
       this.confirmModeSelection();
@@ -2792,6 +2880,19 @@ class DodgeballGame {
     if (this.counterFreezeTimer > 0) {
       this.counterFreezeTimer = Math.max(0, this.counterFreezeTimer - delta);
       return;
+    }
+    if (this.openingCountdownTimer > 0) {
+      this.openingCountdownTimer = Math.max(0, this.openingCountdownTimer - delta);
+      if (this.openingCountdownTimer > 0) {
+        this.updateEffects(delta);
+        this.updateHellfireZones(delta);
+        this.updateMeteorLavaZones(delta);
+        return;
+      }
+      this.releaseOpeningBallDrop();
+    }
+    if (this.openingGoTimer > 0) {
+      this.openingGoTimer = Math.max(0, this.openingGoTimer - delta);
     }
     this.matchElapsedTime = (this.matchElapsedTime || 0) + delta;
     this.timeSinceLastDamage = (this.timeSinceLastDamage || 0) + delta;
@@ -3208,7 +3309,11 @@ class DodgeballGame {
       if (this.shouldReturnToLegalArea(member, area)) {
         controls = this.vectorTo(member, member.homeX, member.homeY, true);
       }
+      const beforeX = member.x;
+      const beforeY = member.y;
+      const wasAirborne = member.jumpZ > 0 || member.jumpVelocity > 0;
       member.update(delta, controls, area, GAME_CONFIG.battle);
+      this.enforceOneOnOneCenterLine(member, beforeX, beforeY, controls, wasAirborne);
     }
 
     const activeRight = this.isWatchMode() ? null : this.getRightControlledMember();
@@ -3229,11 +3334,43 @@ class DodgeballGame {
       const controls = this.shouldReturnToLegalArea(member, area)
         ? this.vectorTo(member, member.homeX, member.homeY, true)
         : command;
+      const beforeX = member.x;
+      const beforeY = member.y;
+      const wasAirborne = member.jumpZ > 0 || member.jumpVelocity > 0;
       member.update(delta, controls, area, GAME_CONFIG.battle);
+      this.enforceOneOnOneCenterLine(member, beforeX, beforeY, controls, wasAirborne);
       if (!this.isOneOnOneMode() && member.role === "inner" && member.jumpZ <= 0 && member.jumpVelocity <= 0 && !this.isPointInsideArea(member.x, member.y, member.radius, area)) {
         member.clampToArea(area);
       }
     }
+  }
+
+  enforceOneOnOneCenterLine(member, beforeX, beforeY, controls = {}, wasAirborne = false) {
+    if (!this.isOneOnOneMode() || !member || member.role !== "inner" || member.defeated || member.oneOnOneFalling) return;
+    if (wasAirborne || member.jumpZ > 0 || member.jumpVelocity > 0) return;
+    const ownArea = this.areas?.[member.zone];
+    const ownTrapezoid = ownArea?.trapezoid;
+    if (!ownTrapezoid) return;
+
+    const footHalfWidth = Math.max(14, (member.radius || 37) * 0.52);
+    const currentBounds = this.getTrapezoidBoundsAtY(ownTrapezoid, Math.max(ownTrapezoid.yTop, Math.min(ownTrapezoid.yBottom, member.y)));
+    const previousBounds = this.getTrapezoidBoundsAtY(ownTrapezoid, Math.max(ownTrapezoid.yTop, Math.min(ownTrapezoid.yBottom, beforeY)));
+    if (!currentBounds || !previousBounds) return;
+
+    if (member.team === "left") {
+      const maxX = currentBounds.right - footHalfWidth;
+      const previousMaxX = previousBounds.right - footHalfWidth;
+      const walkedAcross = beforeX <= previousMaxX && member.x > maxX;
+      const walkingDeeper = beforeX > previousMaxX && (controls.moveX || 0) > 0.05;
+      if (walkedAcross || walkingDeeper) member.x = maxX;
+      return;
+    }
+
+    const minX = currentBounds.left + footHalfWidth;
+    const previousMinX = previousBounds.left + footHalfWidth;
+    const walkedAcross = beforeX >= previousMinX && member.x < minX;
+    const walkingDeeper = beforeX < previousMinX && (controls.moveX || 0) < -0.05;
+    if (walkedAcross || walkingDeeper) member.x = minX;
   }
 
   resolvePlayerCollisions() {
@@ -3283,8 +3420,29 @@ class DodgeballGame {
 
   isOneOnOnePlayerOnStage(player) {
     if (!player) return false;
-    return this.isCircleOverlappingArea(player.x, player.y, player.radius, this.areas.leftInner) ||
-      this.isCircleOverlappingArea(player.x, player.y, player.radius, this.areas.rightInner);
+    const c = this.getActiveCourt();
+    const radius = Math.max(8, player.radius || 0);
+    const footHalfWidth = Math.max(14, radius * 0.52);
+    const footDepth = Math.max(10, radius * 0.28);
+    const backY = c.y + 96;
+    const frontY = c.y + c.h - 38;
+    const backTolerance = 86;
+    const sampleY = Math.max(backY, Math.min(frontY, player.y));
+    const left = this.projectCourtX(c.x, sampleY, c.y + 10, c.y + c.h);
+    const right = this.projectCourtX(c.x + c.w, sampleY, c.y + 10, c.y + c.h);
+    const sideOutHalfWidth = Math.max(74, radius * 1.55 + 20);
+    const backLineTolerance = 72;
+
+    if (player.y < backY - backLineTolerance) return false;
+    if (player.y > frontY) return false;
+    if (player.x + sideOutHalfWidth < left || player.x - sideOutHalfWidth > right) return false;
+    return true;
+
+    // 足元が完全に白線の外へ出た時だけ転落する。
+    if (player.y + footDepth < backY - backTolerance) return false;
+    if (player.y - footDepth > frontY) return false;
+    if (player.x + footHalfWidth < left || player.x - footHalfWidth > right) return false;
+    return true;
   }
 
   startOneOnOneFall(player) {
@@ -3297,7 +3455,7 @@ class DodgeballGame {
     }
     player.hasBall = false;
     player.oneOnOneFalling = true;
-    player.oneOnOneFallVelocity = 360;
+    player.oneOnOneFallVelocity = 150;
     player.hp = 0;
     player.downTimer = 999;
     player.hitRecoveryTimer = 0;
@@ -3312,7 +3470,7 @@ class DodgeballGame {
   }
 
   updateOneOnOneFallingPlayer(player, delta) {
-    player.oneOnOneFallVelocity = Math.min(1400, (player.oneOnOneFallVelocity || 360) + 1150 * delta);
+    player.oneOnOneFallVelocity = Math.min(980, (player.oneOnOneFallVelocity || 150) + 680 * delta);
     player.y += player.oneOnOneFallVelocity * delta;
     player.x += (player.knockbackX || 0) * delta;
     player.state = "down";
@@ -7432,6 +7590,7 @@ class DodgeballGame {
     this.drawTeamHpAdvantageGraph();
     this.drawSpiritGauges();
     if (this.state === "playing") this.drawMatchTitleButton();
+    if (this.state === "playing") this.drawOpeningCountdownOverlay();
     this.drawGamepadButtonMonitor();
     this.drawShotMultiplierDebug();
 
@@ -7459,6 +7618,35 @@ class DodgeballGame {
     context.font = "bold 54px Arial, sans-serif";
     context.fillStyle = `rgba(255, 255, 255, ${0.55 + pulse * 0.45})`;
     context.fillText("PRESS BUTTON", centerX, centerY);
+    context.restore();
+  }
+
+  drawOpeningCountdownOverlay() {
+    if ((this.openingCountdownTimer || 0) <= 0 && (this.openingGoTimer || 0) <= 0) return;
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const centerY = GAME_CONFIG.height * 0.5;
+    const number = (this.openingCountdownTimer || 0) > 0
+      ? Math.max(1, Math.ceil(this.openingCountdownTimer))
+      : 0;
+    const pulse = 0.92 + Math.sin(performance.now() / 90) * 0.06;
+
+    context.save();
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillStyle = "rgba(0,0,0,0.22)";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    context.translate(centerX, centerY - 18);
+    context.scale(pulse, pulse);
+    context.font = "bold 136px Arial, sans-serif";
+    context.lineJoin = "round";
+    context.lineWidth = 16;
+    context.strokeStyle = "rgba(38,50,65,0.92)";
+    context.fillStyle = number === 0 ? "#fff4a8" : "#fff7df";
+    context.shadowColor = number === 0 ? "#ffef7a" : "#9fdcff";
+    context.shadowBlur = number === 0 ? 30 : 18;
+    context.strokeText(String(number), 0, 0);
+    context.fillText(String(number), 0, 0);
     context.restore();
   }
 
@@ -7612,6 +7800,65 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "20px Meiryo, sans-serif";
     context.fillText("左右で選択 / ボタン2で決定", centerX, 590);
+    context.restore();
+  }
+
+  drawModeSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawTitleBackgroundImage();
+    context.save();
+    context.textAlign = "center";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 6;
+    context.font = "bold 58px Meiryo, sans-serif";
+    context.strokeText("ぶっとびドッジーズ", centerX, 142);
+    context.fillText("ぶっとびドッジーズ", centerX, 142);
+
+    const columns = [
+      { label: "チーム対戦", x: 430 },
+      { label: "1 on 1", x: 1010 }
+    ];
+    const grid = this.getModeGridPosition();
+    for (let column = 0; column < columns.length; column += 1) {
+      const selectedColumn = grid.category === column;
+      const panelX = columns[column].x - 190;
+      context.fillStyle = selectedColumn ? "rgba(255,244,168,0.24)" : "rgba(255,255,255,0.12)";
+      context.strokeStyle = selectedColumn ? "rgba(255,244,168,0.92)" : "rgba(255,255,255,0.32)";
+      context.lineWidth = selectedColumn ? 5 : 3;
+      this.roundRect(context, panelX, 214, 380, 384, 10);
+      context.fill();
+      context.stroke();
+
+      context.fillStyle = selectedColumn ? "#fff4a8" : "#fff7df";
+      context.strokeStyle = "#27324a";
+      context.lineWidth = 4;
+      context.font = "bold 36px Meiryo, sans-serif";
+      context.strokeText(columns[column].label, columns[column].x, 260);
+      context.fillText(columns[column].label, columns[column].x, 260);
+    }
+
+    const modes = this.getModeOptions();
+    for (let i = 0; i < modes.length; i += 1) {
+      const mode = modes[i];
+      const selected = this.modeIndex === i;
+      context.fillStyle = selected ? "rgba(255,244,168,0.96)" : "rgba(255,255,255,0.8)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.5)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, mode.x - 150, mode.y - 42, 300, 76, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 30px Meiryo, sans-serif";
+      context.fillText(mode.label, mode.x, mode.y - 8);
+      context.font = "18px Meiryo, sans-serif";
+      context.fillText(mode.note, mode.x, mode.y + 22);
+    }
+
+    context.fillStyle = "#fff7df";
+    context.font = "20px Meiryo, sans-serif";
+    context.fillText("左右で種類選択 / 上下でモード選択 / ボタン2で決定", centerX, 636);
     context.restore();
   }
 
@@ -9149,27 +9396,162 @@ class DodgeballGame {
   drawOneOnOneBackground() {
     const context = this.context;
     const c = this.getActiveCourt();
-    const left = c.x - 900;
-    const top = c.y - 620;
-    const width = c.w + 1800;
-    const height = c.h + 1120;
+    const time = performance.now();
+    const left = c.x - 1200;
+    const top = c.y - 760;
+    const width = c.w + 2400;
+    const height = c.h + 1420;
     const bg = context.createLinearGradient(0, top, 0, top + height);
-    bg.addColorStop(0, "#9fdcff");
-    bg.addColorStop(0.42, "#c8f2ff");
-    bg.addColorStop(0.74, "#6f8fba");
-    bg.addColorStop(1, "#2a3555");
+    bg.addColorStop(0, "#13365f");
+    bg.addColorStop(0.28, "#285d93");
+    bg.addColorStop(0.56, "#8dc0df");
+    bg.addColorStop(0.78, "#d7edf6");
+    bg.addColorStop(1, "#586f91");
     context.fillStyle = bg;
     context.fillRect(left, top, width, height);
 
+    const sunX = c.centerX - 560;
+    const sunY = top + 230;
+    const sunGlow = context.createRadialGradient(sunX, sunY, 40, sunX, sunY, 760);
+    sunGlow.addColorStop(0, "rgba(255,246,184,0.62)");
+    sunGlow.addColorStop(0.22, "rgba(255,232,148,0.28)");
+    sunGlow.addColorStop(1, "rgba(255,232,148,0)");
+    context.fillStyle = sunGlow;
+    context.fillRect(left, top, width, height);
+
     context.save();
-    context.globalAlpha = 0.26;
+    context.globalAlpha = 0.18;
+    context.strokeStyle = "#fff4b8";
+    context.lineWidth = 18;
+    for (let i = 0; i < 6; i += 1) {
+      const rayX = sunX + 40 + i * 180;
+      context.beginPath();
+      context.moveTo(rayX, sunY + 30);
+      context.lineTo(rayX + 580, top + height);
+      context.stroke();
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.22;
+    context.fillStyle = "#173c64";
+    for (let i = 0; i < 4; i += 1) {
+      const x = c.centerX - 940 + i * 620;
+      const y = c.y + c.h + 350 + (i % 2) * 50;
+      context.beginPath();
+      context.moveTo(x - 250, y + 130);
+      context.lineTo(x - 70, y - 70);
+      context.lineTo(x + 72, y + 54);
+      context.lineTo(x + 190, y - 24);
+      context.lineTo(x + 360, y + 130);
+      context.closePath();
+      context.fill();
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.46;
+    context.fillStyle = "#f8fbff";
+    for (let i = 0; i < 18; i += 1) {
+      const drift = Math.sin(time / 3800 + i) * 34;
+      const x = left + 130 + i * 190 + drift;
+      const y = c.y + c.h + 250 + (i % 4) * 58;
+      context.beginPath();
+      context.ellipse(x, y, 150 + (i % 3) * 36, 36 + (i % 2) * 14, 0, 0, Math.PI * 2);
+      context.ellipse(x + 82, y - 16, 118, 28, 0, 0, Math.PI * 2);
+      context.ellipse(x - 84, y + 6, 90, 24, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.2;
+    const templeX = c.centerX + 670;
+    const templeY = c.y - 430;
+    context.fillStyle = "#d9e4ef";
+    context.strokeStyle = "#6f88a2";
+    context.lineWidth = 5;
+    context.beginPath();
+    context.moveTo(templeX - 210, templeY + 145);
+    context.lineTo(templeX + 210, templeY + 145);
+    context.lineTo(templeX + 150, templeY + 240);
+    context.lineTo(templeX - 150, templeY + 240);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(templeX - 250, templeY + 140);
+    context.lineTo(templeX, templeY - 48);
+    context.lineTo(templeX + 250, templeY + 140);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    for (let i = -3; i <= 3; i += 1) {
+      context.fillRect(templeX + i * 58 - 12, templeY + 145, 24, 96);
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.24;
+    context.fillStyle = "#203850";
+    for (let i = 0; i < 5; i += 1) {
+      const x = c.centerX - 760 + i * 360;
+      const y = c.y - 240 + (i % 2) * 90;
+      context.beginPath();
+      context.ellipse(x, y, 84, 26, 0, 0, Math.PI * 2);
+      context.lineTo(x + 70, y + 54);
+      context.lineTo(x - 62, y + 48);
+      context.closePath();
+      context.fill();
+      context.fillRect(x - 42, y + 18, 84, 36);
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.48;
     context.fillStyle = "#ffffff";
-    for (let i = 0; i < 14; i += 1) {
-      const x = left + 180 + i * 210;
-      const y = top + 160 + (i % 5) * 112;
+    for (let i = 0; i < 20; i += 1) {
+      const x = left + 120 + i * 170 + Math.sin(time / 2600 + i * 1.7) * 28;
+      const y = top + 130 + (i % 5) * 110;
       context.beginPath();
       context.ellipse(x, y, 84 + (i % 3) * 26, 18 + (i % 2) * 8, 0, 0, Math.PI * 2);
       context.fill();
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.38;
+    context.fillStyle = "#1b2d49";
+    for (let i = 0; i < 7; i += 1) {
+      const x = c.centerX - 980 + i * 320 + Math.sin(time / 1800 + i) * 42;
+      const y = c.y - 80 + (i % 3) * 76;
+      context.beginPath();
+      context.moveTo(x - 26, y);
+      context.quadraticCurveTo(x, y - 14, x + 28, y);
+      context.quadraticCurveTo(x, y + 6, x - 26, y);
+      context.fill();
+    }
+    context.beginPath();
+    const dragonX = c.centerX + 480 + Math.sin(time / 4200) * 80;
+    const dragonY = c.y - 110;
+    context.moveTo(dragonX - 72, dragonY);
+    context.quadraticCurveTo(dragonX - 26, dragonY - 34, dragonX + 4, dragonY - 4);
+    context.quadraticCurveTo(dragonX + 34, dragonY - 38, dragonX + 84, dragonY - 2);
+    context.quadraticCurveTo(dragonX + 16, dragonY + 14, dragonX - 72, dragonY);
+    context.fill();
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.5;
+    context.strokeStyle = "rgba(210,245,255,0.55)";
+    context.lineWidth = 3;
+    for (let i = 0; i < 16; i += 1) {
+      const y = c.y + 30 + i * 34;
+      const x = c.x - 260 + Math.sin(time / 900 + i) * 36;
+      context.beginPath();
+      context.moveTo(x, y);
+      context.bezierCurveTo(x + 160, y - 26, x + 360, y + 28, x + 520, y);
+      context.stroke();
     }
     context.restore();
 
@@ -9584,6 +9966,7 @@ class DodgeballGame {
   drawOneOnOneCourt() {
     const context = this.context;
     const c = this.getActiveCourt();
+    const time = performance.now();
     const topY = c.y + 10;
     const bottomY = c.y + c.h;
     const backY = c.y + 96;
@@ -9626,42 +10009,174 @@ class DodgeballGame {
     };
 
     const floor = projectedCorners(c.x, backY, c.w, frontY - backY);
+    const underside = [
+      floor[3],
+      floor[2],
+      { x: floor[2].x - 92, y: floor[2].y + 182 },
+      { x: floor[3].x + 92, y: floor[3].y + 182 }
+    ];
+    const leftSide = [
+      floor[0],
+      floor[3],
+      { x: floor[3].x + 92, y: floor[3].y + 182 },
+      { x: floor[0].x + 58, y: floor[0].y + 78 }
+    ];
+    const rightSide = [
+      floor[1],
+      floor[2],
+      { x: floor[2].x - 92, y: floor[2].y + 182 },
+      { x: floor[1].x - 58, y: floor[1].y + 78 }
+    ];
     const shadow = floor.map((p, index) => ({
-      x: c.centerX + (p.x - c.centerX) * 1.18,
-      y: p.y + 172 + (index >= 2 ? 36 : 0)
+      x: c.centerX + (p.x - c.centerX) * 1.05,
+      y: p.y + 330 + (index >= 2 ? 42 : 0)
     }));
 
     context.save();
-    context.globalAlpha = 0.22;
+    context.globalAlpha = 0.2;
     drawQuad(shadow, "#000000");
     context.restore();
 
+    const sideGradient = context.createLinearGradient(0, backY, 0, frontY + 220);
+    sideGradient.addColorStop(0, "#7e8c9b");
+    sideGradient.addColorStop(0.5, "#4f5c6c");
+    sideGradient.addColorStop(1, "#202b3b");
+    drawQuad(underside, sideGradient);
+    drawQuad(leftSide, "rgba(73,88,105,0.86)");
+    drawQuad(rightSide, "rgba(43,56,72,0.9)");
+
     context.save();
-    context.shadowBlur = 28;
-    context.shadowColor = "rgba(120,240,255,0.7)";
+    context.globalAlpha = 0.48;
+    context.fillStyle = "#3a4658";
+    for (let i = 0; i < 18; i += 1) {
+      const x = c.centerX - 1180 + i * 140 + Math.sin(time / 900 + i) * 12;
+      const y = frontY + 175 + (i % 5) * 52;
+      context.beginPath();
+      context.moveTo(x - 28, y - 12);
+      context.lineTo(x + 18, y - 28);
+      context.lineTo(x + 44, y + 5);
+      context.lineTo(x + 8, y + 28);
+      context.lineTo(x - 40, y + 16);
+      context.closePath();
+      context.fill();
+    }
+    context.restore();
+
+    context.save();
+    context.shadowBlur = 18;
+    context.shadowColor = "rgba(116,228,255,0.55)";
     const floorGradient = context.createLinearGradient(0, backY, 0, frontY);
-    floorGradient.addColorStop(0, "#9bdcf0");
-    floorGradient.addColorStop(0.5, "#bfc36d");
-    floorGradient.addColorStop(1, "#d4d886");
+    floorGradient.addColorStop(0, "#d7e2e8");
+    floorGradient.addColorStop(0.48, "#aebdcc");
+    floorGradient.addColorStop(1, "#8192a5");
     drawQuad(floor, floorGradient);
     context.restore();
 
     context.save();
-    context.strokeStyle = "#fff9d8";
-    context.lineWidth = 8;
+    context.globalAlpha = 0.38;
+    context.strokeStyle = "#6d7d8f";
+    context.lineWidth = 3;
+    for (let i = 1; i < 7; i += 1) {
+      const x = c.x + c.w * (i / 7);
+      strokeLine(x, backY + 10, x + Math.sin(i) * 24, frontY - 12);
+    }
+    for (let i = 1; i < 4; i += 1) {
+      const y = backY + (frontY - backY) * (i / 4);
+      strokeLine(c.x + 12, y, c.x + c.w - 12, y + Math.cos(i) * 14);
+    }
+    context.strokeStyle = "rgba(48,64,82,0.36)";
+    context.lineWidth = 5;
+    for (let i = 0; i < 15; i += 1) {
+      const x = c.x + 80 + (i * 173) % (c.w - 160);
+      const y = backY + 34 + (i * 71) % Math.max(80, frontY - backY - 70);
+      const p = project(x, y);
+      context.beginPath();
+      context.moveTo(p.x - 32, p.y - 3);
+      context.lineTo(p.x - 8, p.y + 8);
+      context.lineTo(p.x + 14, p.y - 6);
+      context.lineTo(p.x + 42, p.y + 2);
+      context.stroke();
+    }
+    context.restore();
+
+    context.save();
+    context.shadowBlur = 18;
+    context.shadowColor = "#74f1ff";
+    context.strokeStyle = "#8df4ff";
+    context.lineWidth = 10;
     strokeLine(c.x, backY, c.x + c.w, backY);
     strokeLine(c.x + c.w, backY, c.x + c.w, frontY);
     strokeLine(c.x + c.w, frontY, c.x, frontY);
     strokeLine(c.x, frontY, c.x, backY);
 
-    context.strokeStyle = "rgba(255,255,255,0.78)";
+    context.shadowBlur = 0;
+    context.strokeStyle = "#fff1a8";
+    context.lineWidth = 4;
+    strokeLine(c.x, backY, c.x + c.w, backY);
+    strokeLine(c.x + c.w, backY, c.x + c.w, frontY);
+    strokeLine(c.x + c.w, frontY, c.x, frontY);
+    strokeLine(c.x, frontY, c.x, backY);
+
+    context.strokeStyle = "rgba(255,244,178,0.82)";
     context.lineWidth = 5;
     strokeLine(c.centerX, backY, c.centerX, frontY);
 
-    context.strokeStyle = "rgba(80,220,255,0.72)";
-    context.lineWidth = 10;
-    strokeLine(c.x, backY, c.x, frontY);
-    strokeLine(c.x + c.w, backY, c.x + c.w, frontY);
+    context.strokeStyle = "rgba(87,235,255,0.42)";
+    context.lineWidth = 16;
+    strokeLine(c.x, backY + 6, c.x, frontY - 6);
+    strokeLine(c.x + c.w, backY + 6, c.x + c.w, frontY - 6);
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.82;
+    context.strokeStyle = "#fff6b8";
+    context.fillStyle = "rgba(90,245,255,0.24)";
+    context.lineWidth = 4;
+    const centerY = (backY + frontY) * 0.5;
+    const center = project(c.centerX, centerY);
+    context.translate(center.x, center.y);
+    context.scale(1, 0.36);
+    context.beginPath();
+    context.arc(0, 0, 118, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.arc(0, 0, 58, 0, Math.PI * 2);
+    context.stroke();
+    for (let i = 0; i < 8; i += 1) {
+      const angle = i * Math.PI / 4 + time / 4200;
+      context.beginPath();
+      context.moveTo(Math.cos(angle) * 38, Math.sin(angle) * 38);
+      context.lineTo(Math.cos(angle) * 112, Math.sin(angle) * 112);
+      context.stroke();
+    }
+    context.restore();
+
+    context.save();
+    context.fillStyle = "#eaf9ff";
+    context.strokeStyle = "#5cdfff";
+    context.shadowColor = "#6ff6ff";
+    context.shadowBlur = 16;
+    const crystalPoints = [
+      project(c.x + 34, backY + 24),
+      project(c.x + c.w - 34, backY + 24),
+      project(c.x + c.w - 52, frontY - 32),
+      project(c.x + 52, frontY - 32)
+    ];
+    for (const p of crystalPoints) {
+      context.beginPath();
+      context.moveTo(p.x, p.y - 34);
+      context.lineTo(p.x + 20, p.y - 4);
+      context.lineTo(p.x, p.y + 32);
+      context.lineTo(p.x - 20, p.y - 4);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      context.fillStyle = "rgba(107,232,255,0.34)";
+      context.beginPath();
+      context.ellipse(p.x, p.y + 46, 46, 12, 0, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#eaf9ff";
+    }
     context.restore();
 
     context.save();
@@ -9670,6 +10185,27 @@ class DodgeballGame {
     drawQuad(projectedCorners(c.x + 10, backY + 10, c.w / 2 - 20, frontY - backY - 20), "#3087f2");
     context.fillStyle = "#f05a45";
     drawQuad(projectedCorners(c.centerX + 10, backY + 10, c.w / 2 - 20, frontY - backY - 20), "#f05a45");
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.58;
+    context.strokeStyle = "rgba(225,250,255,0.62)";
+    context.lineWidth = 3;
+    for (let i = 0; i < 12; i += 1) {
+      const y = backY + 18 + i * ((frontY - backY - 36) / 11);
+      const p1 = project(c.x - 86 + Math.sin(time / 700 + i) * 14, y);
+      const p2 = project(c.x + 28, y + Math.cos(i) * 12);
+      const p3 = project(c.x + c.w - 28, y - Math.cos(i) * 12);
+      const p4 = project(c.x + c.w + 86 + Math.cos(time / 800 + i) * 14, y);
+      context.beginPath();
+      context.moveTo(p1.x, p1.y);
+      context.quadraticCurveTo(p2.x, p2.y - 20, p2.x + 80, p2.y);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(p3.x - 80, p3.y);
+      context.quadraticCurveTo(p3.x, p3.y + 20, p4.x, p4.y);
+      context.stroke();
+    }
     context.restore();
   }
 
