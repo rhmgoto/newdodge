@@ -370,6 +370,7 @@ class Player {
   }
 
   update(delta, controls, area, config) {
+    const allowRingOut = Boolean(area?.allowRingOut);
     const airborneBeforeMove = this.jumpZ > 0 || this.jumpVelocity > 0;
     const startedInsideArea = this.isInsideArea(area);
     const catchTimerBeforeUpdate = this.catchTimer;
@@ -505,7 +506,7 @@ class Player {
     this.x += this.vx * delta;
     this.y += this.vy * delta;
     this.applyKnockback(delta, area);
-    if (!airborneBeforeMove && startedInsideArea) {
+    if (!allowRingOut && !airborneBeforeMove && startedInsideArea) {
       this.clampToArea(area);
     }
     this.updateJump(delta, config);
@@ -2364,13 +2365,38 @@ class Player {
       context.ellipse(0, headY - 31, 7, 13, 0, 0, Math.PI * 2);
       context.fill();
     } else if (job === "archer") {
+      context.fillStyle = hair;
+      context.beginPath();
+      context.ellipse(-17, headY + 1, 7, 17, -0.18, 0, Math.PI * 2);
+      context.ellipse(17, headY + 1, 7, 17, 0.18, 0, Math.PI * 2);
+      context.fill();
+      context.beginPath();
+      context.moveTo(-19, headY - 8);
+      context.quadraticCurveTo(-9, headY - 22, 0, headY - 13);
+      context.quadraticCurveTo(9, headY - 22, 19, headY - 8);
+      context.quadraticCurveTo(9, headY - 13, 3, headY - 4);
+      context.quadraticCurveTo(-4, headY - 13, -19, headY - 8);
+      context.fill();
+
       context.fillStyle = palette.body;
       softStroke(2.4);
       context.beginPath();
-      context.moveTo(-24, headY - 12);
-      context.quadraticCurveTo(0, headY - 39, 24, headY - 12);
-      context.lineTo(15, headY + 5);
-      context.quadraticCurveTo(0, headY - 3, -15, headY + 5);
+      context.moveTo(-23, headY - 18);
+      context.quadraticCurveTo(0, headY - 45, 25, headY - 18);
+      context.lineTo(17, headY - 7);
+      context.quadraticCurveTo(2, headY - 14, -14, headY - 6);
+      context.closePath();
+      context.fill();
+      context.stroke();
+      softStroke(2.6, palette.edge);
+      context.beginPath();
+      context.ellipse(0, headY - 15, 27, 6.5, -0.02, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = palette.body;
+      context.beginPath();
+      context.moveTo(15, headY - 24);
+      context.quadraticCurveTo(35, headY - 28, 40, headY - 16);
+      context.quadraticCurveTo(26, headY - 18, 17, headY - 11);
       context.closePath();
       context.fill();
       context.stroke();
@@ -2378,16 +2404,16 @@ class Player {
         context.fillStyle = "#fff6c7";
         softStroke(1.6, "#d6bc4c");
         context.beginPath();
-        context.moveTo(8, headY - 28);
-        context.quadraticCurveTo(28, headY - 41, 35, headY - 25);
-        context.quadraticCurveTo(21, headY - 25, 10, headY - 17);
+        context.moveTo(9, headY - 33);
+        context.quadraticCurveTo(29, headY - 46, 37, headY - 28);
+        context.quadraticCurveTo(23, headY - 27, 11, headY - 19);
         context.closePath();
         context.fill();
         context.stroke();
       } else if (archerVariant === "ルイ") {
         context.fillStyle = "#a94f36";
         context.beginPath();
-        context.ellipse(-14, headY - 11, 6, 3.5, -0.35, 0, Math.PI * 2);
+        context.ellipse(-14, headY - 16, 6, 3.5, -0.35, 0, Math.PI * 2);
         context.fill();
       }
     } else {
@@ -2451,7 +2477,7 @@ class Player {
       context.fill();
     }
 
-    const cuteFace = job === "swordwoman" || job === "mage" || job === "cleric";
+    const cuteFace = job === "swordwoman" || job === "mage" || job === "cleric" || job === "archer";
     context.fillStyle = eye;
     context.beginPath();
     context.arc(-7, headY, cuteFace ? 3.5 : 2.8, 0, Math.PI * 2);

@@ -644,6 +644,9 @@ class DodgeballGame {
     this.selectedTeamIndices = { left: 0, right: 1 };
     this.teamSelectionConfirmed = { left: false, right: false };
     this.teamRosterConfirmed = { left: false, right: false };
+    this.oneOnOneSelections = { left: 0, right: 0 };
+    this.oneOnOneReturn = null;
+    this.gameOverMenuIndex = 0;
     this.cpuOpponentIndex = 0;
     this.watchCpuLeftIndex = 2;
     this.watchCpuRightIndex = 3;
@@ -682,6 +685,8 @@ class DodgeballGame {
     this.looseOutfieldRecoveryTimer = 0;
     this.looseOutfieldTotalTimer = 0;
     this.looseBallRecoveryTimer = 0;
+    this.oneOnOneReturn = null;
+    this.gameOverMenuIndex = 0;
     this.lastLooseOutfieldBallPosition = null;
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.heldBallWatchdog = { ownerId: null, timer: 0 };
@@ -822,12 +827,12 @@ class DodgeballGame {
   }
 
   getModeSelectHitRects() {
-    return [0, 1, 2].map((index) => ({
+    return this.getModeOptions().map((mode, index) => ({
       index,
-      x: 310 + index * 410 - 140,
-      y: 275,
+      x: mode.x - 140,
+      y: mode.y - 58,
       w: 280,
-      h: 140
+      h: 112
     }));
   }
 
@@ -839,6 +844,18 @@ class DodgeballGame {
       y: 330 + index * 72 - 34,
       w: 360,
       h: 54
+    }));
+  }
+
+  getGameOverMenuHitRects() {
+    const centerX = GAME_CONFIG.width * 0.5;
+    const labels = this.getGameOverMenuOptions();
+    return labels.map((label, index) => ({
+      index,
+      x: centerX - 440 + index * 300,
+      y: 438,
+      w: 260,
+      h: 62
     }));
   }
 
@@ -958,6 +975,16 @@ class DodgeballGame {
       return;
     }
 
+    if (this.state === "gameOver" && this.isOneOnOneMode()) {
+      const hit = this.getGameOverMenuHitRects().find((rect) => this.isPointInRect(point, rect));
+      if (hit) {
+        event.preventDefault();
+        this.gameOverMenuIndex = hit.index;
+        this.activateGameOverMenu();
+      }
+      return;
+    }
+
     if (this.state === "playing" && this.isPointInRect(point, this.getMatchTitleButtonRect())) {
       event.preventDefault();
       this.enterModeSelectState();
@@ -1059,7 +1086,7 @@ class DodgeballGame {
   }
 
   setupMatch() {
-    const court = GAME_CONFIG.court;
+    const court = this.getActiveCourt();
     this.areas = this.createAreas();
     this.ballBounds = this.createBallBounds();
     this.leftTeam = this.createTeam("left");
@@ -1081,26 +1108,28 @@ class DodgeballGame {
     this.lastLooseOutfieldReceiverDistance = Infinity;
     this.ball.x = court.centerX;
     this.ball.y = court.y + court.h * 0.55;
-    this.cpuControllerLeft = this.gameMode === "watch"
+    this.cpuControllerLeft = this.isWatchMode()
       ? new CPUController(this.leftTeam, this.rightTeam, this.ball, {
         ...GAME_CONFIG.battle,
         court,
         areas: this.areas,
         teamName: "left",
         opponentName: "right",
+        oneOnOneMode: this.isOneOnOneMode(),
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
         canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
         onShotDefenseEvent: (event) => this.recordShotDefenseDebug(event)
       })
       : null;
-    this.cpuController = this.gameMode !== "versus"
+    this.cpuController = !this.isVersusMode()
       ? new CPUController(this.rightTeam, this.leftTeam, this.ball, {
         ...GAME_CONFIG.battle,
         court,
         areas: this.areas,
         teamName: "right",
         opponentName: "left",
+        oneOnOneMode: this.isOneOnOneMode(),
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
         canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
@@ -1131,8 +1160,32 @@ class DodgeballGame {
     this.timeSinceLastDamage = 0;
   }
 
+  isOneOnOneMode() {
+    return String(this.gameMode || "").startsWith("oneOnOne");
+  }
+
+  isVersusMode() {
+    return this.gameMode === "versus" || this.gameMode === "oneOnOneVersus";
+  }
+
+  isWatchMode() {
+    return this.gameMode === "watch" || this.gameMode === "oneOnOneWatch";
+  }
+
+  getActiveCourt() {
+    if (!this.isOneOnOneMode()) return GAME_CONFIG.court;
+    const base = GAME_CONFIG.court;
+    const height = base.h / 3;
+    return {
+      ...base,
+      y: base.y + (base.h - height) / 2,
+      h: height,
+      centerX: base.centerX
+    };
+  }
+
   createAreas() {
-    const c = GAME_CONFIG.court;
+    const c = this.getActiveCourt();
     const halfW = c.w / 2;
     const topY = c.y + 10;
     const backY = c.y + 96;
@@ -1190,15 +1243,20 @@ class DodgeballGame {
     };
   }
 
-  projectCourtX(x, y, topY = GAME_CONFIG.court.y + 10, bottomY = GAME_CONFIG.court.y + GAME_CONFIG.court.h) {
-    const c = GAME_CONFIG.court;
-    const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
+  projectCourtX(x, y, topY = null, bottomY = null) {
+    const c = this.getActiveCourt();
+    const actualTopY = topY ?? c.y + 10;
+    const actualBottomY = bottomY ?? c.y + c.h;
+    const t = Math.max(0, Math.min(1, (y - actualTopY) / (actualBottomY - actualTopY)));
     const scale = 0.78 + t * 0.22;
     return c.centerX + (x - c.centerX) * scale;
   }
 
   createBallBounds() {
-    const rects = [GAME_CONFIG.court, ...Object.values(this.areas)].map((area) => this.getAreaBounds(area));
+    const activeAreas = this.isOneOnOneMode()
+      ? [this.getActiveCourt(), this.areas.leftInner, this.areas.rightInner]
+      : [this.getActiveCourt(), ...Object.values(this.areas)];
+    const rects = activeAreas.map((area) => this.getAreaBounds(area));
     const padding = 48;
     const minX = Math.min(...rects.map((rect) => rect.x)) - padding;
     const minY = Math.min(...rects.map((rect) => rect.y)) - padding;
@@ -1350,7 +1408,11 @@ class DodgeballGame {
       })
     );
 
-    for (const player of roster) {
+    const activeRoster = this.isOneOnOneMode()
+      ? [this.prepareOneOnOnePlayer(roster, team, innerArea, innerZone)]
+      : roster;
+
+    for (const player of activeRoster) {
       if (
         !player.specialShotType &&
         (teamDefinition?.id === "blue-stars" || teamDefinition?.id === "red-fires") &&
@@ -1363,7 +1425,23 @@ class DodgeballGame {
       player.homeX = player.x;
       player.homeY = player.y;
     }
-    return roster;
+    return activeRoster;
+  }
+
+  prepareOneOnOnePlayer(roster, team, innerArea, innerZone) {
+    const isLeft = team === "left";
+    const selectedSlot = Math.max(0, Math.min(TEAM_SELECTION_COUNT - 1, this.oneOnOneSelections?.[team] ?? 0));
+    const player = roster[selectedSlot] || roster[0];
+    player.id = `${team}-inner-1`;
+    player.role = "inner";
+    player.zone = innerZone;
+    player.x = innerArea.x + innerArea.w * (isLeft ? 0.42 : 0.58);
+    player.y = innerArea.y + innerArea.h * 0.52;
+    player.homeX = player.x;
+    player.homeY = player.y;
+    player.cpuPreferredPassTargetId = null;
+    player.postPassAction = null;
+    return player;
   }
 
   getCpuOpponentTeams() {
@@ -1935,14 +2013,14 @@ class DodgeballGame {
   }
 
   isCpuControlledSide(team) {
-    return this.gameMode === "watch" || (this.gameMode === "single" && team === "right");
+    return this.isWatchMode() || (this.gameMode === "single" && team === "right") || (this.gameMode === "oneOnOneSingle" && team === "right");
   }
 
   getTeamDefinitionForSide(team) {
-    if (this.gameMode === "watch") {
+    if (this.isWatchMode()) {
       return this.getSelectedTeamForSide(team);
     }
-    if (this.gameMode === "single" && team === "right") {
+    if ((this.gameMode === "single" || this.gameMode === "oneOnOneSingle") && team === "right") {
       return this.getSelectedCpuOpponentTeam();
     }
     return this.getSelectedTeamForSide(team);
@@ -1965,7 +2043,7 @@ class DodgeballGame {
     if (this.teamRosterConfirmed) {
       this.teamRosterConfirmed[side] = false;
     }
-    if (this.gameMode === "single" && side === "right") {
+    if ((this.gameMode === "single" || this.gameMode === "oneOnOneSingle") && side === "right") {
       this.cpuOpponentIndex = this.selectedTeamIndices.right;
     }
   }
@@ -1977,13 +2055,13 @@ class DodgeballGame {
     this.rosterChoiceMenu = null;
     if (this.teamSelectionConfirmed) this.teamSelectionConfirmed[side] = false;
     if (this.teamRosterConfirmed) this.teamRosterConfirmed[side] = false;
-    if (this.gameMode === "single" && side === "right") {
+    if ((this.gameMode === "single" || this.gameMode === "oneOnOneSingle") && side === "right") {
       this.cpuOpponentIndex = this.selectedTeamIndices.right;
     }
   }
 
   setTeamSelectPointerSlot(side, slot) {
-    if (this.gameMode === "versus") {
+    if (this.isVersusMode()) {
       this.teamSelectionSlots[side] = slot;
       return;
     }
@@ -2003,6 +2081,9 @@ class DodgeballGame {
     const selectedTeam = this.getSelectedTeamForSide(side);
 
     if (slot < TEAM_SELECTION_COUNT) {
+      if (this.isOneOnOneMode() && this.teamSelectionConfirmed?.[side]) {
+        return this.selectOneOnOneEntrant(side, slot);
+      }
       if (this.isEditableRosterTeam(selectedTeam) && this.teamSelectionConfirmed?.[side]) {
         this.openRosterChoiceMenu(side, slot);
       }
@@ -2024,14 +2105,47 @@ class DodgeballGame {
     return this.completeTeamChoice(side);
   }
 
+  selectOneOnOneEntrant(side, slot) {
+    this.oneOnOneSelections[side] = Math.max(0, Math.min(TEAM_SELECTION_COUNT - 1, slot));
+    this.teamRosterConfirmed[side] = true;
+    this.rosterChoiceMenu = null;
+
+    if (this.gameMode === "oneOnOneVersus") {
+      this.teamSelectionSlots[side] = START_SLOT;
+      return true;
+    }
+
+    if (side === "left") {
+      this.teamSelectionSide = "right";
+      this.teamSelectionSlot = this.teamSelectionConfirmed?.right
+        ? this.oneOnOneSelections?.right ?? 0
+        : CPU_OPPONENT_SLOT;
+    } else {
+      this.teamSelectionSide = side;
+      this.teamSelectionSlot = START_SLOT;
+    }
+    return true;
+  }
+
   completeTeamChoice(side) {
     const selectedTeam = this.getSelectedTeamForSide(side);
     this.rosterChoiceMenu = null;
     this.teamSelectionConfirmed[side] = true;
 
+    if (this.isOneOnOneMode()) {
+      this.teamRosterConfirmed[side] = false;
+      if (this.isVersusMode()) {
+        this.teamSelectionSlots[side] = this.oneOnOneSelections?.[side] ?? 0;
+      } else {
+        this.teamSelectionSide = side;
+        this.teamSelectionSlot = this.oneOnOneSelections?.[side] ?? 0;
+      }
+      return true;
+    }
+
     if (this.isEditableRosterTeam(selectedTeam)) {
       this.teamRosterConfirmed[side] = false;
-      if (this.gameMode === "versus") {
+      if (this.isVersusMode()) {
         this.teamSelectionSlots[side] = 0;
       } else {
         this.teamSelectionSide = side;
@@ -2041,7 +2155,7 @@ class DodgeballGame {
     }
 
     this.teamRosterConfirmed[side] = true;
-    if (this.gameMode === "versus") {
+    if (this.isVersusMode()) {
       this.teamSelectionSlots[side] = START_SLOT;
       return true;
     }
@@ -2099,7 +2213,7 @@ class DodgeballGame {
 
     for (const side of ["left", "right"]) {
       const team = this.getSelectedTeamForSide(side);
-      if (this.isEditableRosterTeam(team) && this.teamSelectionConfirmed?.[side]) {
+      if ((this.isEditableRosterTeam(team) || this.isOneOnOneMode()) && this.teamSelectionConfirmed?.[side]) {
         if (this.isPointInRect(point, this.getTeamRosterConfirmRect(side))) {
           return this.activateTeamSelectSlot(side, CUSTOM_TEAM_CONFIRM_SLOT);
         }
@@ -2163,6 +2277,10 @@ class DodgeballGame {
     }
 
     if (this.state === "gameOver") {
+      if (this.isOneOnOneMode()) {
+        this.updateGameOverMenu();
+        return;
+      }
       if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
         this.enterModeSelectState();
       }
@@ -2207,8 +2325,73 @@ class DodgeballGame {
     }
   }
 
+  getGameOverMenuOptions() {
+    return ["もう一度", "キャラ選択", "モード選択"];
+  }
+
+  updateGameOverMenu() {
+    const maxIndex = this.getGameOverMenuOptions().length - 1;
+    if (this.wasMenuDirectionPressed("left") || this.wasMenuDirectionPressed("up")) {
+      this.gameOverMenuIndex = Math.max(0, this.gameOverMenuIndex - 1);
+    }
+    if (this.wasMenuDirectionPressed("right") || this.wasMenuDirectionPressed("down")) {
+      this.gameOverMenuIndex = Math.min(maxIndex, this.gameOverMenuIndex + 1);
+    }
+    if (this.input.wasPressed("button1")) {
+      this.gameOverMenuIndex = 2;
+      this.activateGameOverMenu();
+      return;
+    }
+    if (this.input.wasPressed("button2") || this.input.wasPressed("pause")) {
+      this.activateGameOverMenu();
+    }
+  }
+
+  activateGameOverMenu() {
+    if (this.gameOverMenuIndex === 0) {
+      this.setupMatch();
+      this.enterPlayingState();
+      return;
+    }
+    if (this.gameOverMenuIndex === 1) {
+      this.enterOneOnOneCharacterSelect();
+      return;
+    }
+    this.enterModeSelectState();
+  }
+
+  enterOneOnOneCharacterSelect() {
+    this.state = "teamSelect";
+    this.startMenuBgm("select");
+    this.teamSelectionConfirmed = { left: true, right: true };
+    this.teamRosterConfirmed = { left: false, right: false };
+    this.rosterChoiceMenu = null;
+    this.gameOverMenuIndex = 0;
+    if (this.isVersusMode()) {
+      this.teamSelectionSlots = {
+        left: this.oneOnOneSelections?.left ?? 0,
+        right: this.oneOnOneSelections?.right ?? 0
+      };
+      return;
+    }
+    this.teamSelectionSide = "left";
+    this.teamSelectionSlot = this.oneOnOneSelections?.left ?? 0;
+  }
+
+  getModeOptions() {
+    return [
+      { mode: "single", label: "一人用", note: "1P vs CPU", x: 310, y: 345 },
+      { mode: "versus", label: "二人用", note: "1P vs 2P", x: 720, y: 345 },
+      { mode: "watch", label: "観戦", note: "CPU vs CPU", x: 1130, y: 345 },
+      { mode: "oneOnOneSingle", label: "1 on 1", note: "1P vs CPU", x: 310, y: 492 },
+      { mode: "oneOnOneVersus", label: "1 on 1", note: "1P vs 2P", x: 720, y: 492 },
+      { mode: "oneOnOneWatch", label: "1 on 1", note: "CPU vs CPU", x: 1130, y: 492 }
+    ];
+  }
+
   confirmModeSelection() {
-    this.gameMode = this.modeIndex === 0 ? "single" : this.modeIndex === 1 ? "versus" : "watch";
+    const modeOption = this.getModeOptions()[this.modeIndex] || this.getModeOptions()[0];
+    this.gameMode = modeOption.mode;
     this.state = "teamSelect";
     this.startMenuBgm("select");
     this.teamSelectionSide = "left";
@@ -2217,10 +2400,10 @@ class DodgeballGame {
     this.teamSelectionConfirmed = { left: false, right: false };
     this.teamRosterConfirmed = { left: false, right: false };
     this.watchSelectionSlot = 0;
-    if (this.gameMode === "single") {
+    if (this.gameMode === "single" || this.gameMode === "oneOnOneSingle") {
       this.selectedTeamIndices = { left: 0, right: 2 };
       this.cpuOpponentIndex = 2;
-    } else if (this.gameMode === "versus") {
+    } else if (this.gameMode === "versus" || this.gameMode === "oneOnOneVersus") {
       this.selectedTeamIndices = { left: 0, right: 1 };
     } else {
       this.selectedTeamIndices = { left: 2, right: 3 };
@@ -2238,7 +2421,7 @@ class DodgeballGame {
       this.modeIndex = Math.max(0, this.modeIndex - 1);
     }
     if (this.wasMenuDirectionPressed("right") || this.wasMenuDirectionPressed("down")) {
-      this.modeIndex = Math.min(2, this.modeIndex + 1);
+      this.modeIndex = Math.min(this.getModeOptions().length - 1, this.modeIndex + 1);
     }
     if (this.input.wasPressed("button1") || this.input.wasPressed("button2")) {
       this.confirmModeSelection();
@@ -2246,9 +2429,9 @@ class DodgeballGame {
   }
 
   updateTeamSelect() {
-    if (this.gameMode === "watch") {
+    if (this.isWatchMode()) {
       this.updateSingleTeamSelectCursor();
-    } else if (this.gameMode === "versus") {
+    } else if (this.isVersusMode()) {
       this.updateTeamSelectCursor("left", 1);
       this.updateTeamSelectCursor("right", 2);
     } else {
@@ -2266,6 +2449,10 @@ class DodgeballGame {
     this.teamSelectionSide = moved.side;
     this.teamSelectionSlot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(this.teamSelectionSide);
+    if (this.input.wasPressed("button2") && this.isOneOnOneMode() && this.teamSelectionSlot < TEAM_SELECTION_COUNT && this.teamSelectionConfirmed?.[this.teamSelectionSide]) {
+      this.selectOneOnOneEntrant(this.teamSelectionSide, this.teamSelectionSlot);
+      return;
+    }
     if (this.input.wasPressed("button2") && this.teamSelectionSlot < TEAM_SELECTION_COUNT && this.isEditableRosterTeam(selectedTeam)) {
       this.openRosterChoiceMenu(this.teamSelectionSide, this.teamSelectionSlot);
     }
@@ -2359,7 +2546,7 @@ class DodgeballGame {
   confirmTeamRoster(side) {
     this.teamSelectionConfirmed[side] = true;
     this.teamRosterConfirmed[side] = true;
-    if (this.gameMode === "single" || this.gameMode === "watch") {
+    if (this.gameMode === "single" || this.gameMode === "watch" || this.gameMode === "oneOnOneSingle" || this.gameMode === "oneOnOneWatch") {
       if (side === "left") {
         this.teamSelectionSide = "right";
         this.teamSelectionSlot = CPU_OPPONENT_SLOT;
@@ -2379,6 +2566,10 @@ class DodgeballGame {
     const slot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(side);
 
+    if (this.input.wasPressed("button2", playerIndex) && this.isOneOnOneMode() && slot < TEAM_SELECTION_COUNT && this.teamSelectionConfirmed?.[side]) {
+      this.selectOneOnOneEntrant(side, slot);
+      return;
+    }
     if (this.input.wasPressed("button2", playerIndex) && slot < TEAM_SELECTION_COUNT && this.isEditableRosterTeam(selectedTeam)) {
       this.openRosterChoiceMenu(side, slot);
     }
@@ -2608,13 +2799,13 @@ class DodgeballGame {
     this.updateHellfireZones(delta);
     this.updateMeteorLavaZones(delta);
     this.updateSpirit(delta);
-    if (this.gameMode === "watch") {
+    if (this.isWatchMode()) {
       this.cpuControllerLeft?.update(delta);
       this.cpuController?.update(delta);
-    } else if (this.gameMode !== "versus") {
+    } else if (!this.isVersusMode()) {
       this.cpuController.update(delta);
     }
-    if (this.gameMode !== "watch") {
+    if (!this.isWatchMode()) {
       this.autoSwitchToIncomingShotTarget();
       this.updateControlSwitching(delta);
     }
@@ -2627,8 +2818,11 @@ class DodgeballGame {
     this.updateRhythmStep(delta);
     this.updatePlayers(delta);
     this.resolvePlayerCollisions();
+    this.updateOneOnOneRingOuts(delta);
     this.autoPickupLooseBall();
+    const oneOnOneReturner = this.getOneOnOneReturnerBeforeBallUpdate();
     this.ball.update(delta, this.ballBounds);
+    this.updateOneOnOneBallReturn(delta, oneOnOneReturner);
     this.handleUfoSpinOutfieldCarry();
     this.updateBoostPresentation();
     this.updateBoomerangPresentation();
@@ -2677,6 +2871,60 @@ class DodgeballGame {
     });
   }
 
+  getOneOnOneReturnerBeforeBallUpdate() {
+    if (!this.isOneOnOneMode()) return null;
+    if (!this.ball?.isFlying || this.ball.kind !== "shoot" || !this.ball.thrower) return null;
+    if (this.ball.owner || this.ball.isLoose) return null;
+    return this.ball.thrower;
+  }
+
+  updateOneOnOneBallReturn(delta, returnerBeforeUpdate = null) {
+    if (!this.isOneOnOneMode()) return;
+
+    if (this.oneOnOneReturn) {
+      this.oneOnOneReturn.timer -= delta;
+      this.message = "RETURN";
+      if (this.oneOnOneReturn.timer <= 0) {
+        this.giveOneOnOneReturnBall(this.oneOnOneReturn.player);
+        this.oneOnOneReturn = null;
+      }
+      return;
+    }
+
+    if (!returnerBeforeUpdate) return;
+    if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) return;
+    if (!this.players.includes(returnerBeforeUpdate) || returnerBeforeUpdate.defeated || returnerBeforeUpdate.hp <= 0) return;
+
+    this.oneOnOneReturn = {
+      player: returnerBeforeUpdate,
+      timer: 0.5
+    };
+    this.ball.catchable = false;
+    for (const member of this.players) {
+      member.pickupLockTimer = Math.max(member.pickupLockTimer || 0, 0.55);
+    }
+    this.spawnEffect(this.ball.x, this.ball.y - Math.max(0, this.ball.z || 0) - 24, "#fff7a0", "catch");
+  }
+
+  giveOneOnOneReturnBall(player) {
+    if (!player || player.defeated || player.hp <= 0) return;
+    this.ball.drop();
+    this.ball.owner = player;
+    this.ball.isLoose = false;
+    this.ball.isFlying = false;
+    this.ball.catchable = false;
+    this.ball.x = player.x + player.facing * 32;
+    this.ball.y = player.y - 34;
+    this.ball.z = Math.max(36, player.jumpZ + 24);
+    this.ball.vx = 0;
+    this.ball.vy = 0;
+    this.ball.vz = 0;
+    player.hasBall = true;
+    player.pickupLockTimer = 0;
+    this.setControlledMember(player.team, player);
+    this.spawnEffect(player.x, player.y - player.jumpZ - 70, "#fff7a0", "catch");
+  }
+
   spawnTripleDummyBalls(actor, aim, multiplier) {
     const length = Math.hypot(aim?.x || actor.facing || 1, aim?.y || 0) || 1;
     const baseAim = { x: (aim?.x || actor.facing || 1) / length, y: (aim?.y || 0) / length };
@@ -2715,18 +2963,18 @@ class DodgeballGame {
   }
 
   handlePlayerButtons() {
-    if (this.gameMode === "watch") return;
+    if (this.isWatchMode()) return;
     const holder = this.ball.owner;
     const selfTeamHasBall = holder && holder.team === "left";
     const rightTeamHasBall = holder && holder.team === "right";
 
     const active = this.getPlayerControlledMember();
-    const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
+    const activeRight = this.isVersusMode() ? this.getRightControlledMember() : null;
 
     if (this.input.wasPressed("button3")) {
       active.jump(GAME_CONFIG.battle);
     }
-    if (this.gameMode === "versus" && activeRight && this.input.wasPressed("button3", 2)) {
+    if (this.isVersusMode() && activeRight && this.input.wasPressed("button3", 2)) {
       activeRight.jump(GAME_CONFIG.battle);
     }
 
@@ -2763,7 +3011,7 @@ class DodgeballGame {
       }
     }
 
-    if (this.gameMode === "versus") {
+    if (this.isVersusMode()) {
       if (rightTeamHasBall) {
         this.controlledRightPlayerId = holder.id;
         if (this.input.wasPressed("button2", 2)) {
@@ -2800,8 +3048,8 @@ class DodgeballGame {
   }
 
   handleCpuButtons(delta = 0) {
-    if (this.gameMode === "versus") return;
-    if (this.gameMode === "watch") {
+    if (this.isVersusMode()) return;
+    if (this.isWatchMode()) {
       this.handleCpuTeamButtons(this.leftTeam, this.cpuControllerLeft, this.rightTeam, delta);
     }
     this.handleCpuTeamButtons(this.rightTeam, this.cpuController, this.leftTeam, delta);
@@ -2811,7 +3059,7 @@ class DodgeballGame {
     const holder = this.ball.owner;
     if (!holder || !holder.canCounterThrow?.() || holder.counterAutoTimer > 0) return;
     if (!holder.cpuControlled) return;
-    const playerIndex = this.gameMode === "versus" && holder.team === "right" ? 2 : holder.team === "left" ? 1 : 0;
+    const playerIndex = this.isVersusMode() && holder.team === "right" ? 2 : holder.team === "left" ? 1 : 0;
     this.startCounterThrow(holder, playerIndex, true);
   }
 
@@ -2940,11 +3188,12 @@ class DodgeballGame {
   }
 
   updatePlayers(delta) {
-    const active = this.gameMode === "watch" ? null : this.getPlayerControlledMember();
+    const active = this.isWatchMode() ? null : this.getPlayerControlledMember();
     for (const member of this.leftTeam) {
+      if (member.oneOnOneFalling) continue;
       const area = this.getMoveArea(member, member === active || this.ball.owner === member);
       let controls = { moveX: 0, moveY: 0, dash: false };
-      if (this.gameMode === "watch") {
+      if (this.isWatchMode()) {
         controls = this.cpuControllerLeft?.getCommand(member) || controls;
       } else if (member === active && !member.defeated) {
         controls = {
@@ -2962,10 +3211,11 @@ class DodgeballGame {
       member.update(delta, controls, area, GAME_CONFIG.battle);
     }
 
-    const activeRight = this.gameMode === "watch" ? null : this.getRightControlledMember();
+    const activeRight = this.isWatchMode() ? null : this.getRightControlledMember();
     for (const member of this.rightTeam) {
+      if (member.oneOnOneFalling) continue;
       let command = this.cpuController?.getCommand(member) || { moveX: 0, moveY: 0, dash: false };
-      if (this.gameMode === "versus") {
+      if (this.isVersusMode()) {
         command = member === activeRight && !member.defeated
           ? {
             moveX: this.input.currentP2.moveX,
@@ -2980,7 +3230,7 @@ class DodgeballGame {
         ? this.vectorTo(member, member.homeX, member.homeY, true)
         : command;
       member.update(delta, controls, area, GAME_CONFIG.battle);
-      if (member.role === "inner" && member.jumpZ <= 0 && member.jumpVelocity <= 0 && !this.isPointInsideArea(member.x, member.y, member.radius, area)) {
+      if (!this.isOneOnOneMode() && member.role === "inner" && member.jumpZ <= 0 && member.jumpVelocity <= 0 && !this.isPointInsideArea(member.x, member.y, member.radius, area)) {
         member.clampToArea(area);
       }
     }
@@ -2990,10 +3240,10 @@ class DodgeballGame {
     for (let pass = 0; pass < 2; pass += 1) {
       for (let i = 0; i < this.players.length; i += 1) {
         const a = this.players[i];
-        if (a.defeated || a.downTimer > 0) continue;
+        if (a.defeated || a.downTimer > 0 || a.oneOnOneFalling) continue;
         for (let j = i + 1; j < this.players.length; j += 1) {
           const b = this.players[j];
-          if (b.defeated || b.downTimer > 0) continue;
+          if (b.defeated || b.downTimer > 0 || b.oneOnOneFalling) continue;
           const dx = b.x - a.x;
           const dy = b.y - a.y;
           const distance = Math.hypot(dx, dy) || 1;
@@ -3006,21 +3256,92 @@ class DodgeballGame {
           a.y -= ny * push;
           b.x += nx * push;
           b.y += ny * push;
-          a.clampToArea(this.getMoveArea(a, this.ball.owner === a));
-          b.clampToArea(this.getMoveArea(b, this.ball.owner === b));
+          if (!this.isOneOnOneMode()) {
+            a.clampToArea(this.getMoveArea(a, this.ball.owner === a));
+            b.clampToArea(this.getMoveArea(b, this.ball.owner === b));
+          }
         }
       }
     }
+  }
+
+  updateOneOnOneRingOuts(delta = 0) {
+    if (!this.isOneOnOneMode()) return;
+    for (const player of this.players) {
+      if (!player || player.role !== "inner" || player.defeated) continue;
+      if (player.oneOnOneFalling) {
+        this.updateOneOnOneFallingPlayer(player, delta);
+        continue;
+      }
+      if (player.hp <= 0) continue;
+      if (player.jumpZ > 0 || player.jumpVelocity > 0) continue;
+      if (this.isOneOnOnePlayerOnStage(player)) continue;
+      this.startOneOnOneFall(player);
+      break;
+    }
+  }
+
+  isOneOnOnePlayerOnStage(player) {
+    if (!player) return false;
+    return this.isCircleOverlappingArea(player.x, player.y, player.radius, this.areas.leftInner) ||
+      this.isCircleOverlappingArea(player.x, player.y, player.radius, this.areas.rightInner);
+  }
+
+  startOneOnOneFall(player) {
+    if (!player || player.defeated) return;
+    if (this.ball?.owner === player) {
+      this.ball.drop();
+      this.ball.owner = null;
+      this.ball.isLoose = true;
+      this.ball.isFlying = false;
+    }
+    player.hasBall = false;
+    player.oneOnOneFalling = true;
+    player.oneOnOneFallVelocity = 360;
+    player.hp = 0;
+    player.downTimer = 999;
+    player.hitRecoveryTimer = 0;
+    player.invincibleTime = 0;
+    player.knockbackX = 0;
+    player.knockbackY = 0;
+    player.jumpZ = 0;
+    player.jumpVelocity = 0;
+    player.state = "down";
+    this.message = "FALL";
+    this.spawnEffect(player.x, player.y - player.jumpZ - 32, "#9fdcff", "burst", 0.7);
+  }
+
+  updateOneOnOneFallingPlayer(player, delta) {
+    player.oneOnOneFallVelocity = Math.min(1400, (player.oneOnOneFallVelocity || 360) + 1150 * delta);
+    player.y += player.oneOnOneFallVelocity * delta;
+    player.x += (player.knockbackX || 0) * delta;
+    player.state = "down";
+    player.hasBall = false;
+    player.downTimer = 999;
+    player.catchTimer = 0;
+    player.dodgeTimer = 0;
+    player.throwTimer = 0;
+    const stageBounds = this.getAreaBounds(this.getActiveCourt());
+    if (player.y <= stageBounds.y + stageBounds.h + 920) return;
+    player.oneOnOneFalling = false;
+    player.defeated = true;
+    player.leaveTimer = GAME_CONFIG.battle.exitDelay + 0.1;
+    this.message = "RING OUT";
   }
 
   getMoveArea(member, isControlled) {
     if (member.role === "out" && (isControlled || this.isTeamOutfieldLooseBall(member.team))) {
       return this.getTeamOutfieldArea(member.team);
     }
-    return this.applyInnerVisualMovementPadding(member, this.areas[member.zone]);
+    const area = this.applyInnerVisualMovementPadding(member, this.areas[member.zone]);
+    if (this.isOneOnOneMode() && member.role === "inner") {
+      return { ...area, allowRingOut: true };
+    }
+    return area;
   }
 
   applyInnerVisualMovementPadding(member, area) {
+    if (this.isOneOnOneMode()) return area;
     if (!member || member.role !== "inner" || !area?.trapezoid) return area;
     const padding = this.getInnerVisualBottomPadding(member);
     if (padding <= 0) return area;
@@ -3099,6 +3420,7 @@ class DodgeballGame {
   }
 
   shouldReturnToLegalArea(member, area) {
+    if (this.isOneOnOneMode() && member.role === "inner") return false;
     if (member.defeated || member.jumpZ > 0 || member.jumpVelocity > 0) return false;
     return !this.isPointInsideArea(member.x, member.y, member.radius, area);
   }
@@ -3119,6 +3441,28 @@ class DodgeballGame {
       x <= rect.x + rect.w - radius &&
       y >= rect.y + radius &&
       y <= rect.y + rect.h - radius
+    );
+  }
+
+  isCircleOverlappingArea(x, y, radius, area) {
+    if (!area) return true;
+    const rects = area.rects || [area];
+    return rects.some((rect) => this.isCircleOverlappingRectOrTrapezoid(x, y, radius, rect));
+  }
+
+  isCircleOverlappingRectOrTrapezoid(x, y, radius, rect) {
+    if (rect.trapezoid) {
+      const t = rect.trapezoid;
+      if (y < t.yTop - radius || y > t.yBottom + radius) return false;
+      const sampleY = Math.max(t.yTop, Math.min(t.yBottom, y));
+      const bounds = this.getTrapezoidBoundsAtY(t, sampleY);
+      return Boolean(bounds) && x >= bounds.left - radius && x <= bounds.right + radius;
+    }
+    return (
+      x >= rect.x - radius &&
+      x <= rect.x + rect.w + radius &&
+      y >= rect.y - radius &&
+      y <= rect.y + rect.h + radius
     );
   }
 
@@ -4251,12 +4595,12 @@ class DodgeballGame {
   }
 
   getCurrentPassTarget() {
-    if (this.gameMode === "watch") return null;
+    if (this.isWatchMode()) return null;
     if (!this.ball.owner) return null;
     if (this.ball.owner.team === "left") {
       return this.getPassTarget(this.ball.owner, this.input.current.moveX, this.input.current.moveY);
     }
-    if (this.gameMode === "versus" && this.ball.owner.team === "right") {
+    if (this.isVersusMode() && this.ball.owner.team === "right") {
       return this.getPassTarget(this.ball.owner, this.input.currentP2.moveX, this.input.currentP2.moveY);
     }
     return null;
@@ -4314,10 +4658,10 @@ class DodgeballGame {
   }
 
   getCurrentShootTarget() {
-    if (this.gameMode === "watch") return null;
+    if (this.isWatchMode()) return null;
     if (!this.ball.owner) return null;
     const playerIndex = this.ball.owner.team === "right" ? 2 : 1;
-    if (this.ball.owner.team === "right" && this.gameMode !== "versus") return null;
+    if (this.ball.owner.team === "right" && !this.isVersusMode()) return null;
     if (
       this.pendingThrow &&
       this.pendingThrow.kind === "shoot" &&
@@ -6429,8 +6773,11 @@ class DodgeballGame {
   }
 
   getFullCourtView() {
-    const c = GAME_CONFIG.court;
-    const rects = [c, ...Object.values(this.areas)].map((area) => this.getAreaBounds(area));
+    const c = this.getActiveCourt();
+    const activeAreas = this.isOneOnOneMode()
+      ? [c, this.areas.leftInner, this.areas.rightInner]
+      : [c, ...Object.values(this.areas)];
+    const rects = activeAreas.map((area) => this.getAreaBounds(area));
     const minX = Math.min(...rects.map((rect) => rect.x)) - 24;
     const maxX = Math.max(...rects.map((rect) => rect.x + rect.w)) + 24;
     const minY = GAME_CONFIG.view.worldTop;
@@ -6448,7 +6795,9 @@ class DodgeballGame {
       scale,
       renderScaleCompensation: 1 / zoom,
       offsetX: (GAME_CONFIG.width - worldWidth * scale) * 0.5,
-      offsetY: (GAME_CONFIG.height - worldHeight * scale) * 0.5 + (GAME_CONFIG.view.screenOffsetY || 0)
+      offsetY: (GAME_CONFIG.height - worldHeight * scale) * 0.5 +
+        (GAME_CONFIG.view.screenOffsetY || 0) -
+        (this.isOneOnOneMode() ? GAME_CONFIG.height * 0.18 : 0)
     };
   }
 
@@ -6501,7 +6850,7 @@ class DodgeballGame {
     this.manualSwitchGrace = Math.max(0, this.manualSwitchGrace - delta);
     this.updateTeamControlSwitching("left", 1);
 
-    if (this.gameMode === "versus") {
+    if (this.isVersusMode()) {
       this.autoSwitchCooldownP2 = Math.max(0, this.autoSwitchCooldownP2 - delta);
       this.rightStickSwitchCooldownP2 = Math.max(0, this.rightStickSwitchCooldownP2 - delta);
       this.manualSwitchGraceP2 = Math.max(0, this.manualSwitchGraceP2 - delta);
@@ -6511,7 +6860,7 @@ class DodgeballGame {
 
   autoSwitchToIncomingShotTarget() {
     this.autoSwitchIncomingShotForTeam("left");
-    if (this.gameMode === "versus") {
+    if (this.isVersusMode()) {
       this.autoSwitchIncomingShotForTeam("right");
     }
   }
@@ -7044,7 +7393,7 @@ class DodgeballGame {
     this.drawMeteorLavaZones(context);
 
     const active = this.getPlayerControlledMember();
-    const activeRight = this.gameMode === "versus" ? this.getRightControlledMember() : null;
+    const activeRight = this.isVersusMode() ? this.getRightControlledMember() : null;
     const passTarget = this.getCurrentPassTarget();
     const shootTarget = this.getCurrentShootTarget();
     const drawables = [...this.players, this.ball].sort((a, b) => {
@@ -7089,7 +7438,11 @@ class DodgeballGame {
     if (this.state === "paused") {
       this.drawPauseMenu();
     } else if (this.state === "gameOver") {
-      this.drawOverlay(this.message, "ボタン1またはSpaceでモード選択へ");
+      if (this.isOneOnOneMode()) {
+        this.drawGameOverMenu();
+      } else {
+        this.drawOverlay(this.message, "ボタン1またはSpaceでモード選択へ");
+      }
     }
   }
 
@@ -7238,9 +7591,27 @@ class DodgeballGame {
       context.fillText(modes[i].note, x, 374);
     }
 
+    const oneOnOneModes = this.getModeOptions().slice(3);
+    for (let i = 0; i < oneOnOneModes.length; i += 1) {
+      const optionIndex = i + 3;
+      const mode = oneOnOneModes[i];
+      const selected = this.modeIndex === optionIndex;
+      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.45)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, mode.x - 140, mode.y - 58, 280, 112, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 34px Meiryo, sans-serif";
+      context.fillText(mode.label, mode.x, mode.y - 8);
+      context.font = "20px Meiryo, sans-serif";
+      context.fillText(mode.note, mode.x, mode.y + 30);
+    }
+
     context.fillStyle = "#fff7df";
     context.font = "20px Meiryo, sans-serif";
-    context.fillText("左右で選択 / ボタン2で決定", centerX, 520);
+    context.fillText("左右で選択 / ボタン2で決定", centerX, 590);
     context.restore();
   }
 
@@ -7450,7 +7821,7 @@ class DodgeballGame {
   }
 
   drawMatchPlayerNames(context) {
-    if (this.gameMode === "versus") return;
+    if (this.isVersusMode()) return;
     context.save();
     context.textAlign = "left";
     context.textBaseline = "middle";
@@ -7516,20 +7887,23 @@ class DodgeballGame {
     context.strokeStyle = "#27324a";
     context.lineWidth = 6;
     context.font = "bold 46px Meiryo, sans-serif";
-    context.strokeText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
-    context.fillText(this.gameMode === "watch" ? "観戦チーム選択" : "チーム編成", centerX, 84);
+    const title = this.isOneOnOneMode() ? "1 on 1 選手選択" : this.isWatchMode() ? "観戦チーム選択" : "チーム編成";
+    context.strokeText(title, centerX, 84);
+    context.fillText(title, centerX, 84);
 
-    if (this.gameMode === "watch") {
+    if (this.isWatchMode()) {
       this.drawWatchTeamSelect();
     } else {
       this.drawPlayableTeamSelectSide("left", 90, this.gameMode === "single" ? "1P TEAM" : "1P TEAM", "#0057ff");
-      this.drawPlayableTeamSelectSide("right", 760, this.gameMode === "single" ? "CPU TEAM" : "2P TEAM", "#f01818");
+      this.drawPlayableTeamSelectSide("right", 760, (this.gameMode === "single" || this.gameMode === "oneOnOneSingle") ? "CPU TEAM" : "2P TEAM", "#f01818");
     }
     this.drawMatchStartButton();
 
     context.fillStyle = "#fff7df";
     context.font = "18px Meiryo, sans-serif";
-    const help = this.gameMode === "watch"
+    const help = this.isOneOnOneMode()
+      ? "チームを選んでから出場選手カードを1枚選択 / ボタン2で決定・開始 / ボタン1で戻る"
+      : this.isWatchMode()
       ? "上下でチーム選択 / 左右で選択欄移動 / ボタン2で決定・観戦開始 / ボタン1で戻る"
       : "上下でチーム選択 / ボタン2で決定・タイプ変更・試合開始 / ボタン1で戻る";
     context.fillText(help, centerX, 688);
@@ -7665,7 +8039,10 @@ class DodgeballGame {
         : bravesDisplay
           ? `${bravesDisplay.job} ${player?.name || bravesDisplay.name}`
           : player?.name || definition.label;
-      const selected = editable && this.isTeamSelectSlotSelected(side, i);
+      const selectingOneOnOneCard = this.isOneOnOneMode() && this.teamSelectionConfirmed?.[side] && this.isTeamSelectSlotSelected(side, i);
+      const selected = (editable && this.isTeamSelectSlotSelected(side, i)) ||
+        selectingOneOnOneCard ||
+        (this.isOneOnOneMode() && this.teamSelectionConfirmed?.[side] && this.oneOnOneSelections?.[side] === i);
       const previewStyle = editable && team?.isCustom ? null : {
         ...team,
         ...player,
@@ -7784,16 +8161,16 @@ class DodgeballGame {
   }
 
   isTeamSelectSlotSelected(side, slot) {
-    if (this.gameMode === "versus") return this.teamSelectionSlots[side] === slot;
+    if (this.isVersusMode()) return this.teamSelectionSlots[side] === slot;
     return this.teamSelectionSide === side && this.teamSelectionSlot === slot;
   }
 
   drawMatchStartButton() {
     const context = this.context;
     const centerX = GAME_CONFIG.width * 0.5;
-    const selected = this.gameMode === "watch"
+    const selected = this.isWatchMode()
       ? this.teamSelectionSlot === START_SLOT
-      : this.gameMode === "versus"
+      : this.isVersusMode()
         ? this.teamSelectionSlots.left === START_SLOT || this.teamSelectionSlots.right === START_SLOT
         : this.teamSelectionSlot === START_SLOT;
     context.save();
@@ -7806,8 +8183,8 @@ class DodgeballGame {
     context.stroke();
     context.fillStyle = "#263241";
     context.font = "bold 24px Meiryo, sans-serif";
-    context.fillText(this.gameMode === "watch" ? "観戦開始" : "試合開始", centerX, 650);
-    if (this.gameMode === "versus" && selected) {
+    context.fillText(this.isWatchMode() ? "観戦開始" : "試合開始", centerX, 650);
+    if (this.isVersusMode() && selected) {
       context.font = "bold 14px Meiryo, sans-serif";
       context.fillStyle = "#4b5360";
       const labels = [];
@@ -8751,6 +9128,10 @@ class DodgeballGame {
   }
 
   drawBackground() {
+    if (this.isOneOnOneMode()) {
+      this.drawOneOnOneBackground();
+      return;
+    }
     if (this.isFinalBattleCourt()) {
       this.drawFinalBattleBackground();
       return;
@@ -8762,6 +9143,36 @@ class DodgeballGame {
     context.fillRect(c.x - 420, c.y - 310, width + 840, c.h + 620);
     this.drawBench(c.centerX - 650, -56, "#3087f2");
     this.drawBench(c.centerX + 430, -56, "#f05a45");
+    this.drawMatchTimeBoard(c.centerX, -42, false);
+  }
+
+  drawOneOnOneBackground() {
+    const context = this.context;
+    const c = this.getActiveCourt();
+    const left = c.x - 900;
+    const top = c.y - 620;
+    const width = c.w + 1800;
+    const height = c.h + 1120;
+    const bg = context.createLinearGradient(0, top, 0, top + height);
+    bg.addColorStop(0, "#9fdcff");
+    bg.addColorStop(0.42, "#c8f2ff");
+    bg.addColorStop(0.74, "#6f8fba");
+    bg.addColorStop(1, "#2a3555");
+    context.fillStyle = bg;
+    context.fillRect(left, top, width, height);
+
+    context.save();
+    context.globalAlpha = 0.26;
+    context.fillStyle = "#ffffff";
+    for (let i = 0; i < 14; i += 1) {
+      const x = left + 180 + i * 210;
+      const y = top + 160 + (i % 5) * 112;
+      context.beginPath();
+      context.ellipse(x, y, 84 + (i % 3) * 26, 18 + (i % 2) * 8, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+
     this.drawMatchTimeBoard(c.centerX, -42, false);
   }
 
@@ -9102,6 +9513,10 @@ class DodgeballGame {
   }
 
   drawCourt() {
+    if (this.isOneOnOneMode()) {
+      this.drawOneOnOneCourt();
+      return;
+    }
     if (this.isFinalBattleCourt()) {
       this.drawFinalBattleCourt();
       return;
@@ -9164,6 +9579,98 @@ class DodgeballGame {
 
     drawProjectedQuad(c.x + 12, backY + 8, c.w / 2 - 24, frontY - backY - 16, "rgba(48,135,242,0.035)");
     drawProjectedQuad(c.centerX + 12, backY + 8, c.w / 2 - 24, frontY - backY - 16, "rgba(240,90,69,0.035)");
+  }
+
+  drawOneOnOneCourt() {
+    const context = this.context;
+    const c = this.getActiveCourt();
+    const topY = c.y + 10;
+    const bottomY = c.y + c.h;
+    const backY = c.y + 96;
+    const frontY = c.y + c.h - 38;
+
+    const project = (x, y) => {
+      const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
+      const scale = 0.78 + t * 0.22;
+      return {
+        x: c.centerX + (x - c.centerX) * scale,
+        y
+      };
+    };
+
+    const projectedCorners = (x, y, w, h) => [
+      project(x, y),
+      project(x + w, y),
+      project(x + w, y + h),
+      project(x, y + h)
+    ];
+
+    const drawQuad = (corners, fillStyle) => {
+      context.fillStyle = fillStyle;
+      context.beginPath();
+      context.moveTo(corners[0].x, corners[0].y);
+      context.lineTo(corners[1].x, corners[1].y);
+      context.lineTo(corners[2].x, corners[2].y);
+      context.lineTo(corners[3].x, corners[3].y);
+      context.closePath();
+      context.fill();
+    };
+
+    const strokeLine = (x1, y1, x2, y2) => {
+      const p1 = project(x1, y1);
+      const p2 = project(x2, y2);
+      context.beginPath();
+      context.moveTo(p1.x, p1.y);
+      context.lineTo(p2.x, p2.y);
+      context.stroke();
+    };
+
+    const floor = projectedCorners(c.x, backY, c.w, frontY - backY);
+    const shadow = floor.map((p, index) => ({
+      x: c.centerX + (p.x - c.centerX) * 1.18,
+      y: p.y + 172 + (index >= 2 ? 36 : 0)
+    }));
+
+    context.save();
+    context.globalAlpha = 0.22;
+    drawQuad(shadow, "#000000");
+    context.restore();
+
+    context.save();
+    context.shadowBlur = 28;
+    context.shadowColor = "rgba(120,240,255,0.7)";
+    const floorGradient = context.createLinearGradient(0, backY, 0, frontY);
+    floorGradient.addColorStop(0, "#9bdcf0");
+    floorGradient.addColorStop(0.5, "#bfc36d");
+    floorGradient.addColorStop(1, "#d4d886");
+    drawQuad(floor, floorGradient);
+    context.restore();
+
+    context.save();
+    context.strokeStyle = "#fff9d8";
+    context.lineWidth = 8;
+    strokeLine(c.x, backY, c.x + c.w, backY);
+    strokeLine(c.x + c.w, backY, c.x + c.w, frontY);
+    strokeLine(c.x + c.w, frontY, c.x, frontY);
+    strokeLine(c.x, frontY, c.x, backY);
+
+    context.strokeStyle = "rgba(255,255,255,0.78)";
+    context.lineWidth = 5;
+    strokeLine(c.centerX, backY, c.centerX, frontY);
+
+    context.strokeStyle = "rgba(80,220,255,0.72)";
+    context.lineWidth = 10;
+    strokeLine(c.x, backY, c.x, frontY);
+    strokeLine(c.x + c.w, backY, c.x + c.w, frontY);
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.18;
+    context.fillStyle = "#3087f2";
+    drawQuad(projectedCorners(c.x + 10, backY + 10, c.w / 2 - 20, frontY - backY - 20), "#3087f2");
+    context.fillStyle = "#f05a45";
+    drawQuad(projectedCorners(c.centerX + 10, backY + 10, c.w / 2 - 20, frontY - backY - 20), "#f05a45");
+    context.restore();
   }
 
   drawFinalBattleCourt() {
@@ -9375,7 +9882,7 @@ class DodgeballGame {
       context.restore();
     };
     drawGauge("left", 18, 6, "#3087f2", "1P 気合");
-    drawGauge("right", GAME_CONFIG.width - 288, 6, "#f05a45", this.gameMode === "single" ? "CPU 気合" : "2P 気合");
+    drawGauge("right", GAME_CONFIG.width - 288, 6, "#f05a45", (this.gameMode === "single" || this.gameMode === "oneOnOneSingle") ? "CPU 気合" : "2P 気合");
   }
 
   getTeamHpSummary(team) {
@@ -9463,7 +9970,7 @@ class DodgeballGame {
     context.fillStyle = "#ffffff";
     context.fillText(`1P ${left.current}/${left.max}`, barX + 12, barY + barH / 2);
     context.textAlign = "right";
-    context.fillText(`${this.gameMode === "single" ? "CPU" : "2P"} ${right.current}/${right.max}`, barX + barW - 12, barY + barH / 2);
+    context.fillText(`${(this.gameMode === "single" || this.gameMode === "oneOnOneSingle") ? "CPU" : "2P"} ${right.current}/${right.max}`, barX + barW - 12, barY + barH / 2);
     context.restore();
   }
 
@@ -12761,6 +13268,41 @@ class DodgeballGame {
     context.fillStyle = "#ffffff";
     context.font = "bold 27px Meiryo, sans-serif";
     context.fillText(subtitle, centerX, 388);
+    context.restore();
+  }
+
+  drawGameOverMenu() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    const options = this.getGameOverMenuOptions();
+    context.save();
+    context.fillStyle = "rgba(20, 26, 36, 0.55)";
+    context.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    context.textAlign = "center";
+    context.fillStyle = "#fff7d7";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 8;
+    context.font = "bold 68px Meiryo, sans-serif";
+    context.strokeText(this.message || "GAME SET", centerX, 300);
+    context.fillText(this.message || "GAME SET", centerX, 300);
+
+    context.fillStyle = "#ffffff";
+    context.font = "bold 24px Meiryo, sans-serif";
+    context.fillText("左右で選択 / ボタン2で決定", centerX, 376);
+
+    const rects = this.getGameOverMenuHitRects();
+    for (const rect of rects) {
+      const selected = rect.index === this.gameOverMenuIndex;
+      context.fillStyle = selected ? "rgba(255,244,168,0.98)" : "rgba(255,255,255,0.88)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.55)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, rect.x, rect.y, rect.w, rect.h, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = "bold 27px Meiryo, sans-serif";
+      context.fillText(options[rect.index], rect.x + rect.w / 2, rect.y + 40);
+    }
     context.restore();
   }
 

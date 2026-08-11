@@ -69,6 +69,8 @@ const CPU_BACKLINE_SPECIAL_SHOTS = new Set([
   "boost"
 ]);
 
+const CPU_SPECIAL_ATTACK_FORCE_DELAY = 3;
+
 class CPUController {
   constructor(team, opponents, ball, config) {
     this.team = team;
@@ -90,6 +92,7 @@ class CPUController {
     this.lastTacticType = null;
     this.tacticSerial = 0;
     this.specialAttackState = null;
+    this.spiritReadySince = 0;
     this.catchDelayPlans = new Map();
     this.paladinCoverRolls = new Map();
     this.martialArtistAerialPassCutRolls = new Map();
@@ -98,6 +101,7 @@ class CPUController {
   update(delta) {
     this.decisionTimer -= delta;
     this.throwTimer -= delta;
+    this.updateSpecialAttackTimer();
 
     for (const member of this.team) {
       if (!this.commands.has(member.id)) {
@@ -881,7 +885,19 @@ class CPUController {
       return null;
     }
 
-    if (this.isArkmazTeam()) {
+    const forceImmediateSpecial = this.isSpecialAttackOverdue();
+    if (forceImmediateSpecial) {
+      this.specialAttackState = {
+        mode: "forceImmediate",
+        shooterId: holder.id,
+        passUsed: true,
+        passInFlight: false,
+        passerId: null,
+        passStartedAt: 0
+      };
+    }
+
+    if (this.isArkmazTeam() && !forceImmediateSpecial) {
       const devilTrianglePlan = this.getDevilTriangleHolderPlan(holder);
       if (devilTrianglePlan) return devilTrianglePlan;
     }
@@ -926,16 +942,20 @@ class CPUController {
     }
 
     const jumpReady = (shooter.cpuJumpAttackCooldownUntil || 0) <= Date.now();
-    const groundedSpecial = this.shouldKeepSpecialGrounded(shooter);
+    const groundedSpecial = forceImmediateSpecial || this.shouldKeepSpecialGrounded(shooter);
     const shotPlan = this.createHolderPlan(
       shooter,
       !groundedSpecial && jumpReady ? "dash-jump-strong-shot" : "dash-strong-shot",
-      0.92
+      forceImmediateSpecial ? 0.42 : 0.92
     );
     if (this.shouldUseBacklineSpecial(shooter)) {
       shotPlan.x = this.getBackAttackLineX(shooter);
     }
     shotPlan.specialAttackPlan = true;
+    if (forceImmediateSpecial) {
+      shotPlan.forceImmediateSpecial = true;
+      this.throwTimer = Math.min(this.throwTimer, 0.04);
+    }
     if (this.attackTactic) this.attackTactic.finished = true;
     return shotPlan;
   }
@@ -1237,6 +1257,23 @@ class CPUController {
       jumpStartedAt: 0
     };
     return this.holderPlan;
+  }
+
+  updateSpecialAttackTimer() {
+    if (!this.config.isSpiritReady?.(this.teamName)) {
+      this.spiritReadySince = 0;
+      return;
+    }
+    if (!this.spiritReadySince) {
+      this.spiritReadySince = Date.now();
+    }
+  }
+
+  isSpecialAttackOverdue() {
+    return (
+      this.spiritReadySince > 0 &&
+      Date.now() - this.spiritReadySince >= CPU_SPECIAL_ATTACK_FORCE_DELAY * 1000
+    );
   }
 
   getCpuSpecialShotType(member) {
@@ -2440,6 +2477,25 @@ class CPUController {
     return { x, y };
   }
 
+  isPointInsideArea(x, y, radius, area) {
+    if (!area) return true;
+    const rects = area.rects || [area];
+    return rects.some((rect) => this.isPointInsideAreaPart(x, y, radius, rect));
+  }
+
+  isPointInsideAreaPart(x, y, radius, area) {
+    if (area.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, y);
+      return Boolean(bounds) && x >= bounds.left + radius && x <= bounds.right - radius;
+    }
+    return (
+      x >= area.x + radius &&
+      x <= area.x + area.w - radius &&
+      y >= area.y + radius &&
+      y <= area.y + area.h - radius
+    );
+  }
+
   getTrapezoidBoundsAtY(trapezoid, y) {
     if (y < trapezoid.yTop || y > trapezoid.yBottom) return null;
     const t = (y - trapezoid.yTop) / Math.max(1, trapezoid.yBottom - trapezoid.yTop);
@@ -2483,7 +2539,50 @@ class CPUController {
   }
 
   getCommand(member) {
-    return this.commands.get(member.id) || this.createEmptyCommand();
+    const command = this.commands.get(member.id) || this.createEmptyCommand();
+    return this.applyOneOnOneSafety(command, member);
+  }
+
+  applyOneOnOneSafety(command, member) {
+    if (!this.config.oneOnOneMode || !member || member.role !== "inner" || member.defeated || member.oneOnOneFalling) {
+      return command;
+    }
+    if (member.jumpZ > 0 || member.jumpVelocity > 0) {
+      return command;
+    }
+    const area = this.config.areas?.[member.zone];
+    if (!area) return command;
+
+    const safeRadius = Math.max(member.radius + 34, 78);
+    const inside = this.isPointInsideArea(member.x, member.y, safeRadius, area);
+    if (!inside) {
+      const target = this.clampPointToArea({ x: member.homeX, y: member.homeY }, area, safeRadius);
+      this.moveToward(command, member, target.x, target.y);
+      command.dash = true;
+      command.jump = false;
+      return command;
+    }
+
+    const probeDistance = command.dash ? 128 : 82;
+    const probeX = member.x + (command.moveX || 0) * probeDistance;
+    const probeY = member.y + (command.moveY || 0) * probeDistance;
+    if (this.isPointInsideArea(probeX, probeY, safeRadius, area)) {
+      return command;
+    }
+
+    const target = this.clampPointToArea({ x: probeX, y: probeY }, area, safeRadius);
+    const dx = target.x - member.x;
+    const dy = target.y - member.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= 10) {
+      this.stop(command);
+    } else {
+      command.moveX = dx / length;
+      command.moveY = dy / length;
+      command.dash = false;
+    }
+    command.jump = false;
+    return command;
   }
 
   createEmptyCommand() {
