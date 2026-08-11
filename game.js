@@ -2136,6 +2136,13 @@ class DodgeballGame {
     const selectedTeam = this.getSelectedTeamForSide(side);
 
     if (slot < TEAM_SELECTION_COUNT) {
+      if (
+        this.isOneOnOneMode() &&
+        this.teamSelectionConfirmed?.[side] &&
+        this.shouldOpenOneOnOneRosterChoice(side, slot, selectedTeam)
+      ) {
+        return this.openRosterChoiceMenu(side, slot);
+      }
       if (this.isOneOnOneMode() && this.teamSelectionConfirmed?.[side]) {
         return this.selectOneOnOneEntrant(side, slot);
       }
@@ -2240,6 +2247,9 @@ class DodgeballGame {
       const team = this.getSelectedTeamForSide(menu.side);
       this.applyRosterChoice(menu.side, menu.slot, rosterHit.value, team);
       this.rosterChoiceMenu = null;
+      if (this.isOneOnOneMode()) {
+        return this.selectOneOnOneEntrant(menu.side, menu.slot);
+      }
       return true;
     }
     if (this.rosterChoiceMenu) {
@@ -2537,6 +2547,16 @@ class DodgeballGame {
     this.teamSelectionSide = moved.side;
     this.teamSelectionSlot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(this.teamSelectionSide);
+    if (
+      this.input.wasPressed("button2") &&
+      this.isOneOnOneMode() &&
+      this.teamSelectionSlot < TEAM_SELECTION_COUNT &&
+      this.teamSelectionConfirmed?.[this.teamSelectionSide] &&
+      this.shouldOpenOneOnOneRosterChoice(this.teamSelectionSide, this.teamSelectionSlot, selectedTeam)
+    ) {
+      this.openRosterChoiceMenu(this.teamSelectionSide, this.teamSelectionSlot);
+      return;
+    }
     if (this.input.wasPressed("button2") && this.isOneOnOneMode() && this.teamSelectionSlot < TEAM_SELECTION_COUNT && this.teamSelectionConfirmed?.[this.teamSelectionSide]) {
       this.selectOneOnOneEntrant(this.teamSelectionSide, this.teamSelectionSlot);
       return;
@@ -2654,6 +2674,16 @@ class DodgeballGame {
     const slot = moved.slot;
     const selectedTeam = this.getSelectedTeamForSide(side);
 
+    if (
+      this.input.wasPressed("button2", playerIndex) &&
+      this.isOneOnOneMode() &&
+      slot < TEAM_SELECTION_COUNT &&
+      this.teamSelectionConfirmed?.[side] &&
+      this.shouldOpenOneOnOneRosterChoice(side, slot, selectedTeam)
+    ) {
+      this.openRosterChoiceMenu(side, slot);
+      return;
+    }
     if (this.input.wasPressed("button2", playerIndex) && this.isOneOnOneMode() && slot < TEAM_SELECTION_COUNT && this.teamSelectionConfirmed?.[side]) {
       this.selectOneOnOneEntrant(side, slot);
       return;
@@ -2719,8 +2749,13 @@ class DodgeballGame {
       menu.index = (menu.index + 1) % options.length;
     }
     if (this.input.wasPressed("button2", playerIndex)) {
+      const selectedSlot = menu.slot;
+      const selectedSide = menu.side;
       this.applyRosterChoice(menu.side, menu.slot, options[menu.index]?.value, team);
       this.rosterChoiceMenu = null;
+      if (this.isOneOnOneMode()) {
+        this.selectOneOnOneEntrant(selectedSide, selectedSlot);
+      }
     }
     if (this.input.wasPressed("button1", playerIndex) || this.input.wasPressed("pause", playerIndex)) {
       this.rosterChoiceMenu = null;
@@ -2752,6 +2787,12 @@ class DodgeballGame {
       value: type,
       label: CHARACTER_TYPES[type]?.label || type
     }));
+  }
+
+  shouldOpenOneOnOneRosterChoice(side, slot, team) {
+    if (!this.isOneOnOneMode()) return false;
+    if (!this.isEditableRosterTeam(team)) return false;
+    return this.getRosterChoiceOptions(side, slot, team).length > 0;
   }
 
   applyRosterChoice(side, slot, value, team) {
@@ -3181,7 +3222,10 @@ class DodgeballGame {
       ) {
         continue;
       }
-      if (command.catch) member.startCatch(this.getCatchDuration(member) * CPU_CATCH_DURATION_SCALE);
+      if (command.catch) {
+        const oneOnOneCpuCatchBonus = this.isOneOnOneMode() && member.cpuControlled ? 0.06 : 0;
+        member.startCatch(this.getCatchDuration(member) * CPU_CATCH_DURATION_SCALE + oneOnOneCpuCatchBonus);
+      }
       if (command.crouch) member.startDodge(0, 0, GAME_CONFIG.battle);
       if (command.jump) member.jump(GAME_CONFIG.battle);
       if (command.chargeShoot && this.ball.owner === member) {

@@ -23,6 +23,23 @@ const CPU_CATCH_TUNING = {
   delayMax: 0.07
 };
 
+const CPU_ONE_ON_ONE_DEFENSE = {
+  reactDistanceScale: 1.35,
+  catchDelayAdvance: 0.08,
+  normalFrontCatchScale: 1.25,
+  counterCatchScale: 1.5,
+  counterCatchDistanceScale: 1.18,
+  specialDodgeScale: 1.35,
+  fastDodgeScale: 1.25,
+  fastShotSpeed: 1000
+};
+
+const CPU_ONE_ON_ONE_ATTACK = {
+  midBackNormalShotRate: 0.6,
+  midBackMinProgress: 0.28,
+  midBackMaxProgress: 0.55
+};
+
 const CPU_ATTACK_TACTIC_WEIGHTS = {
   buildUp: 0.45,
   quickAttack: 3,
@@ -698,9 +715,16 @@ class CPUController {
 
     if (plan.type === "dash-shot") {
       const target = this.nearestActiveOpponent(holder);
-      if (target) this.moveToward(command, holder, target.x, target.y);
+      if (plan.oneOnOneMidBackShot) {
+        this.moveToward(command, holder, plan.x, plan.y);
+        if (target) this.facePoint(command, holder, target.x, target.y);
+      } else if (target) {
+        this.moveToward(command, holder, target.x, target.y);
+      }
       command.dash = true;
-      if (this.throwTimer <= 0) {
+      const reachedLine = !plan.oneOnOneMidBackShot || Math.hypot(holder.x - plan.x, holder.y - plan.y) < 56;
+      const waitedTooLong = plan.oneOnOneMidBackShot && Date.now() - plan.createdAt > 1800;
+      if ((reachedLine || waitedTooLong) && this.throwTimer <= 0) {
         command.shoot = true;
         if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
         this.finishAttackTactic(plan);
@@ -776,6 +800,12 @@ class CPUController {
     }
 
     this.faceNearestThreat(command, holder);
+    if (plan.oneOnOneMidBackShot) {
+      this.moveToward(command, holder, plan.x, plan.y);
+      command.dash = true;
+      const reachedLine = Math.hypot(holder.x - plan.x, holder.y - plan.y) < 48;
+      if (!reachedLine && Date.now() - plan.createdAt < 1800) return;
+    }
     if (this.throwTimer <= 0) {
       command.shoot = true;
       if (plan.forceShotAfterPass) holder.clearPostPassAction?.();
@@ -1251,12 +1281,52 @@ class CPUController {
       x: holder.role === "inner" ? centerLineX : holder.homeX,
       y: holder.y,
       chargeTime: chargeTime * windupScale,
+      createdAt: Date.now(),
       chargeStarted: false,
       startedAt: 0,
       jumpAttempted: false,
       jumpStartedAt: 0
     };
+    this.applyOneOnOneMidBackShotPlan(holder, this.holderPlan);
     return this.holderPlan;
+  }
+
+  applyOneOnOneMidBackShotPlan(holder, plan) {
+    if (!this.config.oneOnOneMode || !holder || holder.role !== "inner" || !plan) return;
+    if (!this.isOneOnOneMidBackShotType(plan.type)) return;
+    if (Math.random() >= CPU_ONE_ON_ONE_ATTACK.midBackNormalShotRate) return;
+    const point = this.getOneOnOneMidBackShotPoint(holder);
+    if (!point) return;
+    plan.x = point.x;
+    plan.y = point.y;
+    plan.oneOnOneMidBackShot = true;
+  }
+
+  isOneOnOneMidBackShotType(type) {
+    return type === "normal-shot" || type === "center-shot" || type === "dash-shot";
+  }
+
+  getOneOnOneMidBackShotPoint(holder) {
+    const area = this.config.areas ? this.config.areas[holder.zone] : null;
+    const margin = Math.max(holder.radius || 36, 70);
+    let backX = holder.homeX;
+    let frontX = this.getAttackLineX(holder);
+    if (area?.trapezoid) {
+      const bounds = this.getTrapezoidBoundsAtY(area.trapezoid, holder.y);
+      if (bounds) {
+        backX = holder.team === "left" ? bounds.left + margin : bounds.right - margin;
+        frontX = holder.team === "left" ? bounds.right - margin : bounds.left + margin;
+      }
+    } else if (area) {
+      backX = holder.team === "left" ? area.x + margin : area.x + area.w - margin;
+      frontX = holder.team === "left" ? area.x + area.w - margin : area.x + margin;
+    }
+    const progress = CPU_ONE_ON_ONE_ATTACK.midBackMinProgress +
+      Math.random() * (CPU_ONE_ON_ONE_ATTACK.midBackMaxProgress - CPU_ONE_ON_ONE_ATTACK.midBackMinProgress);
+    const x = backX + (frontX - backX) * progress;
+    const yOffset = (Math.random() - 0.5) * 120;
+    const y = this.clampPointToArea({ x, y: holder.homeY + yOffset }, area, margin).y;
+    return { x, y };
   }
 
   updateSpecialAttackTimer() {
@@ -2024,6 +2094,7 @@ class CPUController {
     if (this.reactionTimer > 0 && !this.hasUrgentDefender()) return;
 
     const activeInner = this.team.filter((p) => p.role === "inner" && !p.defeated);
+    const oneOnOneDefense = Boolean(this.config.oneOnOneMode);
     for (const member of activeInner) {
       const command = this.commands.get(member.id);
       if (this.applyDelayedCatch(command, member, delta)) continue;
@@ -2034,7 +2105,10 @@ class CPUController {
       const defenseStat = Math.max(technique, speed, jump);
       const maxReactDistance = (member.cpuProfile === "hinomaruBombers" ? 620 : 430) +
         Math.max(0, defenseStat - 5) * 36;
-      if (distance > maxReactDistance) continue;
+      const effectiveReactDistance = oneOnOneDefense
+        ? maxReactDistance * CPU_ONE_ON_ONE_DEFENSE.reactDistanceScale
+        : maxReactDistance;
+      if (distance > effectiveReactDistance) continue;
 
       const frontShot = this.isFrontShot(member);
       const nearShot = distance < 210;
@@ -2052,6 +2126,8 @@ class CPUController {
       const quickDefender = defenseStat >= 7;
       const readyToReact = frontShot && (farShot || (quickDefender && nearShot));
       const specialShot = Boolean(this.ball.specialShotType);
+      const incomingSpeed = Math.hypot(this.ball.vx || 0, this.ball.vy || 0);
+      const fastShot = specialShot && incomingSpeed >= CPU_ONE_ON_ONE_DEFENSE.fastShotSpeed;
       const shotMultiplier = this.ball.shotMultiplier || 1;
       const strongShot = specialShot || shotMultiplier >= 1.28 || this.ball.power >= 28;
       const weakShot = !specialShot && shotMultiplier <= 1.08 && this.ball.power <= 23;
@@ -2097,20 +2173,50 @@ class CPUController {
         }
       }
       const victoryCatchScale = member.getVictoryMarchCatchScale?.() ?? 1;
-      const catchDistance = (member.cpuProfile === "hinomaruBombers" && catchFrontShot ? 560 : (weakShot ? 360 : 280)) * victoryCatchScale;
+      let catchDistance = (member.cpuProfile === "hinomaruBombers" && catchFrontShot ? 560 : (weakShot ? 360 : 280)) * victoryCatchScale;
+      if (oneOnOneDefense) catchDistance *= CPU_ONE_ON_ONE_DEFENSE.reactDistanceScale;
       const closeCatchScale = distance < 260
         ? 0.8 + Math.max(0, distance - 180) / 80 * 0.2
         : 1;
       const baseCatchRoll = catchChance * profileCatchScale * this.getCatchRollScale() * victoryCatchScale;
-      const catchRoll = baseCatchRoll * closeCatchScale;
+      let catchRoll = baseCatchRoll * closeCatchScale;
       const catchCap = this.ball.counterShot ? CPU_CATCH_TUNING.counterCatchCap : 0.94;
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
-      const dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
+      let dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
       const targetedFrontNormalShot = targeted && catchFrontShot && !specialShot;
+      if (oneOnOneDefense && targetedFrontNormalShot) {
+        catchRoll *= CPU_ONE_ON_ONE_DEFENSE.normalFrontCatchScale;
+      }
+      if (oneOnOneDefense && this.ball.counterShot) {
+        catchRoll *= CPU_ONE_ON_ONE_DEFENSE.counterCatchScale;
+      }
+      if (oneOnOneDefense && specialShot) {
+        dodgeRoll *= CPU_ONE_ON_ONE_DEFENSE.specialDodgeScale;
+      } else if (oneOnOneDefense && fastShot) {
+        dodgeRoll *= CPU_ONE_ON_ONE_DEFENSE.fastDodgeScale;
+      }
       const cappedCatchRoll = Math.min(catchCap, catchRoll);
+      const counterCatchDistance = catchDistance * (oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.counterCatchDistanceScale : 1);
+      if (oneOnOneDefense && this.ball.counterShot && catchFrontShot && distance < counterCatchDistance && Math.random() < cappedCatchRoll) {
+        if (this.scheduleDelayedCatch(member, CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance)) {
+          this.reportShotDefense(member, "catch", cappedCatchRoll, "1on1 counter priority");
+        }
+        continue;
+      }
+      if (oneOnOneDefense && laneThreat && !this.ball.counterShot && (specialShot || fastShot) && Math.random() < Math.min(0.97, dodgeRoll)) {
+        this.reportShotDefense(member, "dodge", Math.min(0.97, dodgeRoll), specialShot ? "1on1 special priority" : "1on1 fast priority");
+        this.dodgeIncomingShot(command, member, true, {
+          speed,
+          jump,
+          closePanic,
+          closeRange: distance < 320,
+          robotOverdrive
+        });
+        continue;
+      }
       if (targetedFrontNormalShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
-        if (this.scheduleDelayedCatch(member)) {
+        if (this.scheduleDelayedCatch(member, oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance : 0)) {
           this.reportShotDefense(member, "キャッチ試行", cappedCatchRoll, "正面優先");
         }
       } else if (closeRangeThreat && Math.random() < closeDodgeRoll) {
@@ -2123,7 +2229,7 @@ class CPUController {
           robotOverdrive
         });
       } else if (!targetedFrontNormalShot && catchFrontShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
-        if (this.scheduleDelayedCatch(member)) {
+        if (this.scheduleDelayedCatch(member, oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance : 0)) {
           this.reportShotDefense(member, "キャッチ試行", cappedCatchRoll);
         }
       } else if (laneThreat && Math.random() < Math.min(0.97, dodgeRoll)) {
@@ -2190,11 +2296,12 @@ class CPUController {
     return member?.uniformEmblem === "braves-martialArtist";
   }
 
-  scheduleDelayedCatch(member) {
+  scheduleDelayedCatch(member, delayAdvance = 0) {
     if (this.catchDelayPlans.has(member.id)) return false;
+    const baseDelay = CPU_CATCH_TUNING.delayMin + Math.random() * (CPU_CATCH_TUNING.delayMax - CPU_CATCH_TUNING.delayMin);
     this.catchDelayPlans.set(member.id, {
       flightSerial: this.ball.flightSerial || 0,
-      timer: CPU_CATCH_TUNING.delayMin + Math.random() * (CPU_CATCH_TUNING.delayMax - CPU_CATCH_TUNING.delayMin)
+      timer: Math.max(0, baseDelay - delayAdvance)
     });
     return true;
   }
