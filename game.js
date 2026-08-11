@@ -3658,7 +3658,11 @@ class DodgeballGame {
     if (enemyHolder && member.role === "inner") {
       return this.getEvadeMove(member, enemyHolder, member.team === "left" ? this.leftTeam : this.rightTeam);
     }
-    if (this.ball.isLoose && member.role === "inner" && this.ball.x < GAME_CONFIG.court.centerX) {
+    if (
+      this.ball.isLoose &&
+      member.role === "inner" &&
+      (this.isOneOnOneMode() || this.ball.x < GAME_CONFIG.court.centerX)
+    ) {
       const distance = Math.hypot(this.ball.x - member.x, this.ball.y - member.y);
       if (distance < 360) {
         return this.vectorTo(member, this.ball.x, this.ball.y, true);
@@ -3745,11 +3749,27 @@ class DodgeballGame {
 
   canPlayerAcquireBallAt(member, x, y) {
     if (!member || member.defeated) return false;
+    if (this.isOneOnOneMode() && member.role === "inner") {
+      return this.isPointInsideOneOnOneLooseBallArea(x, y);
+    }
     const territory = this.getLooseBallTerritory(x, y);
     if (territory) {
       return member.team === territory.team && member.role === territory.role;
     }
     return this.isPointInsideArea(x, y, 0, this.getMoveArea(member, false));
+  }
+
+  isPointInsideOneOnOneLooseBallArea(x, y) {
+    const c = this.getActiveCourt();
+    const backY = c.y + 96;
+    const frontY = c.y + c.h - 38;
+    const sampleY = Math.max(backY, Math.min(frontY, y));
+    const left = this.projectCourtX(c.x, sampleY, c.y + 10, c.y + c.h);
+    const right = this.projectCourtX(c.x + c.w, sampleY, c.y + 10, c.y + c.h);
+    if (y >= backY - 80 && y <= frontY + 60 && x >= left - 120 && x <= right + 120) return true;
+    return (this.oneOnOneCloudPlatforms || []).some((platform) => (
+      this.isPointOnOneOnOneCloud(x, y, 0, platform)
+    ));
   }
 
   getLooseBallTerritory(x, y) {
