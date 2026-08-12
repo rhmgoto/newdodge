@@ -1120,6 +1120,8 @@ class DodgeballGame {
         teamName: "left",
         opponentName: "right",
         oneOnOneMode: this.isOneOnOneMode(),
+        usePostShotRetreat: true,
+        useDuelDefense: this.isOneOnOneMode(),
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
         canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
@@ -1134,6 +1136,8 @@ class DodgeballGame {
         teamName: "right",
         opponentName: "left",
         oneOnOneMode: this.isOneOnOneMode(),
+        usePostShotRetreat: true,
+        useDuelDefense: this.isOneOnOneMode(),
         isSpiritReady: (team) => this.hasFullSpirit(team),
         isOutfieldBallForTeam: (team, x, y) => this.isOutfieldBallForTeam(team, x, y),
         canAcquireBallAt: (member, x, y) => this.canPlayerAcquireBallAt(member, x, y),
@@ -5474,11 +5478,25 @@ class DodgeballGame {
     const martialArtistScale = this.getMartialArtistSpecialCatchScale(catcher);
     let cpuCatchSuccessScale = catcher.cpuControlled ? 0.9 : 1;
     if (catcher.cpuControlled && this.ball.specialShotType) cpuCatchSuccessScale *= 0.9;
+    const cpuNormalShot = Boolean(
+      catcher.cpuControlled &&
+      !this.ball.specialShotType &&
+      !this.ball.counterShot &&
+      !this.ball.quickShot
+    );
+    const cpuNormalWindowScale = cpuNormalShot ? 1.15 : 1;
+    const duelCpuShot = Boolean(
+      this.isOneOnOneMode() &&
+      catcher.cpuControlled &&
+      !this.ball.specialShotType &&
+      !this.ball.counterShot
+    );
+    const duelWindowScale = duelCpuShot ? 1.1 : 1;
     const normalShotDistanceCatchScale = this.getNormalShotDistanceCatchScale();
     const durationScale = baseCatchDurationScale * shotCatchDurationScale * specialCatchDurationScale;
     return Math.max(
       0.045 * durationScale,
-      Math.min(0.26 * durationScale * normalShotDistanceCatchScale, baseDuration * techniqueScale * facingScale * distanceScale * normalShotDistanceCatchScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * durationScale)
+      Math.min(0.26 * durationScale * normalShotDistanceCatchScale, baseDuration * techniqueScale * facingScale * distanceScale * normalShotDistanceCatchScale * powerScale * victoryScale * martialArtistScale * cpuCatchSuccessScale * cpuNormalWindowScale * duelWindowScale * durationScale)
     );
   }
 

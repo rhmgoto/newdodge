@@ -13,6 +13,14 @@ const CPU_CLOSE_SHOT_DEFENSE = {
   maxSuccessChance: 0.94
 };
 
+const CPU_COUNTER_CATCH = {
+  baseTechnique: 7,
+  baseChance: 0.7,
+  chancePerTechnique: 0.04,
+  minChance: 0.38,
+  maxChance: 0.9
+};
+
 const CPU_CATCH_TUNING = {
   globalScale: 0.75,
   counterScale: 5.46,
@@ -21,6 +29,17 @@ const CPU_CATCH_TUNING = {
   counterCatchCap: 0.93,
   delayMin: 0.02,
   delayMax: 0.07
+};
+
+const CPU_NORMAL_CATCH = {
+  baseTechnique: 7,
+  frontChance: 0.85,
+  strongChance: 0.725,
+  closeChance: 0.6,
+  sideChance: 0.25,
+  chancePerTechnique: 0.025,
+  minChance: 0.08,
+  maxChance: 0.95
 };
 
 const CPU_ONE_ON_ONE_DEFENSE = {
@@ -38,6 +57,20 @@ const CPU_ONE_ON_ONE_ATTACK = {
   midBackNormalShotRate: 0.6,
   midBackMinProgress: 0.28,
   midBackMaxProgress: 0.55
+};
+
+const CPU_POST_SHOT_DEFENSE = {
+  durationMs: 3200,
+  dashDurationMs: 2500,
+  retreatDepthRatio: 0.67,
+  dashStartDepthRatio: 0.56,
+  arrivalDistance: 40
+};
+
+const CPU_DUEL_DEFENSE = {
+  retreatDepthRatio: 0.86,
+  arrivalDistance: 44,
+  dashDurationMs: 2500
 };
 
 const CPU_ATTACK_TACTIC_WEIGHTS = {
@@ -113,6 +146,9 @@ class CPUController {
     this.catchDelayPlans = new Map();
     this.paladinCoverRolls = new Map();
     this.martialArtistAerialPassCutRolls = new Map();
+    this.postShotRetreats = new Map();
+    this.friendlyShotInFlight = false;
+    this.duelDefenseDashUntil = new Map();
   }
 
   update(delta) {
@@ -132,9 +168,13 @@ class CPUController {
       command.pass = false;
       command.chargeShoot = false;
       command.reflect = false;
+      command.lockFacing = false;
+      command.faceDirection = null;
       command.chargeTime = 0;
       command.chargeReleaseMode = "time";
     }
+
+    this.detectFriendlyShotRelease();
 
     if (this.decisionTimer <= 0) {
       this.makeDecision();
@@ -152,6 +192,9 @@ class CPUController {
     const looseBallChaser = this.getLooseBallChaser();
     const friendlyShotChaser = looseBallChaser ? null : this.getFriendlyFlyingShotChaser();
     const specialAttackReady = Boolean(this.config.isSpiritReady?.(this.teamName));
+    if (cpuHolder) {
+      this.duelDefenseDashUntil.clear();
+    }
     if (cpuHolder && !specialAttackReady && (!this.attackTactic || this.attackTactic.finished)) {
       this.selectAttackTactic(cpuHolder);
     }
@@ -187,11 +230,17 @@ class CPUController {
       }
 
       if (looseBallChaser === member) {
+        this.duelDefenseDashUntil.delete(member.id);
         this.moveToward(command, member, this.ball.x, this.ball.y);
         command.dash = true;
         if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 240) {
           command.catch = true;
         }
+        continue;
+      }
+
+      if (this.config.useDuelDefense && !cpuHolder && member.role === "inner") {
+        this.controlDuelDefensePosition(command, member);
         continue;
       }
 
@@ -201,6 +250,10 @@ class CPUController {
         if (Math.hypot(this.ball.x - member.x, this.ball.y - member.y) < 260) {
           command.catch = true;
         }
+        continue;
+      }
+
+      if (this.applyPostShotRetreat(command, member)) {
         continue;
       }
 
@@ -224,6 +277,124 @@ class CPUController {
 
       this.moveToHome(command, member);
     }
+  }
+
+  detectFriendlyShotRelease() {
+    const friendlyShotFlying = Boolean(
+      this.ball.isFlying &&
+      this.ball.kind === "shoot" &&
+      this.ball.thrower &&
+      this.ball.thrower.team === this.teamName
+    );
+
+    if (friendlyShotFlying && !this.friendlyShotInFlight) {
+      this.startPostShotRetreat(this.ball.thrower);
+    }
+    this.friendlyShotInFlight = friendlyShotFlying;
+  }
+
+  startPostShotRetreat(shooter) {
+    if (!this.config.usePostShotRetreat || !shooter || shooter.defeated || shooter.role !== "inner") return;
+
+    const area = this.config.areas?.[shooter.zone];
+    const bounds = this.getAreaBounds(area);
+    if (!bounds.w || !bounds.h) return;
+
+    const centerX = this.config.court.centerX;
+    const backX = shooter.team === "left"
+      ? bounds.x + shooter.radius + 44
+      : bounds.x + bounds.w - shooter.radius - 44;
+    const retreatX = centerX + (backX - centerX) * CPU_POST_SHOT_DEFENSE.retreatDepthRatio;
+    const alreadyDeep = shooter.team === "left" ? shooter.x <= retreatX : shooter.x >= retreatX;
+    const target = this.clampPointToArea({
+      x: alreadyDeep ? shooter.x : retreatX,
+      y: shooter.y
+    }, area, shooter.radius);
+    const fullDepth = Math.max(1, Math.abs(backX - centerX));
+    const currentDepthRatio = Math.abs(shooter.x - centerX) / fullDepth;
+    const now = Date.now();
+
+    this.postShotRetreats.set(shooter.id, {
+      target,
+      expiresAt: now + CPU_POST_SHOT_DEFENSE.durationMs,
+      dashUntil: currentDepthRatio < CPU_POST_SHOT_DEFENSE.dashStartDepthRatio
+        ? now + CPU_POST_SHOT_DEFENSE.dashDurationMs
+        : now
+    });
+    this.decisionTimer = 0;
+  }
+
+  applyPostShotRetreat(command, member) {
+    const plan = this.postShotRetreats.get(member.id);
+    if (!plan) return false;
+
+    const now = Date.now();
+    const ownTeamHasBall = this.ball.owner?.team === this.teamName;
+    const looseBall = this.ball.isLoose && !this.ball.isFlying && !this.ball.owner;
+    if (member.defeated || now >= plan.expiresAt || ownTeamHasBall || looseBall) {
+      this.postShotRetreats.delete(member.id);
+      return false;
+    }
+
+    const distance = Math.hypot(plan.target.x - member.x, plan.target.y - member.y);
+    if (distance > CPU_POST_SHOT_DEFENSE.arrivalDistance) {
+      this.moveToward(command, member, plan.target.x, plan.target.y);
+      command.dash = now < plan.dashUntil && distance > 90;
+    } else {
+      this.stop(command);
+    }
+
+    command.lockFacing = true;
+    command.faceDirection = member.team === "left" ? "right" : "left";
+    return true;
+  }
+
+  controlDuelDefensePosition(command, member) {
+    const area = this.config.areas?.[member.zone];
+    const bounds = this.getAreaBounds(area);
+    if (!bounds.w || !bounds.h) {
+      this.moveToHome(command, member);
+      return;
+    }
+
+    const centerX = this.config.court.centerX;
+    const backX = member.team === "left"
+      ? bounds.x + member.radius + 44
+      : bounds.x + bounds.w - member.radius - 44;
+    const target = this.clampPointToArea({
+      x: centerX + (backX - centerX) * CPU_DUEL_DEFENSE.retreatDepthRatio,
+      y: member.homeY
+    }, area, member.radius);
+    const distance = Math.hypot(target.x - member.x, target.y - member.y);
+    const now = Date.now();
+    const opponentHolder = this.ball.owner?.team === this.opponentName ? this.ball.owner : null;
+    const opponentPreparingShot = this.isHolderPreparingShot(opponentHolder);
+    if (!this.duelDefenseDashUntil.has(member.id)) {
+      this.duelDefenseDashUntil.set(member.id, now + CPU_DUEL_DEFENSE.dashDurationMs);
+    }
+
+    if (distance > CPU_DUEL_DEFENSE.arrivalDistance) {
+      this.moveToward(command, member, target.x, target.y);
+      command.dash = now < (this.duelDefenseDashUntil.get(member.id) || 0);
+      if (opponentPreparingShot) {
+        command.lockFacing = true;
+        command.faceDirection = this.getDirectionToward(member, opponentHolder);
+      }
+      return;
+    }
+
+    this.duelDefenseDashUntil.delete(member.id);
+    this.stop(command);
+    command.lockFacing = true;
+    command.faceDirection = member.team === "left" ? "right" : "left";
+  }
+
+  getDirectionToward(member, target) {
+    if (!target) return member.team === "left" ? "right" : "left";
+    const dx = target.x - member.x;
+    const dy = target.y - member.y;
+    if (Math.abs(dx) >= Math.abs(dy) * 0.72) return dx >= 0 ? "right" : "left";
+    return dy >= 0 ? "down" : "up";
   }
 
   selectAttackTactic(holder) {
@@ -2110,7 +2281,8 @@ class CPUController {
         : maxReactDistance;
       if (distance > effectiveReactDistance) continue;
 
-      const frontShot = this.isFrontShot(member);
+      const facingQuality = this.getIncomingFacingQuality(member);
+      const frontShot = facingQuality === "front";
       const nearShot = distance < 210;
       const closePanic = distance < 145;
       const targeted = this.ball.target === member;
@@ -2126,10 +2298,14 @@ class CPUController {
       const quickDefender = defenseStat >= 7;
       const readyToReact = frontShot && (farShot || (quickDefender && nearShot));
       const specialShot = Boolean(this.ball.specialShotType);
+      const counterShot = Boolean(this.ball.counterShot);
+      const quickShot = Boolean(this.ball.quickShot);
+      const normalShot = !specialShot && !counterShot && !quickShot;
       const incomingSpeed = Math.hypot(this.ball.vx || 0, this.ball.vy || 0);
       const fastShot = specialShot && incomingSpeed >= CPU_ONE_ON_ONE_DEFENSE.fastShotSpeed;
       const shotMultiplier = this.ball.shotMultiplier || 1;
       const strongShot = specialShot || shotMultiplier >= 1.28 || this.ball.power >= 28;
+      const strongNormalShot = normalShot && (shotMultiplier >= 1.28 || this.ball.power >= 28);
       const weakShot = !specialShot && shotMultiplier <= 1.08 && this.ball.power <= 23;
       const speedBoost = 1 + Math.max(0, speed - 5) * 0.26;
       const jumpBoost = 1 + Math.max(0, jump - 5) * 0.25;
@@ -2184,7 +2360,7 @@ class CPUController {
       const dodgeScaleByShot = this.getDodgeRollScale(distance);
       let dodgeRoll = dodgeChance * profileDodgeScale * Math.max(speedBoost, jumpBoost) * dodgeScaleByShot;
       const closeDodgeRoll = this.getCloseRangeDodgeChance(speed, distance, targeted, robotOverdrive) * dodgeScaleByShot;
-      const targetedFrontNormalShot = targeted && catchFrontShot && !specialShot;
+      const targetedFrontNormalShot = targeted && catchFrontShot && normalShot;
       if (oneOnOneDefense && targetedFrontNormalShot) {
         catchRoll *= CPU_ONE_ON_ONE_DEFENSE.normalFrontCatchScale;
       }
@@ -2198,13 +2374,20 @@ class CPUController {
       }
       const cappedCatchRoll = Math.min(catchCap, catchRoll);
       const counterCatchDistance = catchDistance * (oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.counterCatchDistanceScale : 1);
-      if (oneOnOneDefense && this.ball.counterShot && catchFrontShot && distance < counterCatchDistance && Math.random() < cappedCatchRoll) {
+      const counterCatchRoll = this.getCounterCatchChance(technique);
+      const normalCatchRoll = this.getNormalCatchChance(
+        technique,
+        facingQuality,
+        closeRangeThreat,
+        strongNormalShot
+      );
+      if (counterShot && catchFrontShot && distance < counterCatchDistance && Math.random() < Math.max(cappedCatchRoll, counterCatchRoll)) {
         if (this.scheduleDelayedCatch(member, CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance)) {
-          this.reportShotDefense(member, "catch", cappedCatchRoll, "1on1 counter priority");
+          this.reportShotDefense(member, "catch", Math.max(cappedCatchRoll, counterCatchRoll), oneOnOneDefense ? "1on1 counter priority" : "counter priority");
         }
         continue;
       }
-      if (oneOnOneDefense && laneThreat && !this.ball.counterShot && (specialShot || fastShot) && Math.random() < Math.min(0.97, dodgeRoll)) {
+      if (oneOnOneDefense && laneThreat && !counterShot && (specialShot || fastShot) && Math.random() < Math.min(0.97, dodgeRoll)) {
         this.reportShotDefense(member, "dodge", Math.min(0.97, dodgeRoll), specialShot ? "1on1 special priority" : "1on1 fast priority");
         this.dodgeIncomingShot(command, member, true, {
           speed,
@@ -2215,9 +2398,14 @@ class CPUController {
         });
         continue;
       }
-      if (targetedFrontNormalShot && distance < catchDistance && Math.random() < Math.min(catchCap, catchRoll)) {
+      const targetedNormalCatchRoll = Math.max(Math.min(catchCap, catchRoll), normalCatchRoll);
+      if (targetedFrontNormalShot && distance < catchDistance && Math.random() < targetedNormalCatchRoll) {
         if (this.scheduleDelayedCatch(member, oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance : 0)) {
-          this.reportShotDefense(member, "キャッチ試行", cappedCatchRoll, "正面優先");
+          this.reportShotDefense(member, "キャッチ試行", targetedNormalCatchRoll, "正面優先");
+        }
+      } else if (normalShot && facingQuality !== "back" && distance < catchDistance && Math.random() < normalCatchRoll) {
+        if (this.scheduleDelayedCatch(member, oneOnOneDefense ? CPU_ONE_ON_ONE_DEFENSE.catchDelayAdvance : 0)) {
+          this.reportShotDefense(member, "キャッチ試行", normalCatchRoll, facingQuality === "side" ? "側面通常" : "通常");
         }
       } else if (closeRangeThreat && Math.random() < closeDodgeRoll) {
         this.reportShotDefense(member, "回避試行", Math.min(0.97, closeDodgeRoll), "近距離");
@@ -2290,6 +2478,38 @@ class CPUController {
       return 0.65 + Math.max(0, distance - 160) / 100 * 0.35;
     }
     return 1;
+  }
+
+  getCounterCatchChance(technique) {
+    const value = Math.max(1, Math.min(20, technique || 5));
+    return Math.max(
+      CPU_COUNTER_CATCH.minChance,
+      Math.min(
+        CPU_COUNTER_CATCH.maxChance,
+        CPU_COUNTER_CATCH.baseChance +
+          (value - CPU_COUNTER_CATCH.baseTechnique) * CPU_COUNTER_CATCH.chancePerTechnique
+      )
+    );
+  }
+
+  getNormalCatchChance(technique, facingQuality, closeRange, strongShot) {
+    if (facingQuality === "back") return 0;
+
+    const value = Math.max(1, Math.min(20, technique || 5));
+    const baseChance = facingQuality === "side"
+      ? CPU_NORMAL_CATCH.sideChance
+      : closeRange
+        ? CPU_NORMAL_CATCH.closeChance
+        : strongShot
+          ? CPU_NORMAL_CATCH.strongChance
+          : CPU_NORMAL_CATCH.frontChance;
+    return Math.max(
+      CPU_NORMAL_CATCH.minChance,
+      Math.min(
+        CPU_NORMAL_CATCH.maxChance,
+        baseChance + (value - CPU_NORMAL_CATCH.baseTechnique) * CPU_NORMAL_CATCH.chancePerTechnique
+      )
+    );
   }
 
   isBravesMartialArtist(member) {
@@ -2400,12 +2620,22 @@ class CPUController {
   }
 
   isFrontShot(member) {
-    const horizontal = Math.abs(this.ball.vx) >= Math.abs(this.ball.vy);
-    if (horizontal) {
-      return member.facing === (this.ball.vx < 0 ? 1 : -1);
-    }
-    if (this.ball.vy < 0) return member.visualDirection === "down";
-    return member.visualDirection === "up";
+    return this.getIncomingFacingQuality(member) === "front";
+  }
+
+  getIncomingFacingQuality(member) {
+    const incomingX = -this.ball.vx;
+    const incomingY = -this.ball.vy;
+    const incomingLength = Math.hypot(incomingX, incomingY) || 1;
+    const direction = member.visualDirection;
+    const facingX = direction === "up" || direction === "down"
+      ? 0
+      : member.facing || (direction === "left" ? -1 : 1);
+    const facingY = direction === "up" ? -1 : direction === "down" ? 1 : 0;
+    const dot = incomingX / incomingLength * facingX + incomingY / incomingLength * facingY;
+    if (dot >= 0.55) return "front";
+    if (dot >= -0.35) return "side";
+    return "back";
   }
 
   isBallMovingToward(member) {
@@ -2704,6 +2934,8 @@ class CPUController {
       pass: false,
       chargeShoot: false,
       reflect: false,
+      lockFacing: false,
+      faceDirection: null,
       chargeTime: 0,
       chargeReleaseMode: "time"
     };

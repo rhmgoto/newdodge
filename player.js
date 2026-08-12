@@ -482,7 +482,10 @@ class Player {
     const moveY = controls.moveY || 0;
     const length = Math.hypot(moveX, moveY) || 1;
     const moving = Math.hypot(moveX, moveY) > 0.08;
-    if (controls.lockFacing || !moving) {
+    if (controls.faceDirection) {
+      this.applyVisualDirection(controls.faceDirection);
+      this.cancelPendingTurn();
+    } else if (controls.lockFacing || !moving) {
       this.cancelPendingTurn();
     } else if (moving) {
       this.requestVisualDirection(moveX, moveY, config.turnDuration);
