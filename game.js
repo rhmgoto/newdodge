@@ -348,7 +348,7 @@ const HUNDRED_RUSH_CONFIG = {
   stepVelocityScale: 0.7
 };
 const CATCH_DIFFICULTY = {
-  normal: { duration: 0.2, areaScale: 1 },
+  normal: { duration: 0.25, areaScale: 1.08 },
   heroStraight: { duration: 0.165, areaScale: 0.94 },
   melodyShot: {
     duration: 0.18 * DISSONANCE_FEINT_CONFIG.catchWindowScale,
@@ -539,7 +539,7 @@ const SPIRIT_GAIN_CONFIG = {
   spiritDefeatGain: 7.5
 };
 const SPIRIT_GAIN_RATE_SCALE = 0.5;
-const CPU_CATCH_DURATION_SCALE = 1.05;
+const CPU_CATCH_DURATION_SCALE = 1.2;
 
 const GAME_CONFIG = {
   width: 1440,
