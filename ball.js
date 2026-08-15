@@ -423,25 +423,33 @@ class Ball {
 
     if (straightBoostFlight || straightLockRocketFlight) return;
 
-    if (this.x < bounds.x + this.radius) {
+    const aerialBoundaryGrace = (
+      this.isFlying &&
+      this.kind === "shoot" &&
+      this.aerialShot &&
+      this.z > 42 &&
+      this.travelDistance < 180
+    );
+
+    if (!aerialBoundaryGrace && this.x < bounds.x + this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + this.radius;
       this.vx = Math.abs(this.vx) * 0.55;
       this.drop();
     }
-    if (this.x > bounds.x + bounds.w - this.radius) {
+    if (!aerialBoundaryGrace && this.x > bounds.x + bounds.w - this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + bounds.w - this.radius;
       this.vx = -Math.abs(this.vx) * 0.55;
       this.drop();
     }
-    if (this.y < bounds.y + this.radius) {
+    if (!aerialBoundaryGrace && this.y < bounds.y + this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + this.radius;
       this.vy = Math.abs(this.vy) * 0.55;
       this.drop();
     }
-    if (this.y > bounds.y + bounds.h - this.radius) {
+    if (!aerialBoundaryGrace && this.y > bounds.y + bounds.h - this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + bounds.h - this.radius;
       this.vy = -Math.abs(this.vy) * 0.55;
