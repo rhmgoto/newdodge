@@ -7,7 +7,7 @@ const METEOR_CRASH_PEAK_Z = 920;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
-const BOOMERANG_ONE_ON_ONE_OUTWARD_DISTANCE = 460;
+const BOOMERANG_ONE_ON_ONE_OUTWARD_DISTANCE = 360;
 const CLOCK_STOP_DURATION = 0.32;
 const CLOCK_STOP_REAIM_LEAD_TIME = 0.4;
 const CLOCK_STOP_BURST_SPEED_SCALE = 1.2;
@@ -352,6 +352,7 @@ class Ball {
     const straightLockRocketFlight = this.isFlying && this.kind === "shoot" && this.specialShotType === "lockRocket";
     const straightCounterFlight = this.isFlying && this.kind === "shoot" && this.counterShot && !this.aerialShot;
     const straightQuickFlight = this.isFlying && this.kind === "shoot" && this.quickShot;
+    const activeOneOnOneBoomerangFlight = this.isFlying && this.kind === "shoot" && this.oneOnOneShot && this.isBoomerangStyleShot() && this.target && !this.target.defeated && !this.boomerangCurveComplete;
     if (this.isFlying) {
       if (straightBoostFlight) {
         this.z = this.boostFlightZ;
@@ -404,7 +405,12 @@ class Ball {
       this.vz -= this.config.gravity * delta;
     }
 
-    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightUfoSpinFlight && !straightHellfireFlight && !straightArcanaFlight && !straightDevilShieldFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && this.specialShotType !== "meteorCrash" && this.z <= 0) {
+    if (activeOneOnOneBoomerangFlight && this.z < 28) {
+      this.z = 28;
+      this.vz = Math.max(this.vz, 0);
+    }
+
+    if (!straightBoostFlight && !straightSlapFlight && !straightKiaiFlight && !straightUfoSpinFlight && !straightHellfireFlight && !straightArcanaFlight && !straightDevilShieldFlight && !straightLockRocketFlight && !straightCounterFlight && !straightQuickFlight && !activeOneOnOneBoomerangFlight && this.specialShotType !== "meteorCrash" && this.z <= 0) {
       this.z = 0;
       if (this.isFlying) {
         this.hasBounced = true;
@@ -432,26 +438,27 @@ class Ball {
       this.z > 42 &&
       this.travelDistance < 180
     );
+    const boundaryGrace = aerialBoundaryGrace || activeOneOnOneBoomerangFlight;
 
-    if (!aerialBoundaryGrace && this.x < bounds.x + this.radius) {
+    if (!boundaryGrace && this.x < bounds.x + this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + this.radius;
       this.vx = Math.abs(this.vx) * 0.55;
       this.drop();
     }
-    if (!aerialBoundaryGrace && this.x > bounds.x + bounds.w - this.radius) {
+    if (!boundaryGrace && this.x > bounds.x + bounds.w - this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.x = bounds.x + bounds.w - this.radius;
       this.vx = -Math.abs(this.vx) * 0.55;
       this.drop();
     }
-    if (!aerialBoundaryGrace && this.y < bounds.y + this.radius) {
+    if (!boundaryGrace && this.y < bounds.y + this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + this.radius;
       this.vy = Math.abs(this.vy) * 0.55;
       this.drop();
     }
-    if (!aerialBoundaryGrace && this.y > bounds.y + bounds.h - this.radius) {
+    if (!boundaryGrace && this.y > bounds.y + bounds.h - this.radius) {
       if (straightUfoSpinFlight && this.markUfoSpinOutfieldCarry()) return;
       this.y = bounds.y + bounds.h - this.radius;
       this.vy = -Math.abs(this.vy) * 0.55;

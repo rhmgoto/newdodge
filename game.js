@@ -1289,7 +1289,7 @@ class DodgeballGame {
   getActiveCourt() {
     if (!this.isOneOnOneMode()) return GAME_CONFIG.court;
     const base = GAME_CONFIG.court;
-    const width = base.w * 0.9;
+    const width = base.w * 1.08;
     const height = (base.h / 3) * 1.05;
     return {
       ...base,
