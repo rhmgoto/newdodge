@@ -7,6 +7,7 @@ const METEOR_CRASH_PEAK_Z = 920;
 const BOOMERANG_ARC_SCALE = 1.5;
 const BOOMERANG_SIZE_SCALE = 1.5;
 const BOOMERANG_OUTWARD_DISTANCE = 720;
+const BOOMERANG_ONE_ON_ONE_OUTWARD_DISTANCE = 460;
 const CLOCK_STOP_DURATION = 0.32;
 const CLOCK_STOP_REAIM_LEAD_TIME = 0.4;
 const CLOCK_STOP_BURST_SPEED_SCALE = 1.2;
@@ -115,6 +116,7 @@ class Ball {
     this.boomerangTrail = [];
     this.boomerangTurnFlashTimer = 0;
     this.boomerangTargetMarkTimer = 0;
+    this.oneOnOneShot = false;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
@@ -494,6 +496,7 @@ class Ball {
     this.boomerangTrail = [];
     this.boomerangTurnFlashTimer = 0;
     this.boomerangTargetMarkTimer = 0;
+    this.oneOnOneShot = false;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;
@@ -676,6 +679,7 @@ class Ball {
     this.boomerangTrail = [];
     this.boomerangTurnFlashTimer = 0;
     this.boomerangTargetMarkTimer = 0;
+    this.oneOnOneShot = Boolean(actor.oneOnOneDuel);
     this.boostElapsed = 0;
     this.boostFlightZ = this.specialShotType === "boost" ? this.z : 0;
     this.slapInitialSpeed = 0;
@@ -1134,7 +1138,10 @@ class Ball {
         this.vx += sideX * sideForce * delta;
         this.vy += sideY * sideForce * delta;
       }
-      if (!this.returning && this.travelDistance >= BOOMERANG_OUTWARD_DISTANCE) {
+      const boomerangOutwardDistance = this.oneOnOneShot
+        ? Math.max(320, Math.min(BOOMERANG_ONE_ON_ONE_OUTWARD_DISTANCE, this.boomerangStartDistance * 0.72))
+        : BOOMERANG_OUTWARD_DISTANCE;
+      if (!this.returning && this.travelDistance >= boomerangOutwardDistance) {
         this.returning = true;
         this.boomerangReturnStartX = this.x;
         this.boomerangReturnStartY = this.y;
@@ -1762,6 +1769,7 @@ class Ball {
     this.returning = false;
     this.boomerangCurveSign = 1;
     this.boomerangStartDistance = 900;
+    this.oneOnOneShot = false;
     this.boostElapsed = 0;
     this.boostFlightZ = 0;
     this.slapInitialSpeed = 0;

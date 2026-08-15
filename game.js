@@ -43,7 +43,7 @@ const NO_DEFENSE_HITBOX_CONFIG = {
 const CATCH_DURATION_SCALE_CONFIG = {
   base: 0.9,
   shot: 0.9,
-  special: 0.95
+  special: 1.3
 };
 const NORMAL_SHOT_DISTANCE_CATCH_CONFIG = {
   startDistance: 350,
@@ -587,7 +587,8 @@ const GAME_CONFIG = {
   battle: {
     pickupDistance: 62,
     rollingPickupDistance: 210,
-    catchDuration: 0.3,
+    catchDuration: 0.22,
+    catchWhiffRecovery: 0.2,
     catchWidth: 74,
     catchHeight: 92,
     duckDuration: 0.48,
@@ -630,6 +631,7 @@ class DodgeballGame {
     this.gameMode = "single";
     this.modeIndex = 0;
     this.modeCategoryIndex = 0;
+    this.modeMenuLevel = "category";
     this.typeOrder = ["normal", "power", "speed", "jump", "mage"];
     this.teamSelectionSide = "left";
     this.teamSelectionSlot = 0;
@@ -834,10 +836,21 @@ class DodgeballGame {
   }
 
   getModeSelectHitRects() {
+    if (this.modeMenuLevel !== "details") {
+      return this.getModeCategories().map((category, index) => ({
+        type: "category",
+        index,
+        x: category.x - category.w / 2,
+        y: category.y - category.h / 2,
+        w: category.w,
+        h: category.h
+      }));
+    }
     return this.getModeOptions().map((mode, index) => {
       const width = mode.w || 300;
       const height = mode.h || 76;
       return {
+        type: "mode",
         index,
         x: mode.x - width / 2,
         y: mode.y - height / 2,
@@ -960,8 +973,14 @@ class DodgeballGame {
       const hit = this.getModeSelectHitRects().find((rect) => this.isPointInRect(point, rect));
       if (hit) {
         event.preventDefault();
-        this.modeIndex = hit.index;
-        this.confirmModeSelection();
+        if (hit.type === "category") {
+          this.modeCategoryIndex = hit.index;
+          this.modeIndex = 0;
+          this.modeMenuLevel = "details";
+        } else {
+          this.modeIndex = hit.index;
+          this.confirmModeSelection();
+        }
       }
       return;
     }
@@ -1095,6 +1114,8 @@ class DodgeballGame {
 
   enterModeSelectState() {
     this.state = "modeSelect";
+    this.modeMenuLevel = "category";
+    this.modeIndex = 0;
     this.startMenuBgm("main");
   }
 
@@ -1541,6 +1562,7 @@ class DodgeballGame {
     }
     player.homeX = player.x;
     player.homeY = player.y;
+    player.oneOnOneDuel = true;
     player.cpuPreferredPassTargetId = null;
     player.postPassAction = null;
     return player;
@@ -2813,6 +2835,107 @@ class DodgeballGame {
     }
   }
 
+  getModeCategories() {
+    return [
+      { label: "チーム対戦", note: "通常ドッジ", x: 430, y: 420, w: 360, h: 150 },
+      { label: "1 on 1", note: "個人戦", x: 1010, y: 420, w: 360, h: 150 }
+    ];
+  }
+
+  getModeOptions(category = this.modeCategoryIndex) {
+    if (category === 1) {
+      return [
+        { mode: "oneOnOneSingle", label: "一人用", note: "1P vs CPU", x: 1010, y: 300, h: 70 },
+        { mode: "oneOnOneVersus", label: "二人用", note: "1P vs 2P", x: 1010, y: 390, h: 70 },
+        { mode: "oneOnOneTournamentSingle", label: "トーナメント（一人用）", note: "16人トーナメント", x: 1010, y: 480, h: 70 },
+        { mode: "oneOnOneTournamentVersus", label: "トーナメント（二人用）", note: "2人参加", x: 1010, y: 570, h: 70 }
+      ];
+    }
+    return [
+      { mode: "single", label: "一人用", note: "1P vs CPU", x: 430, y: 330, h: 76 },
+      { mode: "versus", label: "二人用", note: "1P vs 2P", x: 430, y: 440, h: 76 },
+      { mode: "watch", label: "観戦", note: "CPU vs CPU", x: 430, y: 550, h: 76 }
+    ];
+  }
+
+  setModeCategoryIndex(category) {
+    const categories = this.getModeCategories();
+    this.modeCategoryIndex = Math.max(0, Math.min(categories.length - 1, category));
+  }
+
+  setModeIndex(row) {
+    const rowCount = this.getModeOptions().length;
+    this.modeIndex = Math.max(0, Math.min(rowCount - 1, row));
+  }
+
+  confirmModeSelection() {
+    const modeOption = this.getModeOptions()[this.modeIndex] || this.getModeOptions()[0];
+    this.gameMode = modeOption.mode;
+    this.state = "teamSelect";
+    this.startMenuBgm("select");
+    this.teamSelectionSide = "left";
+    this.teamSelectionSlot = CPU_OPPONENT_SLOT;
+    this.teamSelectionSlots = { left: CPU_OPPONENT_SLOT, right: CPU_OPPONENT_SLOT };
+    this.teamSelectionConfirmed = { left: false, right: false };
+    this.teamRosterConfirmed = { left: false, right: false };
+    this.watchSelectionSlot = 0;
+    this.oneOnOneTournament = null;
+    if (this.gameMode === "single" || this.gameMode === "oneOnOneSingle" || this.gameMode === "oneOnOneTournamentSingle") {
+      this.selectedTeamIndices = { left: 0, right: 2 };
+      this.cpuOpponentIndex = 2;
+    } else if (this.gameMode === "versus" || this.gameMode === "oneOnOneVersus" || this.gameMode === "oneOnOneTournamentVersus") {
+      this.selectedTeamIndices = { left: 0, right: 1 };
+    } else {
+      this.selectedTeamIndices = { left: 2, right: 3 };
+      this.watchCpuLeftIndex = 2;
+      this.watchCpuRightIndex = 3;
+    }
+  }
+
+  updateModeSelect() {
+    this.startMenuBgm("main");
+    if (this.input.wasPressed("button0")) {
+      this.toggleAudioEnabled();
+    }
+
+    if (this.modeMenuLevel !== "details") {
+      if (this.wasMenuDirectionPressed("left") || this.wasMenuDirectionPressed("up")) {
+        this.setModeCategoryIndex(this.modeCategoryIndex - 1);
+      }
+      if (this.wasMenuDirectionPressed("right") || this.wasMenuDirectionPressed("down")) {
+        this.setModeCategoryIndex(this.modeCategoryIndex + 1);
+      }
+      if (this.input.wasPressed("button2") || this.input.wasPressed("pause")) {
+        this.modeMenuLevel = "details";
+        this.modeIndex = 0;
+      }
+      return;
+    }
+
+    if (this.wasMenuDirectionPressed("left")) {
+      this.setModeCategoryIndex(this.modeCategoryIndex - 1);
+      this.setModeIndex(this.modeIndex);
+    }
+    if (this.wasMenuDirectionPressed("right")) {
+      this.setModeCategoryIndex(this.modeCategoryIndex + 1);
+      this.setModeIndex(this.modeIndex);
+    }
+    if (this.wasMenuDirectionPressed("up")) {
+      this.setModeIndex(this.modeIndex - 1);
+    }
+    if (this.wasMenuDirectionPressed("down")) {
+      this.setModeIndex(this.modeIndex + 1);
+    }
+    if (this.input.wasPressed("button1")) {
+      this.modeMenuLevel = "category";
+      this.modeIndex = 0;
+      return;
+    }
+    if (this.input.wasPressed("button2") || this.input.wasPressed("pause")) {
+      this.confirmModeSelection();
+    }
+  }
+
   updateTeamSelect() {
     if (this.isWatchMode()) {
       this.updateSingleTeamSelectCursor();
@@ -3328,17 +3451,23 @@ class DodgeballGame {
 
     if (!returnerBeforeUpdate) return;
     if (this.ball.owner || this.ball.isFlying || !this.ball.isLoose) return;
-    if (!this.players.includes(returnerBeforeUpdate) || returnerBeforeUpdate.defeated || returnerBeforeUpdate.hp <= 0) return;
+    this.scheduleOneOnOneBallReturn(returnerBeforeUpdate);
+  }
+
+  scheduleOneOnOneBallReturn(player, timer = 0.5) {
+    if (!this.isOneOnOneMode()) return false;
+    if (!player || !this.players.includes(player) || player.defeated || player.hp <= 0) return false;
 
     this.oneOnOneReturn = {
-      player: returnerBeforeUpdate,
-      timer: 0.5
+      player,
+      timer
     };
     this.ball.catchable = false;
     for (const member of this.players) {
-      member.pickupLockTimer = Math.max(member.pickupLockTimer || 0, 0.55);
+      member.pickupLockTimer = Math.max(member.pickupLockTimer || 0, timer + 0.05);
     }
     this.spawnEffect(this.ball.x, this.ball.y - Math.max(0, this.ball.z || 0) - 24, "#fff7a0", "catch");
+    return true;
   }
 
   giveOneOnOneReturnBall(player) {
@@ -6684,6 +6813,11 @@ class DodgeballGame {
     const throwerTeam = thrower?.team;
     const receiver = throwerTeam ? this.findNearestOutfielder(throwerTeam, this.ball.x, this.ball.y) : null;
     if (!thrower || !receiver) {
+      if (thrower && this.isOneOnOneMode() && this.scheduleOneOnOneBallReturn(thrower)) {
+        this.ball.drop();
+        this.ball.catchable = false;
+        return;
+      }
       this.ball.drop();
       return;
     }
@@ -8308,6 +8442,101 @@ class DodgeballGame {
     context.fillStyle = "#fff7df";
     context.font = "20px Meiryo, sans-serif";
     context.fillText("左右で種類選択 / 上下でモード選択 / ボタン2で決定", centerX, 636);
+    context.restore();
+  }
+
+  drawModeSelect() {
+    const context = this.context;
+    const centerX = GAME_CONFIG.width * 0.5;
+    this.drawTitleBackgroundImage();
+    context.save();
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 6;
+    context.font = "bold 58px Meiryo, sans-serif";
+    context.strokeText("ぶっとびドッジーズ", centerX, 142);
+    context.fillText("ぶっとびドッジーズ", centerX, 142);
+
+    if (this.modeMenuLevel !== "details") {
+      const categories = this.getModeCategories();
+      for (let i = 0; i < categories.length; i += 1) {
+        const category = categories[i];
+        const selected = this.modeCategoryIndex === i;
+        context.fillStyle = selected ? "rgba(255,244,168,0.78)" : "rgba(10,14,24,0.42)";
+        context.strokeStyle = selected ? "#fff4a8" : "rgba(255,255,255,0.55)";
+        context.lineWidth = selected ? 6 : 3;
+        context.shadowColor = selected ? "rgba(255,244,168,0.55)" : "rgba(0,0,0,0.25)";
+        context.shadowBlur = selected ? 18 : 8;
+        this.roundRect(context, category.x - category.w / 2, category.y - category.h / 2, category.w, category.h, 10);
+        context.fill();
+        context.stroke();
+        context.shadowBlur = 0;
+
+        context.fillStyle = selected ? "#263241" : "#fff7df";
+        context.strokeStyle = selected ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.72)";
+        context.lineWidth = selected ? 2 : 5;
+        context.font = "bold 42px Meiryo, sans-serif";
+        context.strokeText(category.label, category.x, category.y - 18);
+        context.fillText(category.label, category.x, category.y - 18);
+        context.font = "22px Meiryo, sans-serif";
+        context.strokeText(category.note, category.x, category.y + 32);
+        context.fillText(category.note, category.x, category.y + 32);
+      }
+      context.fillStyle = "#fff7df";
+      context.strokeStyle = "rgba(0,0,0,0.65)";
+      context.lineWidth = 4;
+      context.font = "20px Meiryo, sans-serif";
+      context.strokeText("左右で選択 / ボタン2で決定", centerX, 636);
+      context.fillText("左右で選択 / ボタン2で決定", centerX, 636);
+      context.restore();
+      return;
+    }
+
+    const category = this.getModeCategories()[this.modeCategoryIndex];
+    const modes = this.getModeOptions();
+    const panelX = category.x - 220;
+    const panelY = 210;
+    const panelH = this.modeCategoryIndex === 1 ? 430 : 390;
+    context.fillStyle = "rgba(8, 12, 22, 0.46)";
+    context.strokeStyle = "rgba(255, 247, 223, 0.62)";
+    context.lineWidth = 3;
+    this.roundRect(context, panelX, panelY, 440, panelH, 12);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#fff4a8";
+    context.strokeStyle = "#27324a";
+    context.lineWidth = 5;
+    context.font = "bold 38px Meiryo, sans-serif";
+    context.strokeText(category.label, category.x, panelY + 42);
+    context.fillText(category.label, category.x, panelY + 42);
+
+    for (let i = 0; i < modes.length; i += 1) {
+      const mode = modes[i];
+      const selected = this.modeIndex === i;
+      const buttonWidth = mode.w || 360;
+      const buttonHeight = mode.h || 76;
+      context.fillStyle = selected ? "rgba(255,244,168,0.95)" : "rgba(255,255,255,0.78)";
+      context.strokeStyle = selected ? "#263241" : "rgba(38,50,65,0.55)";
+      context.lineWidth = selected ? 6 : 3;
+      this.roundRect(context, mode.x - buttonWidth / 2, mode.y - buttonHeight / 2, buttonWidth, buttonHeight, 8);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#263241";
+      context.font = `bold ${mode.label.length > 10 ? 25 : 30}px Meiryo, sans-serif`;
+      context.fillText(mode.label, mode.x, mode.y - 10);
+      context.font = "18px Meiryo, sans-serif";
+      context.fillText(mode.note, mode.x, mode.y + 22);
+    }
+
+    context.fillStyle = "#fff7df";
+    context.strokeStyle = "rgba(0,0,0,0.65)";
+    context.lineWidth = 4;
+    context.font = "20px Meiryo, sans-serif";
+    context.strokeText("上下でモード選択 / ボタン1で戻る / ボタン2で決定", centerX, 636);
+    context.fillText("上下でモード選択 / ボタン1で戻る / ボタン2で決定", centerX, 636);
     context.restore();
   }
 
@@ -14335,24 +14564,24 @@ class DodgeballGame {
   }
 
   getTournamentBracketSlot(round, index) {
-    const boxW = round === 0 ? 134 : round === 4 ? 190 : 128;
-    const boxH = 30;
+    const boxW = round === 0 ? 166 : round === 4 ? 220 : 154;
+    const boxH = round === 4 ? 50 : 44;
     if (round === 0) {
       const leftSide = index < 8;
-      return { x: leftSide ? 88 : 1218, y: 170 + (index % 8) * 55, w: boxW, h: boxH };
+      return { x: leftSide ? 70 : 1204, y: 170 + (index % 8) * 55, w: boxW, h: boxH };
     }
     if (round === 1) {
       const leftSide = index < 4;
-      return { x: leftSide ? 292 : 1010, y: 185 + (index % 4) * 110, w: boxW, h: boxH };
+      return { x: leftSide ? 294 : 992, y: 190 + (index % 4) * 110, w: boxW, h: boxH };
     }
     if (round === 2) {
       const leftSide = index < 2;
-      return { x: leftSide ? 480 : 832, y: 240 + (index % 2) * 220, w: boxW, h: boxH };
+      return { x: leftSide ? 486 : 800, y: 245 + (index % 2) * 220, w: boxW, h: boxH };
     }
     if (round === 3) {
-      return { x: index === 0 ? 604 : 738, y: 350, w: boxW, h: boxH };
+      return { x: index === 0 ? 548 : 738, y: 360, w: boxW, h: boxH };
     }
-    return { x: 625, y: 98, w: boxW, h: 36 };
+    return { x: 610, y: 104, w: boxW, h: boxH };
   }
 
   getTournamentEntryKey(entry) {
@@ -14384,9 +14613,12 @@ class DodgeballGame {
     context.lineTo(midX, y1);
     context.lineTo(midX, y2);
     context.lineTo(x2, y2);
-    context.strokeStyle = active ? "#ff1f1f" : "rgba(24, 31, 38, 0.84)";
-    context.lineWidth = active ? 4 : 3;
+    context.strokeStyle = active ? "#ffcf4d" : "rgba(255, 255, 255, 0.82)";
+    context.lineWidth = active ? 5 : 3;
+    context.shadowColor = active ? "rgba(255, 72, 46, 0.72)" : "rgba(170, 210, 255, 0.36)";
+    context.shadowBlur = active ? 11 : 4;
     context.stroke();
+    context.shadowBlur = 0;
   }
 
   drawFittedTextLine(text, x, y, maxWidth, maxSize = 16, minSize = 10) {
@@ -14400,6 +14632,119 @@ class DodgeballGame {
     context.fillText(text, x, y);
   }
 
+  drawTournamentBackdrop(context) {
+    const panelX = 38;
+    const panelY = 72;
+    const panelW = GAME_CONFIG.width - 76;
+    const panelH = 612;
+    const bg = context.createLinearGradient(panelX, panelY, panelX + panelW, panelY + panelH);
+    bg.addColorStop(0, "rgba(5, 26, 72, 0.96)");
+    bg.addColorStop(0.48, "rgba(11, 12, 28, 0.97)");
+    bg.addColorStop(1, "rgba(93, 18, 18, 0.95)");
+    context.fillStyle = bg;
+    this.roundRect(context, panelX, panelY, panelW, panelH, 14);
+    context.fill();
+
+    context.strokeStyle = "rgba(255, 255, 255, 0.62)";
+    context.lineWidth = 3;
+    context.stroke();
+    context.strokeStyle = "rgba(255, 207, 77, 0.42)";
+    context.lineWidth = 1.5;
+    this.roundRect(context, panelX + 8, panelY + 8, panelW - 16, panelH - 16, 10);
+    context.stroke();
+
+    const blocks = [
+      ["rgba(44, 95, 190, 0.24)", 100, 118, 220, 116],
+      ["rgba(65, 115, 210, 0.18)", 355, 410, 180, 150],
+      ["rgba(45, 92, 170, 0.16)", 568, 152, 210, 180],
+      ["rgba(180, 50, 38, 0.20)", 834, 160, 210, 170],
+      ["rgba(190, 55, 40, 0.24)", 1055, 408, 220, 132],
+      ["rgba(255, 148, 70, 0.11)", 1120, 104, 150, 96]
+    ];
+    for (const [color, x, y, w, h] of blocks) {
+      context.fillStyle = color;
+      this.roundRect(context, x, y, w, h, 8);
+      context.fill();
+    }
+
+    const centerGlow = context.createRadialGradient(GAME_CONFIG.width / 2, 390, 30, GAME_CONFIG.width / 2, 390, 260);
+    centerGlow.addColorStop(0, "rgba(255, 255, 255, 0.14)");
+    centerGlow.addColorStop(0.5, "rgba(255, 207, 77, 0.06)");
+    centerGlow.addColorStop(1, "rgba(255, 255, 255, 0)");
+    context.fillStyle = centerGlow;
+    context.fillRect(panelX, panelY, panelW, panelH);
+  }
+
+  drawTournamentEntryBox(entry, slot, state) {
+    const context = this.context;
+    const { highlighted, advanced, champion, pending } = state;
+    const controlled = Boolean(entry?.controlled);
+    const fill = champion
+      ? "#f7d66d"
+      : advanced
+        ? "#5e210f"
+        : highlighted
+          ? "#3b174f"
+          : entry
+            ? "#26064f"
+            : "rgba(12, 15, 32, 0.92)";
+    const stroke = champion
+      ? "#fff2a7"
+      : advanced
+        ? "#ffcf4d"
+        : highlighted
+          ? "#ff6040"
+          : pending
+            ? "#ffcf4d"
+            : "rgba(255,255,255,0.9)";
+
+    context.save();
+    context.shadowColor = champion
+      ? "rgba(255, 218, 91, 0.72)"
+      : highlighted || advanced
+        ? "rgba(255, 76, 48, 0.5)"
+        : "rgba(80, 150, 255, 0.24)";
+    context.shadowBlur = champion || highlighted || advanced ? 12 : 4;
+    context.fillStyle = fill;
+    context.strokeStyle = stroke;
+    context.lineWidth = champion || advanced || highlighted ? 4 : 2.5;
+    this.roundRect(context, slot.x, slot.y, slot.w, slot.h, 4);
+    context.fill();
+    context.stroke();
+    context.shadowBlur = 0;
+
+    if (entry) {
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      const playerBadge = controlled ? `${entry.controlIndex === 2 ? 2 : 1}P` : "";
+      const badgeW = playerBadge ? 32 : 0;
+      const textX = playerBadge ? slot.x + badgeW + (slot.w - badgeW) / 2 : slot.x + slot.w / 2;
+      const textMaxWidth = slot.w - (playerBadge ? badgeW + 18 : 14);
+
+      if (playerBadge) {
+        const badgeX = slot.x + 5;
+        const badgeY = slot.y + slot.h / 2 - 11;
+        context.fillStyle = entry.controlIndex === 2 ? "#ff6040" : "#358cff";
+        context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        context.lineWidth = 2;
+        this.roundRect(context, badgeX, badgeY, badgeW, 22, 4);
+        context.fill();
+        context.stroke();
+        context.fillStyle = "#ffffff";
+        context.font = "bold 13px Meiryo, sans-serif";
+        context.fillText(playerBadge, badgeX + badgeW / 2, badgeY + 11);
+      }
+
+      const teamColor = champion ? "#51340a" : controlled ? "#8cc5ff" : "#d9c6ff";
+      const nameColor = champion ? "#231800" : "#ffffff";
+      context.fillStyle = teamColor;
+      this.drawFittedTextLine(entry.teamName || "", textX, slot.y + slot.h * 0.32, textMaxWidth, champion ? 13 : 11, 8);
+      context.fillStyle = nameColor;
+      this.drawFittedTextLine(entry.name || "", textX, slot.y + slot.h * 0.68, textMaxWidth, champion ? 20 : 17, 10);
+    }
+    context.restore();
+  }
+
   drawTournamentBracketPanel() {
     const tournament = this.oneOnOneTournament;
     if (!tournament) return;
@@ -14409,18 +14754,19 @@ class DodgeballGame {
     const currentKeys = new Set(Object.values(tournament.currentMatch || {}).map((entry) => this.getTournamentEntryKey(entry)));
 
     context.save();
-    context.fillStyle = "rgba(246, 249, 255, 0.94)";
-    this.roundRect(context, 42, 70, GAME_CONFIG.width - 84, 610, 12);
-    context.fill();
-    context.strokeStyle = "rgba(31, 42, 61, 0.72)";
-    context.lineWidth = 4;
-    context.stroke();
+    this.drawTournamentBackdrop(context);
 
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillStyle = "#263241";
-    context.font = "bold 34px Meiryo, sans-serif";
-    context.fillText("1 on 1 TOURNAMENT", GAME_CONFIG.width / 2, 42);
+    context.fillStyle = "#ffffff";
+    context.strokeStyle = "rgba(0, 0, 0, 0.75)";
+    context.lineWidth = 7;
+    context.shadowColor = "rgba(130, 178, 255, 0.85)";
+    context.shadowBlur = 14;
+    context.font = "bold 46px Meiryo, sans-serif";
+    context.strokeText("1 on 1 TOURNAMENT", GAME_CONFIG.width / 2, 46);
+    context.fillText("1 on 1 TOURNAMENT", GAME_CONFIG.width / 2, 46);
+    context.shadowBlur = 0;
 
     for (let round = 1; round <= 4; round += 1) {
       const parentCount = round === 4 ? 1 : Math.pow(2, 4 - round);
@@ -14456,7 +14802,7 @@ class DodgeballGame {
     }
 
     const crownX = GAME_CONFIG.width / 2;
-    const crownY = 86;
+    const crownY = 92;
     context.fillStyle = "#ffe36a";
     context.strokeStyle = "#8d6420";
     context.lineWidth = 3;
@@ -14482,27 +14828,33 @@ class DodgeballGame {
         const highlighted = pendingKeys.has(key) || currentKeys.has(key);
         const advanced = this.hasTournamentEntryAdvanced(rounds, round, index);
         const champion = round === 4 && entry;
-        context.fillStyle = champion ? "#fff4a8" : advanced ? "#fff0a6" : highlighted ? "#ffe16a" : entry ? "#ffffff" : "#eef1f5";
-        context.strokeStyle = champion ? "#b68622" : advanced ? "#ff1f1f" : highlighted ? "#d64d2a" : "#263241";
-        context.lineWidth = champion || advanced || highlighted ? 4 : 2;
-        this.roundRect(context, slot.x, slot.y, slot.w, slot.h, 5);
-        context.fill();
-        context.stroke();
-        context.fillStyle = entry?.controlled ? "#0057ff" : "#263241";
-        context.textAlign = "center";
-        this.drawFittedTextLine(entry?.name || "", slot.x + slot.w / 2, slot.y + slot.h / 2 + 1, slot.w - 12, round === 4 ? 18 : 14, 9);
+        this.drawTournamentEntryBox(entry, slot, {
+          highlighted,
+          advanced,
+          champion,
+          pending: pendingKeys.has(key)
+        });
       }
     }
 
     const pending = tournament.pendingMatch;
-    context.fillStyle = "#263241";
+    context.fillStyle = "#ffffff";
+    context.strokeStyle = "rgba(0,0,0,0.7)";
+    context.lineWidth = 5;
     context.font = "bold 22px Meiryo, sans-serif";
     if (pending) {
-      context.fillText(`NEXT: ${this.getTournamentMatchLabel(tournament.round)} ${pending[0].name} VS ${pending[1].name}`, GAME_CONFIG.width / 2, 704);
+      const pendingLeft = `${pending[0].teamName || ""} ${pending[0].name || ""}`.trim();
+      const pendingRight = `${pending[1].teamName || ""} ${pending[1].name || ""}`.trim();
+      const nextText = `NEXT: ${this.getTournamentMatchLabel(tournament.round)} ${pendingLeft} VS ${pendingRight}`;
+      context.strokeText(nextText, GAME_CONFIG.width / 2, 704);
+      context.fillText(nextText, GAME_CONFIG.width / 2, 704);
       context.font = "bold 18px Meiryo, sans-serif";
       context.fillText("Button2 / Tap: START MATCH", GAME_CONFIG.width / 2, 732);
     } else if (tournament.champion) {
-      context.fillText(`CHAMPION: ${tournament.champion.name}`, GAME_CONFIG.width / 2, 714);
+      const championName = `${tournament.champion.teamName || ""} ${tournament.champion.name || ""}`.trim();
+      const championText = `CHAMPION: ${championName}`;
+      context.strokeText(championText, GAME_CONFIG.width / 2, 714);
+      context.fillText(championText, GAME_CONFIG.width / 2, 714);
     }
     context.restore();
   }

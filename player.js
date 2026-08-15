@@ -378,6 +378,15 @@ class Player {
     this.hitRecoveryTimer = Math.max(0, this.hitRecoveryTimer - delta);
     this.catchTimer = Math.max(0, this.catchTimer - delta);
     this.catchSuccessTimer = Math.max(0, this.catchSuccessTimer - delta);
+    if (
+      !this.cpuControlled &&
+      catchTimerBeforeUpdate > 0 &&
+      this.catchTimer <= 0 &&
+      this.catchSuccessTimer <= 0 &&
+      !this.hasBall
+    ) {
+      this.hitRecoveryTimer = Math.max(this.hitRecoveryTimer, config.catchWhiffRecovery || 0);
+    }
     this.slowTimer = Math.max(0, this.slowTimer - delta);
     this.victoryMarchTimer = Math.max(0, this.victoryMarchTimer - delta);
     this.rhythmStepTimer = Math.max(0, this.rhythmStepTimer - delta);
