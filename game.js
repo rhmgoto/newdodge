@@ -540,6 +540,10 @@ const SPIRIT_GAIN_CONFIG = {
 };
 const SPIRIT_GAIN_RATE_SCALE = 0.5;
 const CPU_CATCH_DURATION_SCALE = 1.2;
+const STANDARD_COURT_BACKGROUND_SRC = "assets/courts/standard-court.png";
+const STANDARD_COURT_BACKGROUND_CROP = { x: 0, y: 112, w: 1538, h: 769 };
+const STANDARD_COURT_BACKGROUND_IMAGE = new Image();
+STANDARD_COURT_BACKGROUND_IMAGE.src = STANDARD_COURT_BACKGROUND_SRC;
 
 const GAME_CONFIG = {
   width: 1440,
@@ -10065,12 +10069,36 @@ class DodgeballGame {
     }
     const context = this.context;
     const c = GAME_CONFIG.court;
+    if (this.drawStandardCourtBackgroundImage()) return;
     const width = c.x + c.w + 260;
     context.fillStyle = "#bfc36d";
     context.fillRect(c.x - 420, c.y - 310, width + 840, c.h + 620);
     this.drawBench(c.centerX - 650, -56, "#3087f2");
     this.drawBench(c.centerX + 430, -56, "#f05a45");
     this.drawMatchTimeBoard(c.centerX, -42, false);
+  }
+
+  drawStandardCourtBackgroundImage() {
+    const image = STANDARD_COURT_BACKGROUND_IMAGE;
+    if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return false;
+
+    const context = this.context;
+    const view = this.getFullCourtView();
+    const destW = GAME_CONFIG.width / view.scale;
+    const destH = GAME_CONFIG.height / view.scale;
+    const crop = STANDARD_COURT_BACKGROUND_CROP;
+    context.drawImage(
+      image,
+      crop.x,
+      crop.y,
+      crop.w,
+      crop.h,
+      view.x,
+      view.y,
+      destW,
+      destH
+    );
+    return true;
   }
 
   drawOneOnOneBackground() {
@@ -10623,9 +10651,13 @@ class DodgeballGame {
       context.stroke();
     };
 
-    drawProjectedQuad(c.x, topY, c.w, c.h - 10, "#bfc36d");
-    drawProjectedQuad(this.areas.leftSideOut.x, this.areas.leftSideOut.y, this.areas.leftSideOut.w, this.areas.leftSideOut.h, "#bfc36d");
-    drawProjectedQuad(this.areas.rightSideOut.x, this.areas.rightSideOut.y, this.areas.rightSideOut.w, this.areas.rightSideOut.h, "#bfc36d");
+    const useImageBackground = STANDARD_COURT_BACKGROUND_IMAGE.complete &&
+      STANDARD_COURT_BACKGROUND_IMAGE.naturalWidth > 0;
+    if (!useImageBackground) {
+      drawProjectedQuad(c.x, topY, c.w, c.h - 10, "#bfc36d");
+      drawProjectedQuad(this.areas.leftSideOut.x, this.areas.leftSideOut.y, this.areas.leftSideOut.w, this.areas.leftSideOut.h, "#bfc36d");
+      drawProjectedQuad(this.areas.rightSideOut.x, this.areas.rightSideOut.y, this.areas.rightSideOut.w, this.areas.rightSideOut.h, "#bfc36d");
+    }
 
     context.strokeStyle = "#f7f4df";
     context.lineWidth = 7;
